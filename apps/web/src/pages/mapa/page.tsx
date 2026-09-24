@@ -115,6 +115,13 @@ export function PaginaMapa() {
                     <div className="space-y-1 text-sm">
                       <strong>{tren.numeroTren ?? 'Tren'}</strong>
                       {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
+                      {tren.retrasoSeg != null && (
+                        <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>
+                          {tren.retrasoSeg > 0
+                            ? `Retraso +${Math.round(tren.retrasoSeg / 60)} min`
+                            : 'A tiempo'}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-500">
                         Actualizado {new Date(tren.actualizadaEn).toLocaleTimeString('es-ES')}
                       </p>

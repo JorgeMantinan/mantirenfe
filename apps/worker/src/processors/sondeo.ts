@@ -129,7 +129,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     numeroTren: alerta.numeroTren,
   };
 
-  const fuente = crearFuenteDatos();
+  const fuente = crearFuenteDatos(alerta.criterio);
   let estado: EstadoDisponibilidad;
   try {
     estado = await fuente.getDisponibilidad(consulta);

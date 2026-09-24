@@ -17,7 +17,7 @@ export const crearAlertaSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)')
     .refine((v) => {
-      const d = new Date(`${v}T00:00:00`);
+      const d = new Date(`${v}T00:00:00Z`);
       return !Number.isNaN(d.getTime());
     }, 'Fecha inválida'),
   horaDesde: z

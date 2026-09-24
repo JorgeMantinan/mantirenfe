@@ -248,6 +248,11 @@ export default function Trenes() {
                 {item.velocidadKmh != null ? (
                   <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
                 ) : null}
+                {item.retrasoSeg != null ? (
+                  <Etiqueta tono={item.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
+                    {item.retrasoSeg > 0 ? `+${Math.round(item.retrasoSeg / 60)} min` : 'A tiempo'}
+                  </Etiqueta>
+                ) : null}
               </View>
               <Text style={estilos.meta}>
                 {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}

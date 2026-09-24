@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { getPrisma } from '@mantirenfe/database';
+import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
   AlertaResponse,
   COLA_SONDEO,
@@ -72,12 +72,8 @@ export class AlertasService {
       create: { id: usuario.sub, email: usuario.email || `${usuario.sub}@placeholder` },
     });
 
-    const origen = await prisma.estacion.findFirst({
-      where: { nombre: { contains: datos.origenNombre, mode: 'insensitive' } },
-    });
-    const destino = await prisma.estacion.findFirst({
-      where: { nombre: { contains: datos.destinoNombre, mode: 'insensitive' } },
-    });
+    const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
+    const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
 
     const alerta = await prisma.alerta.create({
       data: {
@@ -86,7 +82,7 @@ export class AlertasService {
         destinoNombre: datos.destinoNombre,
         origenEstacionId: origen?.id ?? null,
         destinoEstacionId: destino?.id ?? null,
-        fechaViaje: new Date(`${datos.fechaViaje}T00:00:00`),
+        fechaViaje: new Date(`${datos.fechaViaje}T00:00:00Z`),
         horaDesde: datos.horaDesde ?? null,
         horaHasta: datos.horaHasta ?? null,
         numeroTren: datos.numeroTren ?? null,

@@ -1,19 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { getPrisma } from '@mantirenfe/database';
+import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
   HorarioTrenResponse,
+  parsearRetrasos,
   PosicionTrenResponse,
 } from '@mantirenfe/shared-types';
-
-interface PosicionCruda {
-  id: string;
-  numeroTren: string | null;
-  latitud: number;
-  longitud: number;
-  velocidadKmh: number | null;
-  retrasoSeg: number | null;
-}
+import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
@@ -34,22 +27,20 @@ export class TrenesService {
     const { origen, destino, fecha } = parsed.data;
     const prisma = getPrisma();
 
-    const estacionOrigen = await prisma.estacion.findFirst({
-      where: { nombre: { contains: origen, mode: 'insensitive' } },
-    });
-    const estacionDestino = await prisma.estacion.findFirst({
-      where: { nombre: { contains: destino, mode: 'insensitive' } },
-    });
+    const [estacionesOrigen, estacionesDestino] = await Promise.all([
+      buscarEstaciones(prisma, origen, 20),
+      buscarEstaciones(prisma, destino, 20),
+    ]);
 
-    if (!estacionOrigen || !estacionDestino) {
+    if (estacionesOrigen.length === 0 || estacionesDestino.length === 0) {
       return { fuente: 'cache', trenes: [] };
     }
 
     const horarios = await prisma.horarioTren.findMany({
       where: {
-        origenEstacionId: estacionOrigen.id,
-        destinoEstacionId: estacionDestino.id,
-        fecha: new Date(`${fecha}T00:00:00`),
+        origenEstacionId: { in: estacionesOrigen.map((e) => e.id) },
+        destinoEstacionId: { in: estacionesDestino.map((e) => e.id) },
+        fecha: new Date(`${fecha}T00:00:00Z`),
       },
       orderBy: { salida: 'asc' },
       take: 50,
@@ -97,17 +88,20 @@ export class TrenesService {
         .split(',')
         .map((u) => u.trim())
         .filter(Boolean);
+      const urlRetrasos =
+        process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() ??
+        'https://gtfsrt.renfe.com/trip_updates.json';
 
-      const resultados = await Promise.allSettled(urls.map((url) => this.obtenerFeed(url)));
+      const [resultados, retrasos] = await Promise.all([
+        Promise.allSettled(urls.map((url) => this.obtenerFeed(url))),
+        this.obtenerRetrasos(urlRetrasos),
+      ]);
       const crudas: PosicionCruda[] = [];
       for (const resultado of resultados) {
         if (resultado.status === 'fulfilled') crudas.push(...resultado.value);
       }
 
-      const datos: PosicionTrenResponse[] = crudas.map((p) => ({
-        ...p,
-        actualizadaEn: new Date().toISOString(),
-      }));
+      const datos = aplicarRetrasos(crudas, retrasos, new Date().toISOString());
 
       this.cachePosiciones = { datos, caduca: Date.now() + ttl };
       return { fuente: 'gtfs-rt', trenes: datos, total: datos.length };
@@ -120,6 +114,24 @@ export class TrenesService {
       };
     } finally {
       this.enCurso = false;
+    }
+  }
+
+  private async obtenerRetrasos(url: string): Promise<Map<string, number>> {
+    const controlador = new AbortController();
+    const timeout = setTimeout(() => controlador.abort(), 8_000);
+    try {
+      const respuesta = await fetch(url, {
+        signal: controlador.signal,
+        headers: { accept: 'application/json' },
+      });
+      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+      return parsearRetrasos(await respuesta.json());
+    } catch (error) {
+      this.logger.warn(`No se pudieron obtener retrasos GTFS-RT: ${String(error)}`);
+      return new Map();
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -158,7 +170,7 @@ export class TrenesService {
             position.speed != null && position.speed >= 0
               ? Math.round(position.speed * 3.6 * 10) / 10
               : null,
-          retrasoSeg: null,
+          tripId: vehicle.trip?.tripId ?? null,
         });
       }
       return crudas;
