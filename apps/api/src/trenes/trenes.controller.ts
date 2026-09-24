@@ -1,0 +1,28 @@
+import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { EsPublico } from '../common/es-publico.decorator';
+import { TrenesService } from './trenes.service';
+
+@ApiTags('trenes')
+@Controller('trenes')
+export class TrenesController {
+  constructor(private readonly trenesService: TrenesService) {}
+
+  @Get('horarios')
+  @EsPublico()
+  horarios(
+    @Query('origen') origen?: string,
+    @Query('destino') destino?: string,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.trenesService.horarios({ origen, destino, fecha });
+  }
+
+  @Get('posiciones')
+  @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 20 } })
+  posiciones() {
+    return this.trenesService.posiciones();
+  }
+}

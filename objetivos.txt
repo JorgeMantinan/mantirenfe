@@ -1,0 +1,18 @@
+Quiero hacer una app basada en la red de Renfe de España, en todo tipo de trenes.
+He visto que hay una api oficial y otra que no.
+
+Quiero saber si puedo obtener datos de horarios nada mas salgan los billetes para comprar entrenes de cierta estacion a cierta hora.
+ Mi intencion es crear una webapp(web, android y iphone) para que notifique en este caso:
+Compro a las 13:00 un billete. Como veo que no hay asiento para el de las 17:00, compro el de las 19:00. La app a las 13:20 me avisa que ha quedado un asiento libre en el tren de las 17:00 para que pueda cancelar mi billete de las 19:00 y pueda comprar el de las 17:00.
+
+Se puede hacer segun está la api actual de renfe?
+Tambien me gustaría calcular el tiempo que tarda en llegar un tren entre estaciones para ir avisando "Te faltan 50minutos"
+
+A futuro tambien querría añadir una opcion de obtener blablacar al llegar a la estacion de destino tambien avisando de si hay un blablacar nuevo (no se si blablacar tiene api publica, supongo que no). (y ampliar con hoteles vuelos etc a la larga)
+
+Todo esto es posible? investiga las apis para saberlo
+
+Quiero que también me vayas dando ideas para ampliar lo máximo posible la web sin encurrir en problemas legales, pero si que sea completa para que un usuario pueda hacer multiples acciones en ella, aunque al final acabe yendo a la web de renfe a pagar u obtener los billetes.
+Mi mayor objetivo es proporcionar al usuario notificaciones personalizadas con lo que ellos necesitan, filtrando por su situación (con los diferentes bonos, discapacitados, personas sin bono, estudiantes, etc) y los trenes disponibles o no, también un mapa en tiempo real de donde está cada tren. Me ha comentado otro cliente que aveces quiere pillar el vagon(también llamado coche) más cercano a la puerta de la estación para no perder tiempo en caminar por la estación.
+Sugiereme más ideas.
+Necesito que tenga un sistema de usuarios logueados por correo, Gmail, Outlook etc, aunque también estaría bien la posibilidad de no tener que loguearte

@@ -1,0 +1,25 @@
+Stack del proyecto:
+
+Monorepo (Turborepo) con TypeScript en todas las capas:
+- apps/api: NestJS + TypeScript, API REST documentada con OpenAPI/Swagger
+- apps/web: React + Vite, PWA instalable
+- apps/mobile: React Native con Expo (EAS para builds y push notifications)
+- packages/shared-types: DTOs e interfaces TypeScript compartidas entre api/web/mobile
+
+Base de datos: PostgreSQL (vía TypeORM o Prisma — Prisma preferido por DX y migraciones)
+Cache y colas: Redis + BullMQ para jobs de polling/sondeo con reintentos y rate-limiting
+Notificaciones push: Firebase Cloud Messaging (FCM), integrado vía Expo push service
+Autenticación: JWT + refresh tokens con Passport.js dentro de NestJS
+Logging: Pino (structured logging)
+Error tracking: Sentry
+
+Infraestructura:
+- Docker multi-stage builds por servicio (api, web, worker)
+- docker-compose.yml para entorno local (postgres, redis, api, worker, web)
+- Variables de entorno vía .env, con .env.example documentado
+- Health-check endpoint /health en la API
+- CI/CD con GitHub Actions (test + build + docker build en cada PR/merge a main)
+
+Estructura de servicios backend:
+- api: expone REST endpoints, gestiona auth y CRUD de usuarios/alertas
+- worker: proceso separado que consume la cola BullMQ, hace polling a fuentes de datos de trenes (horarios estáticos, disponibilidad, tiempo real) y dispara notificaciones cuando detecta cambios relevantes

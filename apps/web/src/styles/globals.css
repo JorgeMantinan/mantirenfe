@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 262 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 262 30% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 262 30% 10%;
+    --primary: 285 52% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 20% 96%;
+    --secondary-foreground: 262 30% 12%;
+    --muted: 270 20% 96%;
+    --muted-foreground: 262 10% 45%;
+    --accent: 285 60% 96%;
+    --accent-foreground: 285 55% 25%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 270 15% 90%;
+    --input: 270 15% 90%;
+    --ring: 285 52% 38%;
+    --radius: 0.5rem;
+    --chart-1: 285 52% 45%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 160 84% 39%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 330 75% 55%;
+    --sidebar-background: 285 40% 98.5%;
+    --sidebar-foreground: 262 30% 12%;
+    --sidebar-primary: 285 52% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 285 50% 94%;
+    --sidebar-accent-foreground: 285 55% 25%;
+    --sidebar-border: 280 20% 91%;
+    --sidebar-ring: 285 52% 38%;
+    --font-roboto: 'Roboto';
+  }
+
+  .dark {
+    --background: 270 25% 7%;
+    --foreground: 270 20% 96%;
+    --card: 270 22% 10%;
+    --card-foreground: 270 20% 96%;
+    --popover: 270 22% 10%;
+    --popover-foreground: 270 20% 96%;
+    --primary: 285 52% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 15% 16%;
+    --secondary-foreground: 270 15% 88%;
+    --muted: 270 15% 16%;
+    --muted-foreground: 270 10% 64%;
+    --accent: 285 30% 18%;
+    --accent-foreground: 285 60% 85%;
+    --destructive: 0 62.8% 40%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 270 14% 17%;
+    --input: 270 14% 17%;
+    --ring: 285 55% 60%;
+    --chart-1: 285 60% 58%;
+    --chart-2: 199 89% 55%;
+    --chart-3: 160 84% 45%;
+    --chart-4: 38 92% 55%;
+    --chart-5: 330 75% 60%;
+    --sidebar-background: 270 25% 9%;
+    --sidebar-foreground: 270 15% 85%;
+    --sidebar-primary: 285 55% 60%;
+    --sidebar-primary-foreground: 270 40% 8%;
+    --sidebar-accent: 285 25% 18%;
+    --sidebar-accent-foreground: 285 60% 85%;
+    --sidebar-border: 270 18% 16%;
+    --sidebar-ring: 285 55% 60%;
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  select option {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+}

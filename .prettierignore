@@ -1,0 +1,13 @@
+node_modules
+dist
+.turbo
+build
+coverage
+pnpm-lock.yaml
+.next
+dev-dist
+*.tsbuildinfo
+.expo
+apps/mobile/.expo
+apps/mobile/assets
+

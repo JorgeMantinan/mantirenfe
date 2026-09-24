@@ -1,0 +1,37 @@
+{
+  "name": "mantirenfe",
+  "private": true,
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "db:generate": "pnpm --filter @mantirenfe/database db:generate",
+    "db:push": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:push",
+    "db:migrate": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:migrate",
+    "db:seed": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:seed",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,css,md,yml,yaml}\"",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,cjs,mjs,json,css,md,yml,yaml}": "prettier --write --ignore-unknown"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "dotenv-cli": "^11.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

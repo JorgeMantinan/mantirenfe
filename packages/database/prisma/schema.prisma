@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProveedorAuth {
+  EMAIL
+  GOOGLE
+  MICROSOFT
+  ANONIMO
+}
+
+enum EstadoAlerta {
+  ACTIVA
+  PAUSA
+  COMPLETADA
+}
+
+enum CriterioAlerta {
+  DISPONIBILIDAD
+  HORARIO
+  RETRASO
+  APERTURA_VENTA
+}
+
+enum PlataformaPush {
+  WEB
+  ANDROID
+  IOS
+}
+
+model Usuario {
+  id             String           @id
+  email          String           @unique
+  nombre         String?
+  avatarUrl      String?
+  proveedor      ProveedorAuth    @default(EMAIL)
+  preferencias   Json             @default("{}")
+  creadoEn       DateTime         @default(now())
+  actualizadoEn  DateTime         @updatedAt
+  alertas        Alerta[]
+  notificaciones Notificacion[]
+  suscripciones  SuscripcionPush[]
+}
+
+model Estacion {
+  id              String   @id
+  codigo          String   @unique
+  nombre          String
+  ciudad          String?
+  latitud         Float?
+  longitud        Float?
+  creadaEn        DateTime @default(now())
+  alertasOrigen   Alerta[] @relation("AlertaOrigen")
+  alertasDestino  Alerta[] @relation("AlertaDestino")
+  horariosSalida  HorarioTren[] @relation("HorarioOrigen")
+  horariosLlegada HorarioTren[] @relation("HorarioDestino")
+}
+
+model Alerta {
+  id                String         @id @default(cuid())
+  usuarioId         String
+  origenNombre      String
+  destinoNombre     String
+  origenEstacionId  String?
+  destinoEstacionId String?
+  fechaViaje        DateTime       @db.Date
+  horaDesde         String?
+  horaHasta         String?
+  numeroTren        String?
+  criterio          CriterioAlerta @default(DISPONIBILIDAD)
+  estado            EstadoAlerta   @default(ACTIVA)
+  intervaloSondeoMin Int           @default(10)
+  bono              String         @default("GENERAL")
+  notas             String?
+  ultimoEstado      Json?
+  ultimoSondeoEn    DateTime?
+  creadaEn          DateTime       @default(now())
+  actualizadoEn     DateTime       @updatedAt
+  usuario           Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  origen            Estacion?      @relation("AlertaOrigen", fields: [origenEstacionId], references: [id])
+  destino           Estacion?      @relation("AlertaDestino", fields: [destinoEstacionId], references: [id])
+  notificaciones    Notificacion[]
+
+  @@index([usuarioId, estado])
+  @@index([estado, ultimoSondeoEn])
+}
+
+model Notificacion {
+  id         String    @id @default(cuid())
+  usuarioId  String
+  alertaId   String?
+  titulo     String
+  cuerpo     String
+  datos      Json?
+  leida      Boolean   @default(false)
+  creadaEn   DateTime  @default(now())
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  alerta     Alerta?   @relation(fields: [alertaId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId, leida, creadaEn])
+}
+
+model SuscripcionPush {
+  id         String          @id @default(cuid())
+  usuarioId  String
+  endpoint   String          @unique
+  p256dh     String
+  auth       String
+  plataforma PlataformaPush  @default(WEB)
+  activa     Boolean         @default(true)
+  creadaEn   DateTime        @default(now())
+  usuario    Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, activa])
+}
+
+model HorarioTren {
+  id              String   @id @default(cuid())
+  numeroTren      String
+  fecha           DateTime @db.Date
+  salida          DateTime
+  llegada         DateTime
+  operador        String?
+  origenEstacionId String
+  destinoEstacionId String
+  origen          Estacion @relation("HorarioOrigen", fields: [origenEstacionId], references: [id], onDelete: Cascade)
+  destino         Estacion @relation("HorarioDestino", fields: [destinoEstacionId], references: [id], onDelete: Cascade)
+
+  @@unique([numeroTren, fecha, origenEstacionId, salida])
+  @@index([fecha, origenEstacionId])
+}
+
+model PosicionTren {
+  id           String   @id
+  numeroTren   String?
+  latitud      Float
+  longitud     Float
+  velocidadKmh Float?
+  retrasoSeg   Int?
+  actualizadaEn DateTime @default(now())
+
+  @@index([actualizadaEn])
+}

@@ -1,0 +1,102 @@
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/hooks/useAuth';
+import { AppShell } from '@/components/layout/AppShell';
+import { PaginaAlertas } from '@/pages/alertas/page';
+import { PaginaNuevaAlerta } from '@/pages/alertas/nueva/page';
+import { PaginaAuthCallback } from '@/pages/auth/callback/page';
+import { PaginaDashboard } from '@/pages/dashboard/page';
+import { PaginaLanding } from '@/pages/landing/page';
+import { PaginaLogin } from '@/pages/login/page';
+import { PaginaMapa } from '@/pages/mapa/page';
+import { PaginaNoEncontrada } from '@/pages/not-found';
+import { PaginaNotificaciones } from '@/pages/notificaciones/page';
+import { PaginaRegistro } from '@/pages/registro/page';
+import { PaginaAjustes } from '@/pages/ajustes/page';
+import { PaginaTrenes } from '@/pages/trenes/page';
+
+function RequiereAuth({ children }: { children: ReactNode }) {
+  const { user, cargando, authConfigurada } = useAuth();
+  const location = useLocation();
+
+  if (cargando) {
+    return (
+      <div className="space-y-4 p-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
+
+  if (!user && authConfigurada) {
+    return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<PaginaLanding />} />
+      <Route path="/login" element={<PaginaLogin />} />
+      <Route path="/registro" element={<PaginaRegistro />} />
+      <Route path="/auth/callback" element={<PaginaAuthCallback />} />
+      <Route element={<AppShell />}>
+        <Route
+          path="/dashboard"
+          element={
+            <RequiereAuth>
+              <PaginaDashboard />
+            </RequiereAuth>
+          }
+        />
+        <Route
+          path="/alertas"
+          element={
+            <RequiereAuth>
+              <PaginaAlertas />
+            </RequiereAuth>
+          }
+        />
+        <Route
+          path="/alertas/nueva"
+          element={
+            <RequiereAuth>
+              <PaginaNuevaAlerta />
+            </RequiereAuth>
+          }
+        />
+        <Route
+          path="/alertas/:id"
+          element={
+            <RequiereAuth>
+              <PaginaAlertas />
+            </RequiereAuth>
+          }
+        />
+        <Route
+          path="/notificaciones"
+          element={
+            <RequiereAuth>
+              <PaginaNotificaciones />
+            </RequiereAuth>
+          }
+        />
+        <Route
+          path="/ajustes"
+          element={
+            <RequiereAuth>
+              <PaginaAjustes />
+            </RequiereAuth>
+          }
+        />
+        <Route path="/mapa" element={<PaginaMapa />} />
+        <Route path="/trenes" element={<PaginaTrenes />} />
+        <Route path="*" element={<PaginaNoEncontrada />} />
+      </Route>
+    </Routes>
+  );
+}
