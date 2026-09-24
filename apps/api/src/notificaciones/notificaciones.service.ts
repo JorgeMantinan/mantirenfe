@@ -96,6 +96,38 @@ export class NotificacionesService {
     });
   }
 
+  async registrarTokenMovil(
+    usuario: UsuarioRequest,
+    input: { token: string; plataforma: 'ANDROID' | 'IOS' },
+  ): Promise<void> {
+    const prisma = getPrisma();
+    await prisma.usuario.upsert({
+      where: { id: usuario.sub },
+      update: {},
+      create: { id: usuario.sub, email: usuario.email || `${usuario.sub}@placeholder` },
+    });
+    await prisma.tokenPushMovil.upsert({
+      where: { token: input.token },
+      update: {
+        usuarioId: usuario.sub,
+        plataforma: input.plataforma,
+        activa: true,
+      },
+      create: {
+        usuarioId: usuario.sub,
+        token: input.token,
+        plataforma: input.plataforma,
+      },
+    });
+  }
+
+  async borrarTokenMovil(usuario: UsuarioRequest, token: string): Promise<void> {
+    await getPrisma().tokenPushMovil.updateMany({
+      where: { token, usuarioId: usuario.sub },
+      data: { activa: false },
+    });
+  }
+
   get estaConfigurado(): boolean {
     return this.configurado;
   }

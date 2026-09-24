@@ -27,7 +27,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validar(payload: PayloadJwt) {
+  // passport-jwt invoca `validate` (no `validar`); si no existe, todas las
+  // rutas protegidas devuelven 500 con "this.validate is not a function".
+  async validate(payload: PayloadJwt) {
     if (!payload?.sub) {
       throw new UnauthorizedException('Token sin sujeto');
     }

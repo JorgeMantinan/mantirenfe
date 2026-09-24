@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import type { ConsultaDisponibilidad, EstadoDisponibilidad } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
+import { enviarPushMovil } from '../notificaciones/expo-push';
 import { enviarPush } from '../notificaciones/web-push';
 
 export interface EstadoSerializado {
@@ -65,6 +66,21 @@ function criterioCoincide(alerta: { criterio: string }, codigo: string): boolean
   return false;
 }
 
+export function pushHabilitado(preferencias: unknown): boolean {
+  let valor: unknown = preferencias;
+  if (typeof valor === 'string') {
+    try {
+      valor = JSON.parse(valor);
+    } catch {
+      return true;
+    }
+  }
+  if (valor && typeof valor === 'object') {
+    return (valor as { notificacionesPush?: boolean }).notificacionesPush !== false;
+  }
+  return true;
+}
+
 async function notificar(
   alerta: {
     id: string;
@@ -73,7 +89,11 @@ async function notificar(
     destinoNombre: string;
     fechaViaje: Date;
     criterio: string;
-    usuario: { suscripciones: Array<{ endpoint: string; p256dh: string; auth: string }> };
+    usuario: {
+      preferencias: unknown;
+      suscripciones: Array<{ endpoint: string; p256dh: string; auth: string }>;
+      tokensMovil: Array<{ id: string; token: string }>;
+    };
   },
   titulo: string,
   cuerpo: string,
@@ -97,18 +117,30 @@ async function notificar(
     },
   });
 
-  await enviarPush(
-    alerta.usuario.suscripciones,
-    { title: titulo, body: cuerpo, url: `/alertas/${alerta.id}`, tag: `alerta-${alerta.id}` },
-    logger,
-  );
+  if (pushHabilitado(alerta.usuario.preferencias)) {
+    const payload = {
+      title: titulo,
+      body: cuerpo,
+      url: `/alertas/${alerta.id}`,
+      tag: `alerta-${alerta.id}`,
+    };
+    await enviarPush(alerta.usuario.suscripciones, payload, logger);
+    await enviarPushMovil(alerta.usuario.tokensMovil, payload, logger);
+  }
 }
 
 export async function sondearAlerta(alertaId: string, logger: Logger): Promise<void> {
   const prisma = getPrisma();
   const alerta = await prisma.alerta.findUnique({
     where: { id: alertaId },
-    include: { usuario: { include: { suscripciones: { where: { activa: true } } } } },
+    include: {
+      usuario: {
+        include: {
+          suscripciones: { where: { activa: true } },
+          tokensMovil: { where: { activa: true }, select: { id: true, token: true } },
+        },
+      },
+    },
   });
 
   if (!alerta) {

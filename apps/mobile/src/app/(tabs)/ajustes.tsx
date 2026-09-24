@@ -5,6 +5,7 @@ import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { desregistrarPushMovil, registrarPushMovil } from '@/lib/push';
 import { colores, espaciado } from '@/lib/tema';
 
 export default function Ajustes() {
@@ -12,6 +13,21 @@ export default function Ajustes() {
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [estadoPush, setEstadoPush] = useState<string | null>(null);
+
+  const cambiarPush = async (activo: boolean) => {
+    setPush(activo);
+    const resultado = activo ? await registrarPushMovil() : await desregistrarPushMovil();
+    setEstadoPush(
+      resultado.ok
+        ? activo
+          ? 'Avisos push activados en este dispositivo'
+          : 'Avisos push desactivados en este dispositivo'
+        : (resultado.error ?? 'No se pudo actualizar el registro push'),
+    );
+    if (!resultado.ok && activo) setPush(false);
+    void guardar({ notificacionesPush: activo && resultado.ok });
+  };
 
   const guardar = async (parcial: Record<string, unknown>) => {
     setGuardando(true);
@@ -58,13 +74,13 @@ export default function Ajustes() {
           <Switch
             value={push}
             onValueChange={(v) => {
-              setPush(v);
-              void guardar({ notificacionesPush: v });
+              void cambiarPush(v);
             }}
             trackColor={{ true: colores.primarioClaro, false: colores.borde }}
             thumbColor="#fff"
           />
         </View>
+        {estadoPush ? <Text style={estilos.pie}>{estadoPush}</Text> : null}
         <View style={estilos.fila}>
           <Text style={estilos.etiqueta}>Recordatorio de salida (50 min)</Text>
           <Switch

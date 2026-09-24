@@ -11,6 +11,13 @@ export const suscripcionPushSchema = z.object({
 
 export type SuscripcionPushInput = z.infer<typeof suscripcionPushSchema>;
 
+export const pushTokenMovilSchema = z.object({
+  token: z.string().min(1).max(512),
+  plataforma: z.enum(['ANDROID', 'IOS']),
+});
+
+export type PushTokenMovilInput = z.infer<typeof pushTokenMovilSchema>;
+
 export interface NotificacionResponse {
   id: string;
   titulo: string;

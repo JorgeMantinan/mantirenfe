@@ -45,6 +45,7 @@ model Usuario {
   alertas        Alerta[]
   notificaciones Notificacion[]
   suscripciones  SuscripcionPush[]
+  tokensMovil    TokenPushMovil[]
 }
 
 model Estacion {
@@ -112,6 +113,18 @@ model SuscripcionPush {
   p256dh     String
   auth       String
   plataforma PlataformaPush  @default(WEB)
+  activa     Boolean         @default(true)
+  creadaEn   DateTime        @default(now())
+  usuario    Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, activa])
+}
+
+model TokenPushMovil {
+  id         String          @id @default(cuid())
+  usuarioId  String
+  token      String          @unique
+  plataforma PlataformaPush  @default(ANDROID)
   activa     Boolean         @default(true)
   creadaEn   DateTime        @default(now())
   usuario    Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)

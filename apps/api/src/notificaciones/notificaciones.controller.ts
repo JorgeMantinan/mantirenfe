@@ -10,7 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { suscripcionPushSchema } from '@mantirenfe/shared-types';
+import { pushTokenMovilSchema, suscripcionPushSchema } from '@mantirenfe/shared-types';
 import { EsPublico } from '../common/es-publico.decorator';
 import { UsuarioActual, UsuarioRequest } from '../common/usuario-actual.decorator';
 import { NotificacionesService } from './notificaciones.service';
@@ -65,6 +65,27 @@ export class NotificacionesController {
       throw new BadRequestException('Se espera endpoint');
     }
     await this.notificacionesService.desuscribirPush(usuario, endpoint);
+    return { ok: true };
+  }
+
+  @Post('push-token')
+  async registrarTokenMovil(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
+    const parsed = pushTokenMovilSchema.safeParse(cuerpo);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    }
+    await this.notificacionesService.registrarTokenMovil(usuario, parsed.data);
+    return { ok: true };
+  }
+
+  @Post('push-token/unsubscribe')
+  @HttpCode(200)
+  async borrarTokenMovil(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
+    const token = (cuerpo as { token?: unknown }).token;
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new BadRequestException('Se espera token');
+    }
+    await this.notificacionesService.borrarTokenMovil(usuario, token);
     return { ok: true };
   }
 }

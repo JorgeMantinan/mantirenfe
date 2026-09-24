@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { EstadoDisponibilidad } from '@mantirenfe/shared-types';
-import { diffDisponibles, diffHorarios, filtrarRetrasados, serializarEstado } from './sondeo';
+import {
+  diffDisponibles,
+  diffHorarios,
+  filtrarRetrasados,
+  pushHabilitado,
+  serializarEstado,
+} from './sondeo';
 
 function estado(trenes: EstadoDisponibilidad['trenes']): EstadoDisponibilidad {
   return {
@@ -174,5 +180,18 @@ describe('filtrarRetrasados', () => {
       ]),
     );
     expect(filtrarRetrasados(actual, 300).map((t) => t.trenId)).toEqual(['t1']);
+  });
+});
+
+describe('pushHabilitado', () => {
+  it('activo por defecto y en objeto/string salvo que la preferencia esté en false', () => {
+    expect(pushHabilitado(undefined)).toBe(true);
+    expect(pushHabilitado(null)).toBe(true);
+    expect(pushHabilitado({})).toBe(true);
+    expect(pushHabilitado({ notificacionesPush: true })).toBe(true);
+    expect(pushHabilitado({ notificacionesPush: false })).toBe(false);
+    expect(pushHabilitado('{"notificacionesPush":false}')).toBe(false);
+    expect(pushHabilitado('{"notificacionesPush":true}')).toBe(true);
+    expect(pushHabilitado('{no es json')).toBe(true);
   });
 });
