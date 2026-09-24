@@ -84,13 +84,16 @@ export class TrenesService {
 
     this.enCurso = true;
     try {
-      const urls = (process.env.GTFS_RT_URLS ?? 'https://gtfsrt.renfe.com/vehicle_positions.json')
+      const urls = (
+        process.env.GTFS_RT_URLS ??
+        'https://gtfsrt.renfe.com/vehicle_positions.json,https://gtfsrt.renfe.com/vehicle_positions_LD.json'
+      )
         .split(',')
         .map((u) => u.trim())
         .filter(Boolean);
       const urlRetrasos =
         process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() ??
-        'https://gtfsrt.renfe.com/trip_updates.json';
+        'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
 
       const [resultados, retrasos] = await Promise.all([
         Promise.allSettled(urls.map((url) => this.obtenerFeed(url))),
@@ -118,6 +121,28 @@ export class TrenesService {
   }
 
   private async obtenerRetrasos(url: string): Promise<Map<string, number>> {
+    const urls = url
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
+    const resultados = await Promise.allSettled(urls.map((u) => this.descargarRetrasos(u)));
+    const retrasos = new Map<string, number>();
+    for (const [i, resultado] of resultados.entries()) {
+      if (resultado.status === 'rejected') {
+        this.logger.warn(
+          `No se pudieron obtener retrasos GTFS-RT (${urls[i]}): ${String(resultado.reason)}`,
+        );
+        continue;
+      }
+      for (const [clave, delay] of resultado.value) {
+        const previo = retrasos.get(clave);
+        if (previo === undefined || delay > previo) retrasos.set(clave, delay);
+      }
+    }
+    return retrasos;
+  }
+
+  private async descargarRetrasos(url: string): Promise<Map<string, number>> {
     const controlador = new AbortController();
     const timeout = setTimeout(() => controlador.abort(), 8_000);
     try {
@@ -127,9 +152,6 @@ export class TrenesService {
       });
       if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
       return parsearRetrasos(await respuesta.json());
-    } catch (error) {
-      this.logger.warn(`No se pudieron obtener retrasos GTFS-RT: ${String(error)}`);
-      return new Map();
     } finally {
       clearTimeout(timeout);
     }

@@ -8,7 +8,8 @@ import {
 } from '@mantirenfe/shared-types';
 import type { FuenteDatosTren } from './tipos';
 
-const URL_TRIP_UPDATES_DEFECTO = 'https://gtfsrt.renfe.com/trip_updates.json';
+const URL_TRIP_UPDATES_DEFECTO =
+  'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
 
 export interface HorarioRetraso {
   numeroTren: string;
@@ -66,9 +67,19 @@ export class FuenteGtfsRt implements FuenteDatosTren {
       return construirEstadoRetrasos(consulta, [], new Map());
     }
 
-    const url = process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() || URL_TRIP_UPDATES_DEFECTO;
+    const urls = (process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() || URL_TRIP_UPDATES_DEFECTO)
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
     const tripIds = new Set(horarios.map((h) => h.numeroTren));
-    const retrasos = parsearRetrasos(await this.descargarFeed(url), tripIds);
+    const feeds = await Promise.all(urls.map((u) => this.descargarFeed(u)));
+    const retrasos = new Map<string, number>();
+    for (const feed of feeds) {
+      for (const [clave, delay] of parsearRetrasos(feed, tripIds)) {
+        const previo = retrasos.get(clave);
+        if (previo === undefined || delay > previo) retrasos.set(clave, delay);
+      }
+    }
     return construirEstadoRetrasos(consulta, horarios, retrasos);
   }
 
