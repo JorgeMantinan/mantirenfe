@@ -14,6 +14,7 @@
   "dependencies": {
     "@mantirenfe/database": "workspace:*",
     "@mantirenfe/shared-types": "workspace:*",
+    "adm-zip": "^0.5.16",
     "bullmq": "^5.0.0",
     "dotenv": "^16.4.0",
     "ioredis": "^5.4.0",
@@ -22,6 +23,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "^22.0.0",
     "@types/web-push": "^3.6.0",
     "dotenv-cli": "^11.0.0",

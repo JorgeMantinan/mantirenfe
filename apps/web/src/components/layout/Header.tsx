@@ -4,6 +4,7 @@ import { Bell, LogOut, Moon, Settings, Sun, SunMoon, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { desuscribirPush } from '@/lib/push';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -73,6 +74,7 @@ export function Header() {
   }, [user]);
 
   const cerrarSesion = async () => {
+    await desuscribirPush();
     await salir();
     navigate('/');
   };

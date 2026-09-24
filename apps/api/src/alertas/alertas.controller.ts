@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { actualizarAlertaSchema, crearAlertaSchema } from '@mantirenfe/shared-types';
 import { UsuarioActual, UsuarioRequest } from '../common/usuario-actual.decorator';
@@ -25,7 +35,7 @@ export class AlertasController {
   async crear(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
     const parsed = crearAlertaSchema.safeParse(cuerpo);
     if (!parsed.success) {
-      return { error: parsed.error.flatten().fieldErrors };
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
     }
     return this.alertasService.crear(usuario, parsed.data);
   }
@@ -38,7 +48,7 @@ export class AlertasController {
   ) {
     const parsed = actualizarAlertaSchema.safeParse(cuerpo);
     if (!parsed.success) {
-      return { error: parsed.error.flatten().fieldErrors };
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
     }
     return this.alertasService.actualizar(usuario, id, parsed.data);
   }

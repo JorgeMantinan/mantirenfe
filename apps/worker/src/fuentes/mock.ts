@@ -26,9 +26,10 @@ export class FuenteMock implements FuenteDatosTren {
     });
     const lista = seleccionadas.length > 0 ? seleccionadas : horas;
 
-    const trenes: EstadoTrenDisponible[] = lista.map((salida, index) => {
+    let trenes: EstadoTrenDisponible[] = lista.map((salida, index) => {
       const clave = `${consulta.origenNombre}-${consulta.destinoNombre}-${salida}-${minutos}`;
       const disponible = (hash(clave) + index + minutos) % 3 !== 0;
+      const retrasoMin = hash(clave) % 17 === 0 ? 5 + (hash(salida) % 20) : 0;
       return {
         trenId: `mock-${salida.replace(':', '')}`,
         numeroTren: `mock-${index + 1}`,
@@ -36,8 +37,18 @@ export class FuenteMock implements FuenteDatosTren {
         disponible,
         precioMin: disponible ? 15 + (hash(salida) % 40) : null,
         moneda: 'EUR',
+        retrasoSeg: retrasoMin > 0 ? retrasoMin * 60 : 0,
       };
     });
+
+    if (consulta.numeroTren) {
+      const filtro = consulta.numeroTren.toLowerCase();
+      const coincidencias = trenes.filter(
+        (t) =>
+          t.numeroTren.toLowerCase().includes(filtro) || t.trenId.toLowerCase().includes(filtro),
+      );
+      if (coincidencias.length > 0) trenes = coincidencias;
+    }
 
     return {
       consulta,

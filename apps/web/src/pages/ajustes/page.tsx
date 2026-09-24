@@ -4,6 +4,7 @@ import { LogOut, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { desuscribirPush } from '@/lib/push';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,6 +52,7 @@ export function PaginaAjustes() {
   };
 
   const cerrarSesion = async () => {
+    await desuscribirPush();
     await salir();
     navigate('/');
   };

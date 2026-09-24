@@ -4,7 +4,16 @@ import type { ConsultaDisponibilidad, EstadoDisponibilidad } from '@mantirenfe/s
 import { crearFuenteDatos } from '../fuentes';
 import { enviarPush } from '../notificaciones/web-push';
 
-function serializarEstado(estado: EstadoDisponibilidad) {
+export interface EstadoSerializado {
+  trenId: string;
+  numeroTren: string;
+  salida: string;
+  disponible: boolean;
+  precioMin: number | null;
+  retrasoSeg?: number | null;
+}
+
+export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
   return [...estado.trenes]
     .sort((a, b) => a.trenId.localeCompare(b.trenId))
     .map((t) => ({
@@ -13,16 +22,14 @@ function serializarEstado(estado: EstadoDisponibilidad) {
       salida: t.salida,
       disponible: t.disponible,
       precioMin: t.precioMin,
+      retrasoSeg: t.retrasoSeg ?? null,
     }));
 }
 
-function diffDisponibles(
-  anterior: ReturnType<typeof serializarEstado>,
-  actual: ReturnType<typeof serializarEstado>,
-) {
+export function diffDisponibles(anterior: EstadoSerializado[], actual: EstadoSerializado[]) {
   const antes = new Map(anterior.map((t) => [t.trenId, t.disponible]));
-  const aparecen: typeof actual = [];
-  const desaparecen: typeof actual = [];
+  const aparecen: EstadoSerializado[] = [];
+  const desaparecen: EstadoSerializado[] = [];
 
   for (const tren of actual) {
     const previo = antes.get(tren.trenId);
@@ -31,6 +38,70 @@ function diffDisponibles(
     antes.delete(tren.trenId);
   }
   return { aparecen, desaparecen };
+}
+
+export function diffHorarios(anterior: EstadoSerializado[], actual: EstadoSerializado[]) {
+  const previas = new Map(anterior.map((t) => [t.trenId, t.salida]));
+  const actuales = new Map(actual.map((t) => [t.trenId, t.salida]));
+  const nuevos = actual.filter((t) => !previas.has(t.trenId));
+  const salidos = anterior.filter((t) => !actuales.has(t.trenId));
+  const cambiados = actual.filter((t) => {
+    const previa = previas.get(t.trenId);
+    return previa !== undefined && previa !== t.salida;
+  });
+  return { nuevos, salidos, cambiados };
+}
+
+export function filtrarRetrasados(
+  actual: EstadoSerializado[],
+  umbralSeg: number,
+): EstadoSerializado[] {
+  return actual.filter((t) => typeof t.retrasoSeg === 'number' && t.retrasoSeg >= umbralSeg);
+}
+
+function criterioCoincide(alerta: { criterio: string }, codigo: string): boolean {
+  if (alerta.criterio === codigo) return true;
+  if (codigo === 'DISPONIBILIDAD') return alerta.criterio === 'APERTURA_VENTA';
+  return false;
+}
+
+async function notificar(
+  alerta: {
+    id: string;
+    usuarioId: string;
+    origenNombre: string;
+    destinoNombre: string;
+    fechaViaje: Date;
+    criterio: string;
+    usuario: { suscripciones: Array<{ endpoint: string; p256dh: string; auth: string }> };
+  },
+  titulo: string,
+  cuerpo: string,
+  datosExtra: Record<string, unknown>,
+  logger: Logger,
+): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.notificacion.create({
+    data: {
+      usuarioId: alerta.usuarioId,
+      alertaId: alerta.id,
+      titulo,
+      cuerpo,
+      datos: {
+        alertaId: alerta.id,
+        origen: alerta.origenNombre,
+        destino: alerta.destinoNombre,
+        ...datosExtra,
+        url: `/alertas/${alerta.id}`,
+      },
+    },
+  });
+
+  await enviarPush(
+    alerta.usuario.suscripciones,
+    { title: titulo, body: cuerpo, url: `/alertas/${alerta.id}`, tag: `alerta-${alerta.id}` },
+    logger,
+  );
 }
 
 export async function sondearAlerta(alertaId: string, logger: Logger): Promise<void> {
@@ -73,10 +144,9 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
 
   const actual = serializarEstado(estado);
   const anterior = Array.isArray(alerta.ultimoEstado)
-    ? (alerta.ultimoEstado as ReturnType<typeof serializarEstado>)
+    ? (alerta.ultimoEstado as unknown as EstadoSerializado[])
     : [];
   const primeraVez = !Array.isArray(alerta.ultimoEstado);
-  const { aparecen } = diffDisponibles(anterior, actual);
 
   await prisma.alerta.update({
     where: { id: alerta.id },
@@ -86,43 +156,93 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     },
   });
 
-  if (primeraVez || aparecen.length === 0) {
+  if (primeraVez) {
     logger.debug(
       { alertaId, fuente: fuente.nombre, trenes: actual.length },
-      primeraVez ? 'Primer sondeo, estado guardado' : 'Sin cambios relevantes',
+      'Primer sondeo, estado guardado',
     );
     return;
   }
 
-  if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA') {
+  const fechaTexto = alerta.fechaViaje.toISOString().slice(0, 10);
+
+  if (criterioCoincide(alerta, 'DISPONIBILIDAD')) {
+    const { aparecen } = diffDisponibles(anterior, actual);
+    if (aparecen.length === 0) {
+      logger.debug({ alertaId }, 'Sin cambios de disponibilidad');
+      return;
+    }
     const titulos = aparecen
       .map((t) => `${t.salida}${t.numeroTren ? ` (${t.numeroTren})` : ''}`)
       .join(', ');
     const titulo = '¡Plaza disponible!';
-    const cuerpo = `Queda disponibilidad en ${alerta.origenNombre} → ${alerta.destinoNombre} el ${alerta.fechaViaje.toISOString().slice(0, 10)}: ${titulos}.`;
+    const cuerpo = `Queda disponibilidad en ${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${titulos}.`;
+    await notificar(alerta, titulo, cuerpo, { trenes: aparecen.map((t) => t.trenId) }, logger);
+    logger.info({ alertaId, trenes: aparecen.length }, 'Notificación de disponibilidad enviada');
+    return;
+  }
 
-    await prisma.notificacion.create({
-      data: {
-        usuarioId: alerta.usuarioId,
-        alertaId: alerta.id,
-        titulo,
-        cuerpo,
-        datos: {
-          alertaId: alerta.id,
-          origen: alerta.origenNombre,
-          destino: alerta.destinoNombre,
-          trenes: aparecen.map((t) => t.trenId),
-          url: `/alertas/${alerta.id}`,
-        },
+  if (alerta.criterio === 'HORARIO') {
+    const { nuevos, salidos, cambiados } = diffHorarios(anterior, actual);
+    if (nuevos.length === 0 && salidos.length === 0 && cambiados.length === 0) {
+      logger.debug({ alertaId }, 'Sin cambios de horario');
+      return;
+    }
+    const detalle = [
+      nuevos.length > 0 ? `${nuevos.length} nueva(s) salida(s)` : null,
+      cambiados.length > 0 ? `${cambiados.length} hora(s) modificada(s)` : null,
+      salidos.length > 0 ? `${salidos.length} servicio(s) retirado(s)` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const titulo = 'Cambio de horario';
+    const cuerpo = `Horario actualizado en ${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${detalle}.`;
+    await notificar(
+      alerta,
+      titulo,
+      cuerpo,
+      {
+        nuevos: nuevos.map((t) => t.trenId),
+        cambiados: cambiados.map((t) => t.trenId),
+        salidos: salidos.map((t) => t.trenId),
       },
-    });
-
-    await enviarPush(
-      alerta.usuario.suscripciones,
-      { title: titulo, body: cuerpo, url: `/alertas/${alerta.id}`, tag: `alerta-${alerta.id}` },
       logger,
     );
-
-    logger.info({ alertaId, trenes: aparecen.length }, 'Notificación de disponibilidad enviada');
+    logger.info({ alertaId, detalle }, 'Notificación de horario enviada');
+    return;
   }
+
+  if (alerta.criterio === 'RETRASO') {
+    const umbral = Number(process.env.RETRASO_UMBRAL_SEG ?? 300);
+    const retrasados = filtrarRetrasados(actual, umbral);
+    const previos = new Set(
+      (anterior as EstadoSerializado[])
+        .filter((t) => typeof t.retrasoSeg === 'number' && t.retrasoSeg >= umbral)
+        .map((t) => t.trenId),
+    );
+    const nuevosRetrasos = retrasados.filter((t) => !previos.has(t.trenId));
+    if (nuevosRetrasos.length === 0) {
+      logger.debug({ alertaId }, 'Sin retrasos nuevos sobre umbral');
+      return;
+    }
+    const detalle = nuevosRetrasos
+      .map((t) => {
+        const min = Math.round((t.retrasoSeg ?? 0) / 60);
+        return `${t.numeroTren || t.trenId} (+${min} min)`;
+      })
+      .join(', ');
+    const titulo = 'Retraso en tu tren';
+    const cuerpo = `${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${detalle}.`;
+    await notificar(
+      alerta,
+      titulo,
+      cuerpo,
+      { trenes: nuevosRetrasos.map((t) => t.trenId) },
+      logger,
+    );
+    logger.info({ alertaId, trenes: nuevosRetrasos.length }, 'Notificación de retraso enviada');
+    return;
+  }
+
+  logger.debug({ alertaId, criterio: alerta.criterio }, 'Criterio sin notificación');
 }

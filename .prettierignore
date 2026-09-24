@@ -10,4 +10,5 @@ dev-dist
 .expo
 apps/mobile/.expo
 apps/mobile/assets
+.env
 

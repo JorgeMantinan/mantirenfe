@@ -54,6 +54,7 @@ export interface EstadoTrenDisponible {
   disponible: boolean;
   precioMin: number | null;
   moneda: string;
+  retrasoSeg?: number | null;
 }
 
 export interface EstadoDisponibilidad {

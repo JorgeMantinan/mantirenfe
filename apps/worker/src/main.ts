@@ -8,7 +8,7 @@ import { Worker } from 'bullmq';
 import { getPrisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
-import { sincronizarEstaciones } from './processors/sync-gtfs';
+import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -40,11 +40,11 @@ async function programarTareas() {
   );
 
   await colaSync.add(
-    'sync-stops',
+    'sync-gtfs',
     {},
     {
       repeat: { pattern: '0 4 * * *' },
-      jobId: 'sync-gtfs-stops-diario',
+      jobId: 'sync-gtfs-diario',
       removeOnComplete: 20,
       removeOnFail: 50,
     },
@@ -105,6 +105,7 @@ async function main() {
     COLA_SYNC_GTFS,
     async () => {
       await sincronizarEstaciones(logger);
+      await sincronizarHorarios(logger);
     },
     { connection: conexion, concurrency: 1 },
   );

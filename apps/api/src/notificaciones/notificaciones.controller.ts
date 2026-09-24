@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { suscripcionPushSchema } from '@mantirenfe/shared-types';
 import { EsPublico } from '../common/es-publico.decorator';
@@ -32,7 +42,7 @@ export class NotificacionesController {
   async marcarLeidas(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
     const ids = (cuerpo as { ids?: unknown }).ids;
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every((i) => typeof i === 'string')) {
-      return { error: 'Se espera un array de ids' };
+      throw new BadRequestException('Se espera un array de ids');
     }
     return this.notificacionesService.marcarLeida(usuario, ids as string[]);
   }
@@ -41,7 +51,7 @@ export class NotificacionesController {
   async suscribir(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
     const parsed = suscripcionPushSchema.safeParse(cuerpo);
     if (!parsed.success) {
-      return { error: parsed.error.flatten().fieldErrors };
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
     }
     await this.notificacionesService.suscribirPush(usuario, parsed.data);
     return { ok: true };
@@ -52,7 +62,7 @@ export class NotificacionesController {
   async desuscribir(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
     const endpoint = (cuerpo as { endpoint?: unknown }).endpoint;
     if (typeof endpoint !== 'string') {
-      return { error: 'Se espera endpoint' };
+      throw new BadRequestException('Se espera endpoint');
     }
     await this.notificacionesService.desuscribirPush(usuario, endpoint);
     return { ok: true };
