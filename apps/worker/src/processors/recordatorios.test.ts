@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ahoraRelojGtfs, elegirTrenRecordatorio, type TrenRecordatorio } from './recordatorios';
+import {
+  ahoraRelojGtfs,
+  elegirSalidaDelDia,
+  elegirTrenRecordatorio,
+  type TrenRecordatorio,
+} from './recordatorios';
 
 const salidas = (horas: string[]): TrenRecordatorio[] =>
   horas.map((h, i) => ({
@@ -47,5 +52,45 @@ describe('elegirTrenRecordatorio', () => {
 
   it('devuelve null sin trenes', () => {
     expect(elegirTrenRecordatorio([], ahora, 50, {})).toBeNull();
+  });
+});
+
+describe('elegirSalidaDelDia', () => {
+  const ahora = new Date('2026-09-25T07:40:00.000Z');
+
+  it('elige la primera salida futura del día', () => {
+    const salida = elegirSalidaDelDia(
+      [
+        { numeroTren: 'A', salida: new Date('2026-09-25T06:00:00Z') }, // pasada
+        { numeroTren: 'B', salida: new Date('2026-09-25T09:00:00Z') },
+        { numeroTren: 'C', salida: new Date('2026-09-25T12:00:00Z') },
+      ],
+      ahora,
+      {},
+    );
+    expect(salida?.numeroTren).toBe('B');
+  });
+
+  it('respeta la franja horaria de la alerta', () => {
+    const trenes = [
+      { numeroTren: 'A', salida: new Date('2026-09-25T08:30:00Z') },
+      { numeroTren: 'B', salida: new Date('2026-09-25T17:30:00Z') },
+    ];
+    expect(
+      elegirSalidaDelDia(trenes, ahora, { horaDesde: '17:00', horaHasta: '19:00' })?.numeroTren,
+    ).toBe('B');
+    expect(
+      elegirSalidaDelDia(trenes, ahora, { horaDesde: '10:00', horaHasta: '12:00' }),
+    ).toBeNull();
+  });
+
+  it('null si ya no queda ninguna salida hoy', () => {
+    expect(
+      elegirSalidaDelDia(
+        [{ numeroTren: 'A', salida: new Date('2026-09-25T06:00:00Z') }],
+        ahora,
+        {},
+      ),
+    ).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ export const preferenciasUsuarioSchema = z.object({
   notificacionesPush: z.boolean().default(true),
   notificacionesEmail: z.boolean().default(false),
   recordatorioSalida: z.boolean().default(true),
+  resumenViaje: z.boolean().default(true),
   minutosRecordatorio: z.number().int().min(5).max(180).default(50),
   tema: z.enum(['claro', 'oscuro', 'sistema']).default('sistema'),
 });

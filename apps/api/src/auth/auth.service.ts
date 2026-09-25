@@ -36,6 +36,7 @@ export class AuthService {
       notificacionesPush: preferencias.notificacionesPush ?? true,
       notificacionesEmail: preferencias.notificacionesEmail ?? false,
       recordatorioSalida: preferencias.recordatorioSalida ?? true,
+      resumenViaje: preferencias.resumenViaje ?? true,
       minutosRecordatorio: preferencias.minutosRecordatorio ?? 50,
       tema: preferencias.tema ?? 'sistema',
     };

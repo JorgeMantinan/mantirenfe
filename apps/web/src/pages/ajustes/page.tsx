@@ -30,6 +30,7 @@ export function PaginaAjustes() {
           notificacionesPush: true,
           notificacionesEmail: false,
           recordatorioSalida: true,
+          resumenViaje: true,
           minutosRecordatorio: 50,
           tema: 'sistema',
         }),
@@ -163,6 +164,20 @@ export function PaginaAjustes() {
               checked={preferencias?.recordatorioSalida ?? true}
               disabled={!preferencias || guardando}
               onCheckedChange={(v) => void guardar({ recordatorioSalida: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="resumen">Resumen del viaje</Label>
+              <p className="text-sm text-muted-foreground">
+                Por la mañana del día del viaje: horario, tren y retraso
+              </p>
+            </div>
+            <Switch
+              id="resumen"
+              checked={preferencias?.resumenViaje ?? true}
+              disabled={!preferencias || guardando}
+              onCheckedChange={(v) => void guardar({ resumenViaje: v })}
             />
           </div>
           <div className="space-y-2">

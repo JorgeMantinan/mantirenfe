@@ -8,7 +8,11 @@ import { Worker } from 'bullmq';
 import { getPrisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
-import { ahoraRelojGtfs, procesarRecordatorios } from './processors/recordatorios';
+import {
+  ahoraRelojGtfs,
+  procesarRecordatorios,
+  procesarResumenes,
+} from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 
 const logger = pino({
@@ -118,6 +122,10 @@ async function main() {
         const enviados = await procesarRecordatorios(logger);
         if (enviados > 0) {
           logger.info({ enviados }, 'Recordatorios de salida enviados');
+        }
+        const resumenes = await procesarResumenes(logger);
+        if (resumenes > 0) {
+          logger.info({ resumenes }, 'Resúmenes de viaje enviados');
         }
       } catch (error) {
         logger.error({ err: error }, 'Fallo en los recordatorios de salida');

@@ -14,6 +14,7 @@ export default function Ajustes() {
   const [pref, setPref] = useState<PreferenciasUsuario | null>(null);
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
+  const [resumen, setResumen] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
 
@@ -24,6 +25,7 @@ export default function Ajustes() {
         setPref(p);
         setPush(p.notificacionesPush);
         setRecordatorio(p.recordatorioSalida);
+        setResumen(p.resumenViaje);
       })
       .catch(() => {
         // sin preferencias guardadas: se mantienen los valores por defecto
@@ -98,6 +100,18 @@ export default function Ajustes() {
             onValueChange={(v) => {
               setRecordatorio(v);
               void guardar({ recordatorioSalida: v });
+            }}
+            trackColor={{ true: colores.primarioClaro, false: colores.borde }}
+            thumbColor="#fff"
+          />
+        </View>
+        <View style={estilos.fila}>
+          <Text style={estilos.etiqueta}>Resumen del viaje (mañana del día)</Text>
+          <Switch
+            value={resumen}
+            onValueChange={(v) => {
+              setResumen(v);
+              void guardar({ resumenViaje: v });
             }}
             trackColor={{ true: colores.primarioClaro, false: colores.borde }}
             thumbColor="#fff"

@@ -1,5 +1,6 @@
 import type { Logger } from 'pino';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
+import { crearFuenteDatos } from '../fuentes';
 import { notificar } from './sondeo';
 
 /**
@@ -73,6 +74,159 @@ function minutosDePreferencias(preferencias: unknown): number {
     if (typeof minutos === 'number' && minutos >= 5 && minutos <= 180) return minutos;
   }
   return 50;
+}
+
+function preferenciaBooleana(preferencias: unknown, clave: string, porDefecto: boolean): boolean {
+  let valor: unknown = preferencias;
+  if (typeof valor === 'string') {
+    try {
+      valor = JSON.parse(valor);
+    } catch {
+      return porDefecto;
+    }
+  }
+  if (valor && typeof valor === 'object') {
+    const v = (valor as Record<string, unknown>)[clave];
+    if (typeof v === 'boolean') return v;
+  }
+  return porDefecto;
+}
+
+/** Primera salida de hoy todavía futura y dentro de la franja de la alerta. */
+export function elegirSalidaDelDia(
+  trenes: HorarioBd[],
+  ahora: Date,
+  franja: { horaDesde?: string | null; horaHasta?: string | null },
+): HorarioBd | null {
+  for (const tren of trenes) {
+    if (tren.salida <= ahora) continue;
+    const hora = tren.salida.toISOString().slice(11, 16);
+    if (franja.horaDesde && hora < franja.horaDesde) continue;
+    if (franja.horaHasta && hora > franja.horaHasta) continue;
+    return tren;
+  }
+  return null;
+}
+
+interface HorarioBd {
+  numeroTren: string;
+  salida: Date;
+}
+
+/**
+ * Resumen del día del viaje: "hoy viajas X→Y a las HH:MM". Se envía una sola
+ * vez, a partir de la hora configurada (RESUMEN_HORA, 07:30 por defecto).
+ */
+export async function procesarResumenes(logger: Logger): Promise<number> {
+  const ahora = ahoraRelojGtfs();
+  const hoyIso = ahora.toISOString().slice(0, 10);
+  const horaAhora = ahora.toISOString().slice(11, 16);
+  const horaConfigurada = process.env.RESUMEN_HORA ?? '07:30';
+  if (horaAhora < horaConfigurada) return 0;
+
+  const prisma = getPrisma();
+  const alertas = await prisma.alerta.findMany({
+    where: {
+      estado: 'ACTIVA',
+      fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
+      resumenEnviadoEn: null,
+      recordatorioEnviadoEn: null, // si ya queda poco para salir, manda el recordatorio
+      NOT: { usuario: { preferencias: { path: ['resumenViaje'], equals: false } } },
+    },
+    include: {
+      usuario: {
+        select: {
+          preferencias: true,
+          suscripciones: {
+            where: { activa: true },
+            select: { endpoint: true, p256dh: true, auth: true },
+          },
+          tokensMovil: { where: { activa: true }, select: { id: true, token: true } },
+        },
+      },
+    },
+    take: 100,
+  });
+
+  let enviados = 0;
+  for (const alerta of alertas) {
+    try {
+      const [origen, destino] = await Promise.all([
+        buscarEstaciones(prisma, alerta.origenNombre, 5),
+        buscarEstaciones(prisma, alerta.destinoNombre, 5),
+      ]);
+      if (!origen[0] || !destino[0]) continue;
+
+      const horarios = await prisma.horarioTren.findMany({
+        where: {
+          origenEstacionId: origen[0].id,
+          destinoEstacionId: destino[0].id,
+          fecha: new Date(`${hoyIso}T00:00:00Z`),
+          ...(alerta.numeroTren ? { numeroTren: alerta.numeroTren } : {}),
+        },
+        orderBy: { salida: 'asc' },
+        select: { numeroTren: true, salida: true },
+      });
+      const salida = elegirSalidaDelDia(horarios, ahora, {
+        horaDesde: alerta.horaDesde,
+        horaHasta: alerta.horaHasta,
+      });
+      if (!salida) continue;
+
+      const marcado = await prisma.alerta.updateMany({
+        where: { id: alerta.id, resumenEnviadoEn: null },
+        data: { resumenEnviadoEn: new Date() },
+      });
+      if (marcado.count === 0) continue;
+
+      // Retraso en vivo si GTFS-RT contesta (si no, el resumen sale sin él)
+      let retrasoTexto = '';
+      try {
+        const fuente = crearFuenteDatos('RETRASO');
+        const estado = await fuente.getDisponibilidad({
+          origenNombre: alerta.origenNombre,
+          destinoNombre: alerta.destinoNombre,
+          fecha: hoyIso,
+          numeroTren: salida.numeroTren,
+        });
+        const retraso = estado.trenes.find((t) => t.numeroTren === salida.numeroTren)?.retrasoSeg;
+        if (retraso != null && retraso >= 60) {
+          retrasoTexto = ` · retraso +${Math.round(retraso / 60)} min`;
+        } else if (retraso === 0) {
+          retrasoTexto = ' · a tiempo';
+        }
+      } catch {
+        // sin retraso el resumen sigue siendo útil
+      }
+
+      try {
+        await notificar(
+          alerta,
+          'Tu viaje de hoy',
+          `${alerta.origenNombre} → ${alerta.destinoNombre}: sale a las ${salida.salida
+            .toISOString()
+            .slice(11, 16)} (tren ${salida.numeroTren})${retrasoTexto}`,
+          {
+            tipo: 'resumen-viaje',
+            numeroTren: salida.numeroTren,
+            salida: salida.salida.toISOString(),
+          },
+          logger,
+        );
+        enviados += 1;
+        logger.info({ alertaId: alerta.id, tren: salida.numeroTren }, 'Resumen del viaje enviado');
+      } catch (error) {
+        await prisma.alerta.updateMany({
+          where: { id: alerta.id },
+          data: { resumenEnviadoEn: null },
+        });
+        throw error;
+      }
+    } catch (error) {
+      logger.error({ alertaId: alerta.id, err: error }, 'Fallo enviando el resumen del viaje');
+    }
+  }
+  return enviados;
 }
 
 /**
