@@ -40,3 +40,6 @@ expo-env.d.ts
 *.mobileprovision
 .metro-health-check*
 
+# Redis (dump del proceso local)
+dump.rdb
+
