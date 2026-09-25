@@ -1,7 +1,7 @@
 {
   "framework": "vite",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @mantirenfe/web build",
+  "buildCommand": "pnpm turbo build --filter=@mantirenfe/web",
   "outputDirectory": "apps/web/dist",
   "env": {
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
