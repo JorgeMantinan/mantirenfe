@@ -1,5 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // debian-openssl-3.0.x: el engine por defecto (1.1.x) no carga en Debian 12
+  // (node:*-slim) porque solo trae OpenSSL 3. "native" cubre el desarrollo local.
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
