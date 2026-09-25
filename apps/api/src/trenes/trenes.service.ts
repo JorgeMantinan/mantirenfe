@@ -19,6 +19,9 @@ export class TrenesService {
   private readonly logger = new Logger(TrenesService.name);
   private cachePosiciones: CachePosiciones | null = null;
   private enCurso = false;
+  private ultimaPersistenciaPosiciones = 0;
+  private readonly intervaloPersistenciaMs =
+    Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
 
   async horarios(query: unknown): Promise<{ fuente: string; trenes: HorarioTrenResponse[] }> {
     const parsed = busquedaHorariosQuerySchema.safeParse(query);
@@ -177,16 +180,88 @@ export class TrenesService {
       const datos = aplicarRetrasos(crudas, retrasos, new Date().toISOString());
 
       this.cachePosiciones = { datos, caduca: Date.now() + ttl };
+
+      // Historial: guarda un snapshot cada N minutos (no en cada refresco)
+      if (Date.now() - this.ultimaPersistenciaPosiciones >= this.intervaloPersistenciaMs) {
+        this.ultimaPersistenciaPosiciones = Date.now();
+        void this.persistirPosiciones(datos);
+      }
+
       return { fuente: 'gtfs-rt', trenes: datos, total: datos.length };
     } catch (error) {
       this.logger.warn(`No se pudieron obtener posiciones GTFS-RT: ${String(error)}`);
-      return {
-        fuente: 'gtfs-rt',
-        trenes: this.cachePosiciones?.datos ?? [],
-        total: this.cachePosiciones?.datos.length ?? 0,
-      };
+      if (this.cachePosiciones) {
+        return {
+          fuente: 'gtfs-rt',
+          trenes: this.cachePosiciones.datos,
+          total: this.cachePosiciones.datos.length,
+        };
+      }
+      // Sin caché: última posición conocida desde la BD (historial)
+      const deBd = await this.posicionesDesdeBd();
+      if (deBd.length > 0) {
+        this.logger.warn({ total: deBd.length }, 'Feed caído: sirviendo posiciones desde la BD');
+        return { fuente: 'bd', trenes: deBd, total: deBd.length };
+      }
+      return { fuente: 'gtfs-rt', trenes: [], total: 0 };
     } finally {
       this.enCurso = false;
+    }
+  }
+
+  private async persistirPosiciones(datos: PosicionTrenResponse[]): Promise<void> {
+    try {
+      const prisma = getPrisma();
+      const ahora = new Date();
+      for (const posicion of datos) {
+        await prisma.posicionTren.upsert({
+          where: { id: posicion.id },
+          update: {
+            numeroTren: posicion.numeroTren,
+            latitud: posicion.latitud,
+            longitud: posicion.longitud,
+            velocidadKmh: posicion.velocidadKmh,
+            retrasoSeg: posicion.retrasoSeg,
+            actualizadaEn: ahora,
+          },
+          create: {
+            id: posicion.id,
+            numeroTren: posicion.numeroTren,
+            latitud: posicion.latitud,
+            longitud: posicion.longitud,
+            velocidadKmh: posicion.velocidadKmh,
+            retrasoSeg: posicion.retrasoSeg,
+            actualizadaEn: ahora,
+          },
+        });
+      }
+      // Poda: lo no visto en 24 h deja de interesar (los ids estables no crecen)
+      await prisma.posicionTren.deleteMany({
+        where: { actualizadaEn: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      });
+    } catch (error) {
+      this.logger.warn(`No se pudieron persistir posiciones: ${String(error)}`);
+    }
+  }
+
+  private async posicionesDesdeBd(): Promise<PosicionTrenResponse[]> {
+    try {
+      const filas = await getPrisma().posicionTren.findMany({
+        orderBy: { actualizadaEn: 'desc' },
+        take: 500,
+      });
+      return filas.map((f) => ({
+        id: f.id,
+        numeroTren: f.numeroTren,
+        latitud: f.latitud,
+        longitud: f.longitud,
+        velocidadKmh: f.velocidadKmh,
+        retrasoSeg: f.retrasoSeg,
+        actualizadaEn: f.actualizadaEn.toISOString(),
+      }));
+    } catch (error) {
+      this.logger.warn(`No se pudieron leer posiciones de la BD: ${String(error)}`);
+      return [];
     }
   }
 

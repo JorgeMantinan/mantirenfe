@@ -132,6 +132,10 @@ export default function NuevaAlerta() {
           </Text>
         ))}
       </View>
+      <Text style={{ fontSize: 12, color: colores.textoSecundario }}>
+        Guardamos tu perfil para personalizar los avisos. Renfe no publica las plazas por cupo de
+        bono/abono: los avisos de disponibilidad se calculan sobre las tarifas generales.
+      </Text>
 
       <Text style={estilos.etiqueta}>Notas (opcional)</Text>
       <TextInput

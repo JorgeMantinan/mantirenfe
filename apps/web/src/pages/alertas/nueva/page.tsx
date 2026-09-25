@@ -224,6 +224,11 @@ export function PaginaNuevaAlerta() {
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-muted-foreground">
+                Guardamos tu perfil para personalizar los avisos. Renfe no publica las plazas por
+                cupo de bono/abono en sus datos públicos: los avisos de disponibilidad se calculan
+                sobre las tarifas generales de venta.
+              </p>
             </div>
 
             <div className="space-y-2">
