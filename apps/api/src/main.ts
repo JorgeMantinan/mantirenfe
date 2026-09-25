@@ -34,16 +34,19 @@ async function bootstrap() {
   app.enableCors({ origin: orígenes, credentials: true });
   app.setGlobalPrefix('api');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('MantiRenfe API')
-    .setDescription('API REST de MantiRenfe: alertas de trenes, notificaciones y datos Renfe')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  // Swagger fuera en producción salvo que se habilite explícitamente
+  if (process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('MantiRenfe API')
+      .setDescription('API REST de MantiRenfe: alertas de trenes, notificaciones y datos Renfe')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   const puerto = Number(process.env.API_PORT ?? 3000);
   await app.listen(puerto);

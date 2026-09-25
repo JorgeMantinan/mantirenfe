@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
+import type { PreferenciasUsuario } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,10 +11,24 @@ import { colores, espaciado } from '@/lib/tema';
 
 export default function Ajustes() {
   const { user, salir, authConfigurada } = useAuth();
+  const [pref, setPref] = useState<PreferenciasUsuario | null>(null);
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authConfigurada) return;
+    api<PreferenciasUsuario>('/auth/preferencias')
+      .then((p) => {
+        setPref(p);
+        setPush(p.notificacionesPush);
+        setRecordatorio(p.recordatorioSalida);
+      })
+      .catch(() => {
+        // sin preferencias guardadas: se mantienen los valores por defecto
+      });
+  }, [authConfigurada]);
 
   const cambiarPush = async (activo: boolean) => {
     setPush(activo);
@@ -29,20 +44,15 @@ export default function Ajustes() {
     void guardar({ notificacionesPush: activo && resultado.ok });
   };
 
-  const guardar = async (parcial: Record<string, unknown>) => {
+  const guardar = async (parcial: Partial<PreferenciasUsuario>) => {
     setGuardando(true);
     try {
-      await api('/auth/preferencias', {
+      const siguiente = { ...(pref ?? {}), ...parcial } as PreferenciasUsuario;
+      const guardado = await api<PreferenciasUsuario>('/auth/preferencias', {
         method: 'POST',
-        json: {
-          notificacionesPush: push,
-          notificacionesEmail: false,
-          recordatorioSalida: recordatorio,
-          minutosRecordatorio: 50,
-          tema: 'sistema',
-          ...parcial,
-        },
+        json: siguiente,
       });
+      setPref(guardado);
     } catch {
       // preferencias opcionales: no bloquear la UI
     } finally {
