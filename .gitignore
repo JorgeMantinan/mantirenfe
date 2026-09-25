@@ -43,3 +43,6 @@ expo-env.d.ts
 # Redis (dump del proceso local)
 dump.rdb
 
+# Vercel (creado por vercel link)
+.vercel/
+

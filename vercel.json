@@ -6,6 +6,9 @@
   "env": {
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
   },
+  "github": {
+    "autoJobCancelation": true
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
