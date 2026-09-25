@@ -34,6 +34,33 @@ async function main() {
     }
   }
 
+  // Tablas creadas por fuera (db push en otros entornos / dashboard) pueden nacer
+  // con RLS activo y sin policies: eso niega al rol de la app. Se desactiva aquí.
+  try {
+    const conRls = await prisma.$queryRawUnsafe<Array<{ relname: string }>>(
+      `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity`,
+    );
+    for (const tabla of conRls) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "${tabla.relname}" DISABLE ROW LEVEL SECURITY`);
+      console.log(`RLS desactivado en ${tabla.relname}`);
+    }
+  } catch (e) {
+    problemas.push(`Desactivar RLS: ${String(e).slice(0, 120)}`);
+  }
+
+  // El rol de la app necesita DML en todas las tablas (idempotente)
+  try {
+    await prisma.$executeRawUnsafe(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mantirenfe_app',
+    );
+    await prisma.$executeRawUnsafe(
+      'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO mantirenfe_app',
+    );
+  } catch (e) {
+    problemas.push(`Garantizar DML a mantirenfe_app: ${String(e).slice(0, 120)}`);
+  }
+
   const grants = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
     `SELECT grantee, string_agg(DISTINCT privilege_type, ',' ORDER BY privilege_type) AS priv, count(DISTINCT table_name)::int AS tablas
      FROM information_schema.role_table_grants WHERE table_schema='public' GROUP BY grantee ORDER BY grantee`,
