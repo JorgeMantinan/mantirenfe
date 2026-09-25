@@ -3,6 +3,9 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @mantirenfe/web build",
   "outputDirectory": "apps/web/dist",
+  "env": {
+    "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
