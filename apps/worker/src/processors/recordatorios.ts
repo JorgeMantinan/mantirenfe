@@ -76,7 +76,11 @@ function minutosDePreferencias(preferencias: unknown): number {
   return 50;
 }
 
-function preferenciaBooleana(preferencias: unknown, clave: string, porDefecto: boolean): boolean {
+export function preferenciaBooleana(
+  preferencias: unknown,
+  clave: string,
+  porDefecto: boolean,
+): boolean {
   let valor: unknown = preferencias;
   if (typeof valor === 'string') {
     try {
@@ -125,13 +129,15 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
   if (horaAhora < horaConfigurada) return 0;
 
   const prisma = getPrisma();
+  // El filtro de preferencias se hace en memoria: el path-filter de Prisma
+  // excluye silenciosamente las filas cuyas preferencias son el string "{}"
+  // (el default del esquema) en vez de un objeto JSON.
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
       fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
       resumenEnviadoEn: null,
       recordatorioEnviadoEn: null, // si ya queda poco para salir, manda el recordatorio
-      NOT: { usuario: { preferencias: { path: ['resumenViaje'], equals: false } } },
     },
     include: {
       usuario: {
@@ -145,11 +151,14 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
         },
       },
     },
-    take: 100,
+    take: 200,
   });
+  const pendientes = alertas.filter((a) =>
+    preferenciaBooleana(a.usuario.preferencias, 'resumenViaje', true),
+  );
 
   let enviados = 0;
-  for (const alerta of alertas) {
+  for (const alerta of pendientes) {
     try {
       const [origen, destino] = await Promise.all([
         buscarEstaciones(prisma, alerta.origenNombre, 5),
@@ -244,7 +253,6 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
       estado: 'ACTIVA',
       fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
       recordatorioEnviadoEn: null,
-      NOT: { usuario: { preferencias: { path: ['recordatorioSalida'], equals: false } } },
     },
     include: {
       usuario: {
@@ -260,9 +268,13 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
     },
     take: 200,
   });
+  // Preferencias en memoria (el path-filter de SQL excluye el default "{}")
+  const pendientes = alertas.filter((a) =>
+    preferenciaBooleana(a.usuario.preferencias, 'recordatorioSalida', true),
+  );
 
   let enviados = 0;
-  for (const alerta of alertas) {
+  for (const alerta of pendientes) {
     try {
       const [origen, destino] = await Promise.all([
         buscarEstaciones(prisma, alerta.origenNombre, 5),

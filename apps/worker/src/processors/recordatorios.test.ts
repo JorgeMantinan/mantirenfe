@@ -3,6 +3,7 @@ import {
   ahoraRelojGtfs,
   elegirSalidaDelDia,
   elegirTrenRecordatorio,
+  preferenciaBooleana,
   type TrenRecordatorio,
 } from './recordatorios';
 
@@ -52,6 +53,24 @@ describe('elegirTrenRecordatorio', () => {
 
   it('devuelve null sin trenes', () => {
     expect(elegirTrenRecordatorio([], ahora, 50, {})).toBeNull();
+  });
+});
+
+describe('preferenciaBooleana', () => {
+  it('usa el default con el "{}" del esquema y con strings no-JSON', () => {
+    expect(preferenciaBooleana('{}', 'recordatorioSalida', true)).toBe(true);
+    expect(preferenciaBooleana('{}', 'resumenViaje', true)).toBe(true);
+    expect(preferenciaBooleana('no-json', 'resumenViaje', true)).toBe(true);
+    expect(preferenciaBooleana(null, 'resumenViaje', true)).toBe(true);
+  });
+
+  it('lee la clave cuando preferencias es un objeto', () => {
+    expect(preferenciaBooleana({ resumenViaje: true }, 'resumenViaje', true)).toBe(true);
+    expect(preferenciaBooleana({ resumenViaje: false }, 'resumenViaje', true)).toBe(false);
+    expect(preferenciaBooleana({ recordatorioSalida: false }, 'recordatorioSalida', true)).toBe(
+      false,
+    );
+    expect(preferenciaBooleana({ resumenViaje: 'si' }, 'resumenViaje', true)).toBe(true);
   });
 });
 
