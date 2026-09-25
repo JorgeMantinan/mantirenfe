@@ -12,6 +12,7 @@ import { PaginaLogin } from '@/pages/login/page';
 import { PaginaMapa } from '@/pages/mapa/page';
 import { PaginaNoEncontrada } from '@/pages/not-found';
 import { PaginaNotificaciones } from '@/pages/notificaciones/page';
+import { PaginaRecuperarPassword } from '@/pages/reset/page';
 import { PaginaRegistro } from '@/pages/registro/page';
 import { PaginaAjustes } from '@/pages/ajustes/page';
 import { PaginaTrenes } from '@/pages/trenes/page';
@@ -43,6 +44,7 @@ export default function App() {
       <Route path="/" element={<PaginaLanding />} />
       <Route path="/login" element={<PaginaLogin />} />
       <Route path="/registro" element={<PaginaRegistro />} />
+      <Route path="/reset-password" element={<PaginaRecuperarPassword />} />
       <Route path="/auth/callback" element={<PaginaAuthCallback />} />
       <Route element={<AppShell />}>
         <Route

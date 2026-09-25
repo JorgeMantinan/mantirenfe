@@ -112,9 +112,14 @@ export function PaginaLogin() {
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={enviando}>
-                  {enviando ? 'Entrando...' : 'Entrar'}
+                  {enviando ? 'Entrando...' : 'Iniciar sesión'}
                 </Button>
               </form>
+              <p className="text-center text-sm">
+                <Link to="/reset-password" className="font-medium text-primary hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </p>
             </>
           )}
           <p className="text-center text-sm text-muted-foreground">
