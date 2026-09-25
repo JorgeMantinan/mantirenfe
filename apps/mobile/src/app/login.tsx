@@ -1,6 +1,7 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { traducirErrorAuth } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { useAuth } from '@/hooks/useAuth';
 import { colores, espaciado, radio } from '@/lib/tema';
@@ -21,7 +22,10 @@ export default function Login() {
       await entrar(email.trim(), password);
       router.replace('/(tabs)');
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'No se pudo iniciar sesión');
+      Alert.alert(
+        'Error',
+        error instanceof Error ? traducirErrorAuth(error.message) : 'No se pudo iniciar sesión',
+      );
     } finally {
       setEnviando(false);
     }

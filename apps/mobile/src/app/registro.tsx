@@ -1,6 +1,7 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { traducirErrorAuth } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { useAuth } from '@/hooks/useAuth';
 import { colores, espaciado, radio } from '@/lib/tema';
@@ -23,7 +24,10 @@ export default function Registro() {
       Alert.alert('Cuenta creada', 'Revisa tu email para confirmar el registro.');
       router.replace('/login');
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'No se pudo registrar');
+      Alert.alert(
+        'Error',
+        error instanceof Error ? traducirErrorAuth(error.message) : 'No se pudo registrar',
+      );
     } finally {
       setEnviando(false);
     }

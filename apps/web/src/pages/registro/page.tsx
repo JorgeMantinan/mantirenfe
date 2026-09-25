@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { traducirErrorAuth } from '@mantirenfe/shared-types';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +45,9 @@ export function PaginaRegistro() {
       toast.success('Cuenta creada. Revisa tu email si pide confirmación.');
       navigate('/dashboard', { replace: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear la cuenta');
+      toast.error(
+        error instanceof Error ? traducirErrorAuth(error.message) : 'No se pudo crear la cuenta',
+      );
     } finally {
       setEnviando(false);
     }
@@ -55,7 +58,9 @@ export function PaginaRegistro() {
       if (proveedor === 'google') await entrarConGoogle();
       else await entrarConMicrosoft();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error con el proveedor');
+      toast.error(
+        error instanceof Error ? traducirErrorAuth(error.message) : 'Error con el proveedor',
+      );
     }
   };
 
