@@ -81,6 +81,22 @@ export function pushHabilitado(preferencias: unknown): boolean {
   return true;
 }
 
+/**
+ * Compara la salida de un tren (ISO o HH:MM) con la franja horaria de la
+ * alerta. Sin franja, todo cuenta.
+ */
+export function enFranjaHoraria(
+  salida: string,
+  horaDesde: string | null,
+  horaHasta: string | null,
+): boolean {
+  if (!horaDesde && !horaHasta) return true;
+  const hhmm = salida.length > 5 ? salida.slice(11, 16) : salida;
+  if (horaDesde && hhmm < horaDesde) return false;
+  if (horaHasta && hhmm > horaHasta) return false;
+  return true;
+}
+
 export async function notificar(
   alerta: {
     id: string;
@@ -172,6 +188,16 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       data: { ultimoSondeoEn: new Date() },
     });
     throw error;
+  }
+
+  // Solo interesan los trenes dentro de la franja horaria de la alerta
+  if (consulta.horaDesde || consulta.horaHasta) {
+    estado = {
+      ...estado,
+      trenes: estado.trenes.filter((t) =>
+        enFranjaHoraria(t.salida, consulta.horaDesde ?? null, consulta.horaHasta ?? null),
+      ),
+    };
   }
 
   const actual = serializarEstado(estado);

@@ -8,7 +8,7 @@ import { Worker } from 'bullmq';
 import { getPrisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
-import { procesarRecordatorios } from './processors/recordatorios';
+import { ahoraRelojGtfs, procesarRecordatorios } from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 
 const logger = pino({
@@ -72,6 +72,21 @@ async function main() {
     COLA_SONDEO_MASIVO,
     async () => {
       const prisma = getPrisma();
+
+      // Las alertas cuyo viaje ya pasó se completan solas (no se vuelven a sondear)
+      try {
+        const hoyIso = ahoraRelojGtfs().toISOString().slice(0, 10);
+        const completadas = await prisma.alerta.updateMany({
+          where: { estado: 'ACTIVA', fechaViaje: { lt: new Date(`${hoyIso}T00:00:00Z`) } },
+          data: { estado: 'COMPLETADA' },
+        });
+        if (completadas.count > 0) {
+          logger.info({ completadas: completadas.count }, 'Alertas con fecha pasada completadas');
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'Fallo completando alertas caducadas');
+      }
+
       const desde = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const alertas = await prisma.alerta.findMany({
         where: {

@@ -3,6 +3,7 @@ import type { EstadoDisponibilidad } from '@mantirenfe/shared-types';
 import {
   diffDisponibles,
   diffHorarios,
+  enFranjaHoraria,
   filtrarRetrasados,
   pushHabilitado,
   serializarEstado,
@@ -193,5 +194,26 @@ describe('pushHabilitado', () => {
     expect(pushHabilitado('{"notificacionesPush":false}')).toBe(false);
     expect(pushHabilitado('{"notificacionesPush":true}')).toBe(true);
     expect(pushHabilitado('{no es json')).toBe(true);
+  });
+});
+
+describe('enFranjaHoraria', () => {
+  it('sin franja todo vale', () => {
+    expect(enFranjaHoraria('2026-09-26T06:00:00.000Z', null, null)).toBe(true);
+  });
+
+  it('filtra por HH:MM con salidas ISO y sueltas', () => {
+    expect(enFranjaHoraria('2026-09-26T17:30:00.000Z', '17:00', '19:00')).toBe(true);
+    expect(enFranjaHoraria('17:00', '17:00', '19:00')).toBe(true);
+    expect(enFranjaHoraria('19:00', '17:00', '19:00')).toBe(true);
+    expect(enFranjaHoraria('2026-09-26T06:00:00.000Z', '17:00', '19:00')).toBe(false);
+    expect(enFranjaHoraria('20:01', '17:00', '19:00')).toBe(false);
+  });
+
+  it('respeta solo desde o solo hasta', () => {
+    expect(enFranjaHoraria('08:00', '07:00', null)).toBe(true);
+    expect(enFranjaHoraria('06:00', '07:00', null)).toBe(false);
+    expect(enFranjaHoraria('22:00', null, '23:00')).toBe(true);
+    expect(enFranjaHoraria('23:30', null, '23:00')).toBe(false);
   });
 });
