@@ -18,10 +18,26 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  override handleRequest<T>(err: Error | null, user: T): T {
-    if (err || !user) {
-      throw err ?? new UnauthorizedException('Token inválido o ausente');
+  override handleRequest<T>(err: Error | null, user: T, info?: unknown): T {
+    if (err) throw err;
+    if (user) return user;
+
+    // Distinguimos el motivo para que el cliente sepa qué mirar
+    const mensaje =
+      typeof info === 'object' && info !== null && 'message' in info
+        ? String((info as { message?: unknown }).message)
+        : '';
+    if (mensaje.includes('jwt expired')) {
+      throw new UnauthorizedException('La sesión ha expirado: vuelve a iniciar sesión');
     }
-    return user;
+    if (mensaje.includes('invalid signature') || mensaje.includes('invalid token')) {
+      throw new UnauthorizedException(
+        'Firma del token inválida (revisa SUPABASE_JWT_SECRET en la API)',
+      );
+    }
+    if (!mensaje) {
+      throw new UnauthorizedException('Token ausente: la petición no lleva cabecera Authorization');
+    }
+    throw new UnauthorizedException(`Token inválido (${mensaje})`);
   }
 }

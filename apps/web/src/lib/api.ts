@@ -20,6 +20,12 @@ export async function api<T>(
   opciones: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const token = await obtenerToken();
+  const rutasPublicas = ['/estaciones', '/trenes/horarios', '/trenes/posiciones', '/health'];
+  const esPublica = rutasPublicas.some((r) => ruta.startsWith(r));
+  if (!token && !esPublica) {
+    // Falla en local para no mandar una petición que sabemos que será 401
+    throw new ErrorApi(401, 'No hay sesión activa: inicia sesión de nuevo');
+  }
   const headers = new Headers(opciones.headers);
   headers.set('Accept', 'application/json');
   if (opciones.json !== undefined) {
