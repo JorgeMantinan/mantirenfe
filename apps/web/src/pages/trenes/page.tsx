@@ -115,7 +115,7 @@ export function PaginaTrenes() {
             <CardTitle className="text-xl">Resultados</CardTitle>
             <CardDescription>
               {resultados.length === 0
-                ? 'Sin horarios en caché para esa consulta'
+                ? 'Sin trenes disponibles para esa consulta'
                 : `${resultados.length} trenes · fuente: ${fuente ?? 'cache'}`}
             </CardDescription>
           </CardHeader>
@@ -124,8 +124,9 @@ export function PaginaTrenes() {
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
-                  Aún no hay horarios sincronizados para esta ruta. El worker los importa del GTFS
-                  de Renfe a diario; puedes lanzar <code>pnpm db:seed</code> o esperar al sync.
+                  No hay trenes de <strong>{origen}</strong> a <strong>{destino}</strong> para el{' '}
+                  <strong>{fecha}</strong> (ni directos ni con transbordo). Prueba con otra fecha o
+                  divide el viaje en dos tramos.
                 </p>
               </div>
             ) : (
@@ -150,6 +151,29 @@ export function PaginaTrenes() {
                       <p className="text-sm text-muted-foreground">
                         {t.origenNombre} · {t.destinoNombre} · {t.duracionMin} min
                       </p>
+                      {t.transbordo && (
+                        <div className="mt-1 space-y-0.5">
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500 text-amber-700 dark:text-amber-400"
+                          >
+                            Transbordo en {t.transbordo.estacion}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground">
+                            {t.transbordo.trenPrimera} llega a las{' '}
+                            {new Date(t.transbordo.llegadaPrimera).toLocaleTimeString('es-ES', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            · espera {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale
+                            a las{' '}
+                            {new Date(t.transbordo.salidaSegunda).toLocaleTimeString('es-ES', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{t.numeroTren}</Badge>

@@ -7,6 +7,7 @@ import {
   PosicionTrenResponse,
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
+import { cruzarConexiones } from './conexiones';
 
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
@@ -47,26 +48,95 @@ export class TrenesService {
       include: { origen: true, destino: true },
     });
 
-    return {
-      fuente: 'cache',
-      trenes: horarios.map((h) => {
-        const salida = h.salida;
-        const llegada = h.llegada;
-        return {
-          numeroTren: h.numeroTren,
-          origenNombre: h.origen.nombre,
-          destinoNombre: h.destino.nombre,
-          salida: salida.toISOString(),
-          llegada: llegada.toISOString(),
-          duracionMin: Math.round((llegada.getTime() - salida.getTime()) / 60_000),
-          operador: h.operador,
-        };
+    const trenes: HorarioTrenResponse[] = horarios.map((h) => {
+      const salida = h.salida;
+      const llegada = h.llegada;
+      return {
+        numeroTren: h.numeroTren,
+        origenNombre: h.origen.nombre,
+        destinoNombre: h.destino.nombre,
+        salida: salida.toISOString(),
+        llegada: llegada.toISOString(),
+        duracionMin: Math.round((llegada.getTime() - salida.getTime()) / 60_000),
+        operador: h.operador,
+      };
+    });
+
+    // Sin tren directo (o como complemento): trayectos con 1 transbordo (A→X + X→B)
+    const idsOrigen = estacionesOrigen.map((e) => e.id);
+    const idsDestino = estacionesDestino.map((e) => e.id);
+    const selectTramo = {
+      numeroTren: true,
+      salida: true,
+      llegada: true,
+      operador: true,
+      origenEstacionId: true,
+      destinoEstacionId: true,
+      origen: { select: { nombre: true } },
+      destino: { select: { nombre: true } },
+    } as const;
+    const [salientes, entrantes] = await Promise.all([
+      prisma.horarioTren.findMany({
+        where: {
+          origenEstacionId: { in: idsOrigen },
+          destinoEstacionId: { notIn: idsDestino },
+          fecha: new Date(`${fecha}T00:00:00Z`),
+        },
+        orderBy: { salida: 'asc' },
+        take: 400,
+        select: selectTramo,
       }),
-    };
+      prisma.horarioTren.findMany({
+        where: {
+          destinoEstacionId: { in: idsDestino },
+          origenEstacionId: { notIn: idsOrigen },
+          fecha: new Date(`${fecha}T00:00:00Z`),
+        },
+        orderBy: { salida: 'asc' },
+        take: 400,
+        select: selectTramo,
+      }),
+    ]);
+    const aTramo = (h: (typeof salientes)[number]) => ({
+      numeroTren: h.numeroTren,
+      origenNombre: h.origen.nombre,
+      destinoNombre: h.destino.nombre,
+      origenEstacionId: h.origenEstacionId,
+      destinoEstacionId: h.destinoEstacionId,
+      salida: h.salida,
+      llegada: h.llegada,
+      operador: h.operador,
+    });
+    const conexiones = cruzarConexiones(salientes.map(aTramo), entrantes.map(aTramo), 10);
+    for (const conexion of conexiones) {
+      trenes.push({
+        numeroTren: `${conexion.primera.numeroTren} → ${conexion.segunda.numeroTren}`,
+        origenNombre: conexion.primera.origenNombre,
+        destinoNombre: conexion.segunda.destinoNombre,
+        salida: conexion.primera.salida.toISOString(),
+        llegada: conexion.segunda.llegada.toISOString(),
+        duracionMin: Math.round(
+          (conexion.segunda.llegada.getTime() - conexion.primera.salida.getTime()) / 60_000,
+        ),
+        operador: conexion.primera.operador,
+        transbordo: {
+          estacion: conexion.segunda.origenNombre,
+          llegadaPrimera: conexion.primera.llegada.toISOString(),
+          salidaSegunda: conexion.segunda.salida.toISOString(),
+          esperaMin: conexion.esperaMin,
+          trenPrimera: conexion.primera.numeroTren,
+          trenSegunda: conexion.segunda.numeroTren,
+        },
+      });
+    }
+
+    return { fuente: 'cache', trenes };
   }
 
   async posiciones(): Promise<{ fuente: string; trenes: PosicionTrenResponse[]; total: number }> {
-    const ttl = 15_000;
+    // Cadencia recomendada: el feed de posiciones se actualiza cada 15-30 s;
+    // cachear 30 s evita martillear gtfsrt.renfe.com (≈86k peticiones/mes).
+    const ttl = Number(process.env.POSICIONES_CACHE_SEG ?? '30') * 1000;
     if (this.cachePosiciones && this.cachePosiciones.caduca > Date.now()) {
       return {
         fuente: 'gtfs-rt',

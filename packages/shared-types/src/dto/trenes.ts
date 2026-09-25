@@ -8,6 +8,15 @@ export const busquedaHorariosQuerySchema = z.object({
 
 export type BusquedaHorariosQuery = z.infer<typeof busquedaHorariosQuerySchema>;
 
+export interface TramoTransbordo {
+  estacion: string;
+  llegadaPrimera: string;
+  salidaSegunda: string;
+  esperaMin: number;
+  trenPrimera: string;
+  trenSegunda: string;
+}
+
 export interface HorarioTrenResponse {
   numeroTren: string;
   origenNombre: string;
@@ -16,6 +25,8 @@ export interface HorarioTrenResponse {
   llegada: string;
   duracionMin: number;
   operador: string | null;
+  /** Presente si el trayecto requiere un transbordo (sin tren directo) */
+  transbordo?: TramoTransbordo;
 }
 
 export interface PosicionTrenResponse {

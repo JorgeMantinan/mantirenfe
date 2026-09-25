@@ -197,7 +197,7 @@ export default function Trenes() {
               </Tarjeta>
             ) : horarios && horarios.length === 0 ? (
               <Text style={estilos.vacio}>
-                Sin horarios en caché. Sincroniza con el worker o prueba otra ruta.
+                Sin trenes para esa ruta y fecha (ni directos ni con transbordo). Prueba otro día.
               </Text>
             ) : null
           }
@@ -221,6 +221,26 @@ export default function Trenes() {
                 {item.origenNombre} → {item.destinoNombre}
               </Text>
               {item.operador ? <Text style={estilos.meta}>{item.operador}</Text> : null}
+              {item.transbordo ? (
+                <View style={{ marginTop: 4, gap: 2 }}>
+                  <Etiqueta tono="primario">Transbordo en {item.transbordo.estacion}</Etiqueta>
+                  <Text style={estilos.meta}>
+                    {item.transbordo.trenPrimera} llega a las{' '}
+                    {new Date(item.transbordo.llegadaPrimera).toLocaleTimeString('es-ES', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    {' · espera '}
+                    {item.transbordo.esperaMin} min
+                    {' · '}
+                    {item.transbordo.trenSegunda} sale a las{' '}
+                    {new Date(item.transbordo.salidaSegunda).toLocaleTimeString('es-ES', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+              ) : null}
             </Tarjeta>
           )}
         />

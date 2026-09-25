@@ -220,10 +220,22 @@ export async function conCache<T>(
 // comparten una única consulta a venta.renfe.com.
 const CACHE_VENTA = new Map<string, EntradaCache<EstadoTrenDisponible[]>>();
 
+// Protección anti-rate-limit: si la venta responde con errores repetidos,
+// suspendemos las consultas durante un rato en vez de seguir martillearla.
+const FALLOS_MAXIMOS = 4;
+const SUSPENSION_MS = 10 * 60_000;
+let fallosConsecutivos = 0;
+let suspendidoHasta = 0;
+
 export class FuenteRenfeDwr implements FuenteDatosTren {
   readonly nombre = 'dwr';
 
   async getDisponibilidad(consulta: ConsultaDisponibilidad): Promise<EstadoDisponibilidad> {
+    if (Date.now() < suspendidoHasta) {
+      throw new Error(
+        'Disponibilidad suspendida temporalmente tras errores de venta.renfe.com (protección anti-rate-limit)',
+      );
+    }
     const prisma = getPrisma();
     const [estacionesOrigen, estacionesDestino] = await Promise.all([
       buscarEstaciones(prisma, consulta.origenNombre, 5),
@@ -239,9 +251,20 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
 
     const ttlMs = Number(process.env.DWR_CACHE_SEG ?? '120') * 1000;
     const claveCache = `${origen.codigo}-${destino.codigo}-${consulta.fecha}`;
-    const trenes = await conCache(CACHE_VENTA, claveCache, ttlMs, () =>
-      this.consultarVenta(origen, destino, consulta.fecha),
-    );
+    let trenes: EstadoTrenDisponible[];
+    try {
+      trenes = await conCache(CACHE_VENTA, claveCache, ttlMs, () =>
+        this.consultarVenta(origen, destino, consulta.fecha),
+      );
+      fallosConsecutivos = 0;
+    } catch (error) {
+      fallosConsecutivos += 1;
+      if (fallosConsecutivos >= FALLOS_MAXIMOS) {
+        suspendidoHasta = Date.now() + SUSPENSION_MS;
+        fallosConsecutivos = 0;
+      }
+      throw error;
+    }
 
     const filtrados = consulta.numeroTren
       ? trenes.filter((t) => t.numeroTren === consulta.numeroTren)
