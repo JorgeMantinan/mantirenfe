@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CircleDot, RefreshCw } from 'lucide-react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { PosicionTrenResponse } from '@mantirenfe/shared-types';
+import type { PosicionTrenResponse, PuntoTraza } from '@mantirenfe/shared-types';
 
 const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 
@@ -24,6 +24,29 @@ export function PaginaMapa() {
   const [trenes, setTrenes] = useState<PosicionTrenResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [traza, setTraza] = useState<{ vehiculo: string; puntos: PuntoTraza[] } | null>(null);
+  const [cargandoTraza, setCargandoTraza] = useState(false);
+
+  const alternarTraza = useCallback(
+    async (vehiculo: string) => {
+      if (traza?.vehiculo === vehiculo) {
+        setTraza(null);
+        return;
+      }
+      setCargandoTraza(true);
+      try {
+        const datos = await api<{ vehiculo: string; puntos: PuntoTraza[] }>(
+          `/trenes/posiciones/traza?vehiculo=${encodeURIComponent(vehiculo)}&horas=24`,
+        );
+        setTraza(datos);
+      } catch {
+        // popup efímero: no bloquear el mapa por un error de la traza
+      } finally {
+        setCargandoTraza(false);
+      }
+    },
+    [traza?.vehiculo],
+  );
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -125,10 +148,33 @@ export function PaginaMapa() {
                       <p className="text-xs text-gray-500">
                         Actualizado {new Date(tren.actualizadaEn).toLocaleTimeString('es-ES')}
                       </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={cargandoTraza}
+                        onClick={() => void alternarTraza(tren.id)}
+                      >
+                        {cargandoTraza && traza?.vehiculo !== tren.id
+                          ? 'Cargando...'
+                          : traza?.vehiculo === tren.id
+                            ? 'Ocultar traza'
+                            : 'Ver traza (24 h)'}
+                      </Button>
                     </div>
                   </Popup>
                 </CircleMarker>
               ))}
+              {traza && traza.puntos.length > 1 && (
+                <Polyline
+                  positions={traza.puntos.map((p) => [p.latitud, p.longitud] as [number, number])}
+                  pathOptions={{
+                    color: '#0ea5e9',
+                    weight: 3,
+                    opacity: 0.8,
+                    dashArray: '6 8',
+                  }}
+                />
+              )}
             </MapContainer>
           )}
         </CardContent>

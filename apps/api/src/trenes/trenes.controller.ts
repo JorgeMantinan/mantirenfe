@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { EsPublico } from '../common/es-publico.decorator';
@@ -24,5 +24,15 @@ export class TrenesController {
   @Throttle({ default: { ttl: 10_000, limit: 20 } })
   posiciones() {
     return this.trenesService.posiciones();
+  }
+
+  @Get('posiciones/traza')
+  @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 30 } })
+  traza(@Query('vehiculo') vehiculo?: string, @Query('horas') horas?: string) {
+    if (!vehiculo) {
+      throw new BadRequestException('Falta el parámetro vehiculo');
+    }
+    return this.trenesService.traza(vehiculo, horas ? Number(horas) : 24);
   }
 }

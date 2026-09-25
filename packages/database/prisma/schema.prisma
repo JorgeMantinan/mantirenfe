@@ -163,3 +163,16 @@ model PosicionTren {
 
   @@index([actualizadaEn])
 }
+
+model PosicionHistorial {
+  id         String   @id @default(cuid())
+  vehiculoId String
+  numeroTren String?
+  latitud    Float
+  longitud   Float
+  retrasoSeg Int?
+  en         DateTime @default(now())
+
+  @@index([vehiculoId, en])
+  @@index([en])
+}

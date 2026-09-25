@@ -5,6 +5,7 @@ import {
   HorarioTrenResponse,
   parsearRetrasos,
   PosicionTrenResponse,
+  PuntoTraza,
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { cruzarConexiones } from './conexiones';
@@ -235,9 +236,28 @@ export class TrenesService {
           },
         });
       }
+
+      // Traza: un punto por tren y snapshot (para dibujar por dónde ha pasado)
+      if (datos.length > 0) {
+        await prisma.posicionHistorial.createMany({
+          data: datos.map((p) => ({
+            vehiculoId: p.id,
+            numeroTren: p.numeroTren,
+            latitud: p.latitud,
+            longitud: p.longitud,
+            retrasoSeg: p.retrasoSeg,
+            en: ahora,
+          })),
+        });
+      }
+
       // Poda: lo no visto en 24 h deja de interesar (los ids estables no crecen)
       await prisma.posicionTren.deleteMany({
         where: { actualizadaEn: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      });
+      const diasHistorial = Number(process.env.POSICIONES_HISTORIAL_DIAS ?? '2');
+      await prisma.posicionHistorial.deleteMany({
+        where: { en: { lt: new Date(Date.now() - diasHistorial * 24 * 60 * 60 * 1000) } },
       });
     } catch (error) {
       this.logger.warn(`No se pudieron persistir posiciones: ${String(error)}`);
@@ -263,6 +283,29 @@ export class TrenesService {
       this.logger.warn(`No se pudieron leer posiciones de la BD: ${String(error)}`);
       return [];
     }
+  }
+
+  async traza(
+    vehiculo: string,
+    horas: number,
+  ): Promise<{ vehiculo: string; puntos: PuntoTraza[] }> {
+    const limite = Math.min(Math.max(Number.isFinite(horas) ? horas : 24, 1), 48);
+    const desde = new Date(Date.now() - limite * 60 * 60 * 1000);
+    const filas = await getPrisma().posicionHistorial.findMany({
+      where: { vehiculoId: vehiculo, en: { gte: desde } },
+      orderBy: { en: 'asc' },
+      take: 2000,
+      select: { en: true, latitud: true, longitud: true, retrasoSeg: true },
+    });
+    return {
+      vehiculo,
+      puntos: filas.map((f) => ({
+        en: f.en.toISOString(),
+        latitud: f.latitud,
+        longitud: f.longitud,
+        retrasoSeg: f.retrasoSeg,
+      })),
+    };
   }
 
   private async obtenerRetrasos(url: string): Promise<Map<string, number>> {

@@ -39,6 +39,13 @@ export interface PosicionTrenResponse {
   actualizadaEn: string;
 }
 
+export interface PuntoTraza {
+  en: string;
+  latitud: number;
+  longitud: number;
+  retrasoSeg: number | null;
+}
+
 export const criterioDisponibilidadSchema = z.object({
   origenNombre: z.string().min(2),
   destinoNombre: z.string().min(2),
