@@ -1,0 +1,37 @@
+# Blueprint de Render: crea el servicio web (API + worker) desde este repo.
+# Las variables con sync: false se rellenan en el dashboard de Render tras el primer deploy.
+services:
+  - type: web
+    name: mantirenfe
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: '3000'
+      - key: FUENTE_DISPONIBILIDAD
+        value: dwr
+      - key: RETRASO_UMBRAL_SEG
+        value: '300'
+      - key: DWR_CACHE_SEG
+        value: '120'
+      - key: GTFS_DIAS_VENTANA
+        value: '45'
+      # Obligatorias (rellenar en el dashboard)
+      - key: WEB_ORIGIN
+        sync: false
+      - key: DATABASE_URL_APP
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false

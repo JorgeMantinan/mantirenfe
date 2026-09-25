@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+**/dist
+**/.turbo
+**/coverage
+.expo
+web-build
+.git
+*.log
+dump.rdb
+playwright-report
+test-results
