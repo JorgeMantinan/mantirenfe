@@ -8,6 +8,7 @@ import { Worker } from 'bullmq';
 import { getPrisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
+import { procesarRecordatorios } from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 
 const logger = pino({
@@ -96,6 +97,15 @@ async function main() {
       }
       if (pendientes.length > 0) {
         logger.info({ procesadas: pendientes.length }, 'Barrido de alertas completado');
+      }
+
+      try {
+        const enviados = await procesarRecordatorios(logger);
+        if (enviados > 0) {
+          logger.info({ enviados }, 'Recordatorios de salida enviados');
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'Fallo en los recordatorios de salida');
       }
     },
     { connection: conexion, concurrency: 1 },

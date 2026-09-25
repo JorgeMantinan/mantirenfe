@@ -83,6 +83,7 @@ model Alerta {
   notas             String?
   ultimoEstado      Json?
   ultimoSondeoEn    DateTime?
+  recordatorioEnviadoEn DateTime?
   creadaEn          DateTime       @default(now())
   actualizadoEn     DateTime       @updatedAt
   usuario           Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)

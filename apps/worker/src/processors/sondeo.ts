@@ -81,7 +81,7 @@ export function pushHabilitado(preferencias: unknown): boolean {
   return true;
 }
 
-async function notificar(
+export async function notificar(
   alerta: {
     id: string;
     usuarioId: string;
