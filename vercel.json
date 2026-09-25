@@ -1,0 +1,12 @@
+{
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @mantirenfe/web build",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://mantirenfe.onrender.com/api/:path*"
+    }
+  ]
+}
