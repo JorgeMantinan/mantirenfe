@@ -41,8 +41,12 @@ export function PaginaRegistro() {
     }
     setEnviando(true);
     try {
-      await registrarse(email.trim(), password, nombre.trim());
-      toast.success('Cuenta creada. Revisa tu email si pide confirmación.');
+      const pendienteConfirmacion = await registrarse(email.trim(), password, nombre.trim());
+      toast.success(
+        pendienteConfirmacion
+          ? 'Cuenta creada. Revisa tu email para confirmar el acceso.'
+          : '¡Cuenta creada! Ya estás dentro.',
+      );
       navigate('/dashboard', { replace: true });
     } catch (error) {
       toast.error(

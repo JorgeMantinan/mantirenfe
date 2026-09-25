@@ -16,7 +16,7 @@ interface AuthContextValue {
   cargando: boolean;
   authConfigurada: boolean;
   entrar: (email: string, password: string) => Promise<void>;
-  registrarse: (email: string, password: string, nombre: string) => Promise<void>;
+  registrarse: (email: string, password: string, nombre: string) => Promise<boolean>;
   entrarConGoogle: () => Promise<void>;
   entrarConMicrosoft: () => Promise<void>;
   salir: () => Promise<void>;
@@ -58,12 +58,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registrarse = useCallback(async (email: string, password: string, nombre: string) => {
     if (!supabase) throw new Error('Autenticación no configurada (VITE_SUPABASE_URL)');
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: nombre } },
     });
     if (error) throw new Error(error.message);
+    // true = la cuenta quedó pendiente de confirmar el email (no hay sesión)
+    return !data.session;
   }, []);
 
   const entrarConGoogle = useCallback(async () => {

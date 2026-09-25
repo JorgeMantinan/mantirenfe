@@ -20,9 +20,14 @@ export default function Registro() {
     }
     setEnviando(true);
     try {
-      await registrarse(email.trim(), password, nombre.trim());
-      Alert.alert('Cuenta creada', 'Revisa tu email para confirmar el registro.');
-      router.replace('/login');
+      const pendienteConfirmacion = await registrarse(email.trim(), password, nombre.trim());
+      Alert.alert(
+        'Cuenta creada',
+        pendienteConfirmacion
+          ? 'Revisa tu email para confirmar el registro.'
+          : 'Ya estás dentro de la cuenta.',
+      );
+      router.replace(pendienteConfirmacion ? '/login' : '/(tabs)');
     } catch (error) {
       Alert.alert(
         'Error',
