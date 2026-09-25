@@ -1,4 +1,8 @@
-import type { ConsultaDisponibilidad, EstadoDisponibilidad } from '@mantirenfe/shared-types';
+import type {
+  ConsultaDisponibilidad,
+  EstadoDisponibilidad,
+  EstadoTrenDisponible,
+} from '@mantirenfe/shared-types';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import json5 from 'json5';
 import type { FuenteDatosTren } from './tipos';
@@ -183,6 +187,39 @@ export function extraerListaTrenes(respuesta: string): RespuestaLista {
   return json5.parse(json) as RespuestaLista;
 }
 
+export interface EntradaCache<T> {
+  valor: T;
+  caduca: number;
+}
+
+/**
+ * Caché genérica con TTL: si la entrada está viva no se vuelve a calcular.
+ * Poda entradas caducadas cuando crece demasiado.
+ */
+export async function conCache<T>(
+  cache: Map<string, EntradaCache<T>>,
+  clave: string,
+  ttlMs: number,
+  calcular: () => Promise<T>,
+): Promise<T> {
+  const ahora = Date.now();
+  const entrada = cache.get(clave);
+  if (entrada && entrada.caduca > ahora) return entrada.valor;
+
+  const valor = await calcular();
+  if (cache.size > 200) {
+    for (const [k, v] of cache) {
+      if (v.caduca <= ahora) cache.delete(k);
+    }
+  }
+  cache.set(clave, { valor, caduca: Date.now() + ttlMs });
+  return valor;
+}
+
+// Compartida entre instancias: varias alertas de la misma ruta+fecha
+// comparten una única consulta a venta.renfe.com.
+const CACHE_VENTA = new Map<string, EntradaCache<EstadoTrenDisponible[]>>();
+
 export class FuenteRenfeDwr implements FuenteDatosTren {
   readonly nombre = 'dwr';
 
@@ -200,6 +237,23 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
       );
     }
 
+    const ttlMs = Number(process.env.DWR_CACHE_SEG ?? '120') * 1000;
+    const claveCache = `${origen.codigo}-${destino.codigo}-${consulta.fecha}`;
+    const trenes = await conCache(CACHE_VENTA, claveCache, ttlMs, () =>
+      this.consultarVenta(origen, destino, consulta.fecha),
+    );
+
+    const filtrados = consulta.numeroTren
+      ? trenes.filter((t) => t.numeroTren === consulta.numeroTren)
+      : trenes;
+    return { consulta, trenes: filtrados, consultadoEn: new Date().toISOString() };
+  }
+
+  private async consultarVenta(
+    origen: { codigo: string; nombre: string },
+    destino: { codigo: string; nombre: string },
+    fechaIso: string,
+  ): Promise<EstadoTrenDisponible[]> {
     const searchId = crearSearchId();
     let batchId = 0;
     const cookieBusqueda = encodeURIComponent(
@@ -233,7 +287,7 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
     });
 
     // 1) Inicializar la búsqueda de la venta
-    const [anio, mes, dia] = consulta.fecha.split('-');
+    const [anio, mes, dia] = fechaIso.split('-');
     const fechaLarga = `${dia}/${mes}/${anio}`;
     const form = new URLSearchParams({
       tipoBusqueda: 'autocomplete',
@@ -305,26 +359,20 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
     const datos = extraerListaTrenes(await respuestaLista.text());
 
     const origenDireccion = datos.listadoTrenes?.[0]?.listviajeViewEnlaceBean ?? [];
-    const trenes = origenDireccion.map((t) => {
+    return origenDireccion.map((t) => {
       const tramo = t.trayectos?.[0];
       const numero =
         tramo?.cdgoTren ?? t.cdgoTren ?? t.numeroTren ?? t.numTren ?? t.codigoTren ?? t.idTren;
-      const fechaTren = t.fecha ?? tramo?.fecha ?? consulta.fecha;
+      const fechaTren = t.fecha ?? tramo?.fecha ?? fechaIso;
       const salida = t.horaSalida ? t.horaSalida.slice(0, 5) : '';
       return {
         trenId: `${numero ?? `${origen.codigo}-${destino.codigo}`}-${fechaTren}`,
-        numeroTren: numero ?? consulta.numeroTren ?? 'desconocido',
+        numeroTren: numero ?? 'desconocido',
         salida,
         disponible: disponibleSegunReglas(t),
         precioMin: t.tarifaMinima ? Number(t.tarifaMinima.replace(',', '.')) : null,
         moneda: 'EUR' as const,
       };
     });
-
-    const filtrados = consulta.numeroTren
-      ? trenes.filter((t) => t.numeroTren === consulta.numeroTren)
-      : trenes;
-
-    return { consulta, trenes: filtrados, consultadoEn: new Date().toISOString() };
   }
 }

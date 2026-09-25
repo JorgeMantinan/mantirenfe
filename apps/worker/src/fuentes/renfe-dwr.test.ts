@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { disponibleSegunReglas, extraerListaTrenes } from './renfe-dwr';
+import { conCache, disponibleSegunReglas, extraerListaTrenes } from './renfe-dwr';
+
+describe('conCache', () => {
+  it('calcula una sola vez dentro del TTL y recalcula al caducar', async () => {
+    const cache = new Map<string, { valor: number; caduca: number }>();
+    let calculos = 0;
+    const calcular = async () => ++calculos;
+
+    expect(await conCache(cache, 'a', 60_000, calcular)).toBe(1);
+    expect(await conCache(cache, 'a', 60_000, calcular)).toBe(1);
+    expect(calculos).toBe(1);
+
+    const entrada = cache.get('a');
+    if (entrada) entrada.caduca = Date.now() - 1;
+    expect(await conCache(cache, 'a', 60_000, calcular)).toBe(2);
+    expect(calculos).toBe(2);
+  });
+
+  it('no comparte entradas entre claves distintas', async () => {
+    const cache = new Map<string, { valor: string; caduca: number }>();
+    expect(await conCache(cache, 'x', 60_000, async () => 'uno')).toBe('uno');
+    expect(await conCache(cache, 'y', 60_000, async () => 'dos')).toBe('dos');
+    expect(cache.size).toBe(2);
+  });
+});
 
 describe('disponibleSegunReglas', () => {
   const base = {
