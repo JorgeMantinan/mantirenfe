@@ -6,6 +6,7 @@ import {
   HorarioTrenResponse,
   parsearRetrasos,
   PosicionTrenResponse,
+  PuntualidadTrenResponse,
   PuntoTraza,
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
@@ -308,6 +309,48 @@ export class TrenesService {
         });
       }
 
+      // Impuntualidad: un registro por servicio (tripId) y día con el retraso máximo visto
+      const umbralSeg = Number(process.env.PUNTUALIDAD_UMBRAL_SEG ?? '300');
+      const hoy = new Date(ahora);
+      hoy.setHours(0, 0, 0, 0);
+      const impuntuales = datos.filter(
+        (p) => p.tripId && typeof p.retrasoSeg === 'number' && p.retrasoSeg >= umbralSeg,
+      );
+      if (impuntuales.length > 0) {
+        const maxPorViaje = new Map<string, number>();
+        for (const p of impuntuales) {
+          const viaje = p.tripId as string;
+          maxPorViaje.set(viaje, Math.max(maxPorViaje.get(viaje) ?? 0, p.retrasoSeg as number));
+        }
+        const existentes = await prisma.impuntualidadTren.findMany({
+          where: { fecha: hoy, tripId: { in: [...maxPorViaje.keys()] } },
+          select: { tripId: true, retrasoMaxSeg: true },
+        });
+        const previos = new Map(existentes.map((e) => [e.tripId, e.retrasoMaxSeg]));
+        for (const [viaje, retraso] of maxPorViaje) {
+          const previo = previos.get(viaje);
+          if (previo === undefined) {
+            const primera = impuntuales.find((p) => p.tripId === viaje);
+            await prisma.impuntualidadTren
+              .create({
+                data: {
+                  tripId: viaje,
+                  vehiculoId: primera?.id ?? 'desconocido',
+                  numeroTren: primera?.numeroTren ?? null,
+                  fecha: hoy,
+                  retrasoMaxSeg: retraso,
+                },
+              })
+              .catch(() => undefined);
+          } else if (retraso > previo) {
+            await prisma.impuntualidadTren.updateMany({
+              where: { tripId: viaje, fecha: hoy },
+              data: { retrasoMaxSeg: retraso },
+            });
+          }
+        }
+      }
+
       // Poda: lo no visto en 24 h deja de interesar (los ids estables no crecen)
       await prisma.posicionTren.deleteMany({
         where: { actualizadaEn: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
@@ -363,6 +406,42 @@ export class TrenesService {
         retrasoSeg: f.retrasoSeg,
       })),
     };
+  }
+
+  async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
+    let desde: Date;
+    let hasta: Date;
+    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+      const anio = Number(mes.slice(0, 4));
+      const mesNum = Number(mes.slice(5, 7));
+      desde = new Date(Date.UTC(anio, mesNum - 1, 1));
+      hasta = new Date(Date.UTC(anio, mesNum, 1));
+    } else {
+      const ahora = new Date();
+      desde = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1));
+      hasta = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 1));
+    }
+    const filas = await getPrisma().impuntualidadTren.groupBy({
+      by: ['vehiculoId'],
+      where: { fecha: { gte: desde, lt: hasta } },
+      _count: { _all: true },
+      _avg: { retrasoMaxSeg: true },
+      _max: { retrasoMaxSeg: true },
+      _min: { numeroTren: true },
+    });
+    const resultado: PuntualidadTrenResponse[] = filas.map((f) => ({
+      vehiculoId: f.vehiculoId,
+      numeroTren: f._min.numeroTren,
+      vecesImpuntuales: f._count._all,
+      retrasoMedioSeg: Math.round(f._avg.retrasoMaxSeg ?? 0),
+      retrasoMaxSeg: f._max.retrasoMaxSeg ?? 0,
+    }));
+    if (orden === 'impuntualidad') {
+      resultado.sort((a, b) => b.retrasoMedioSeg - a.retrasoMedioSeg);
+    } else {
+      resultado.sort((a, b) => b.vecesImpuntuales - a.vecesImpuntuales);
+    }
+    return resultado.slice(0, 100);
   }
 
   private async obtenerRetrasos(url: string): Promise<Map<string, number>> {

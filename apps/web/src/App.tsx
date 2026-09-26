@@ -11,6 +11,7 @@ import { PaginaDashboard } from '@/pages/dashboard/page';
 import { PaginaLanding } from '@/pages/landing/page';
 import { PaginaLogin } from '@/pages/login/page';
 import { PaginaMapa } from '@/pages/mapa/page';
+import { PaginaPuntualidad } from '@/pages/puntualidad/page';
 import { PaginaNoEncontrada } from '@/pages/not-found';
 import { PaginaNotificaciones } from '@/pages/notificaciones/page';
 import { PaginaRecuperarPassword } from '@/pages/reset/page';
@@ -98,6 +99,7 @@ export default function App() {
         />
         <Route path="/mapa" element={<PaginaMapa />} />
         <Route path="/trenes" element={<PaginaTrenes />} />
+        <Route path="/puntualidad" element={<PaginaPuntualidad />} />
         <Route path="*" element={<PaginaNoEncontrada />} />
       </Route>
     </Routes>

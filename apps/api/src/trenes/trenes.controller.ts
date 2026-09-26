@@ -35,4 +35,11 @@ export class TrenesController {
     }
     return this.trenesService.traza(vehiculo, horas ? Number(horas) : 24);
   }
+
+  @Get('puntualidad')
+  @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 10 } })
+  puntualidad(@Query('mes') mes?: string, @Query('orden') orden?: string) {
+    return this.trenesService.puntualidadMes(mes, orden);
+  }
 }

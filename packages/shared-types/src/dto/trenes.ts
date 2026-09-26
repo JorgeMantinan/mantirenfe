@@ -98,3 +98,15 @@ export interface EstadoDisponibilidad {
   trenes: EstadoTrenDisponible[];
   consultadoEn: string;
 }
+
+/** Ranking mensual de impuntualidad (servicios con retraso >= umbral) */
+export interface PuntualidadTrenResponse {
+  vehiculoId: string;
+  numeroTren: string | null;
+  /** Nº de servicios (trip+fecha) impuntuales en el mes */
+  vecesImpuntuales: number;
+  /** Media del retraso máximo de cada servicio, en segundos */
+  retrasoMedioSeg: number;
+  /** Peor retraso visto en el mes, en segundos */
+  retrasoMaxSeg: number;
+}

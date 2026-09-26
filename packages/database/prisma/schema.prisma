@@ -177,3 +177,16 @@ model PosicionHistorial {
   @@index([vehiculoId, en])
   @@index([en])
 }
+
+model ImpuntualidadTren {
+  id            String   @id @default(cuid())
+  tripId        String
+  vehiculoId    String
+  numeroTren    String?
+  fecha         DateTime @db.Date
+  retrasoMaxSeg Int
+  creadoEn      DateTime @default(now())
+
+  @@unique([tripId, fecha])
+  @@index([fecha])
+}
