@@ -3,6 +3,7 @@ import type {
   EstadoDisponibilidad,
   EstadoTrenDisponible,
 } from '@mantirenfe/shared-types';
+import { cruzarConexiones, type TramoHorario } from '@mantirenfe/shared-types';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import json5 from 'json5';
 import type { FuenteDatosTren } from './tipos';
@@ -254,8 +255,20 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
     let trenes: EstadoTrenDisponible[];
     try {
       trenes = await conCache(CACHE_VENTA, claveCache, ttlMs, () =>
-        this.consultarVenta(origen, destino, consulta.fecha),
+        consultarVentaDwr(origen, destino, consulta.fecha),
       );
+      // Sin tren directo (ej. A Coruña → Valencia): se consulta la disponibilidad
+      // de los tramos de una conexión (A→X y X→B) y se combinan.
+      if (trenes.length === 0 && !consulta.numeroTren) {
+        const porConexion = await this.consultarPorConexion(
+          prisma,
+          origen,
+          destino,
+          consulta.fecha,
+          ttlMs,
+        );
+        if (porConexion) trenes = porConexion;
+      }
       fallosConsecutivos = 0;
     } catch (error) {
       fallosConsecutivos += 1;
@@ -272,130 +285,229 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
     return { consulta, trenes: filtrados, consultadoEn: new Date().toISOString() };
   }
 
-  private async consultarVenta(
-    origen: { codigo: string; nombre: string },
-    destino: { codigo: string; nombre: string },
+  /**
+   * Ruta sin tren directo: cruza los horarios de A→X y X→B en la BD, consulta a
+   * la venta la disponibilidad de cada tramo (con caché por ruta) y combina:
+   * la conexión está disponible si los DOS tramos lo están (precio = suma).
+   */
+  private async consultarPorConexion(
+    prisma: ReturnType<typeof getPrisma>,
+    origen: { id: string; codigo: string; nombre: string },
+    destino: { id: string; codigo: string; nombre: string },
     fechaIso: string,
-  ): Promise<EstadoTrenDisponible[]> {
-    const searchId = crearSearchId();
-    let batchId = 0;
-    const cookieBusqueda = encodeURIComponent(
-      JSON.stringify({
-        origen: { code: origen.codigo, name: origen.nombre },
-        destino: { code: destino.codigo, name: destino.nombre },
-        pasajerosAdultos: 1,
-        pasajerosNinos: 0,
-        pasajerosSpChild: 0,
+    ttlMs: number,
+  ): Promise<EstadoTrenDisponible[] | null> {
+    const fecha = new Date(`${fechaIso}T00:00:00Z`);
+    const selectTramo = {
+      numeroTren: true,
+      salida: true,
+      llegada: true,
+      operador: true,
+      origenEstacionId: true,
+      destinoEstacionId: true,
+      origen: { select: { nombre: true, codigo: true } },
+      destino: { select: { nombre: true, codigo: true } },
+    } as const;
+    const [salientes, entrantes] = await Promise.all([
+      prisma.horarioTren.findMany({
+        where: { origenEstacionId: origen.id, destinoEstacionId: { notIn: [destino.id] }, fecha },
+        orderBy: { salida: 'asc' },
+        take: 100,
+        select: selectTramo,
       }),
-    );
-    const cabecerosBase = {
-      'user-agent': UA,
-      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'accept-language': 'es-ES,es;q=0.9,en;q=0.8',
+      prisma.horarioTren.findMany({
+        where: { destinoEstacionId: destino.id, origenEstacionId: { notIn: [origen.id] }, fecha },
+        orderBy: { salida: 'asc' },
+        take: 100,
+        select: selectTramo,
+      }),
+    ]);
+    const aTramo = (h: (typeof salientes)[number]): TramoHorario => ({
+      numeroTren: h.numeroTren,
+      origenNombre: h.origen.nombre,
+      destinoNombre: h.destino.nombre,
+      origenEstacionId: h.origenEstacionId,
+      destinoEstacionId: h.destinoEstacionId,
+      salida: h.salida,
+      llegada: h.llegada,
+      operador: h.operador,
+    });
+    const conexiones = cruzarConexiones(salientes.map(aTramo), entrantes.map(aTramo), 10);
+    if (conexiones.length === 0) return null;
+
+    // Estaciones intermedias (X) de cada conexión
+    const intermedias = new Map<string, { codigo: string; nombre: string }>();
+    for (const id of new Set(conexiones.map((c) => c.primera.destinoEstacionId))) {
+      const x = await prisma.estacion.findUnique({
+        where: { id },
+        select: { codigo: true, nombre: true },
+      });
+      if (x) intermedias.set(id, x);
+    }
+
+    const porRuta = new Map<string, EstadoTrenDisponible[]>();
+    const obtenerTramo = async (
+      de: { codigo: string; nombre: string },
+      a: { codigo: string; nombre: string },
+    ) => {
+      const clave = `${de.codigo}-${a.codigo}-${fechaIso}`;
+      const cacheado = porRuta.get(clave);
+      if (cacheado) return cacheado;
+      const lista = await conCache(CACHE_VENTA, clave, ttlMs, () =>
+        consultarVentaDwr(de, a, fechaIso),
+      );
+      porRuta.set(clave, lista);
+      return lista;
     };
 
-    // 0) Sesión del servidor (JSESSIONID + WAF): sin ella buscarTren.do devuelve 500
-    const respuestaHome = await textoConTimeout(HOME_URL, {
-      headers: { ...cabecerosBase, accept: 'text/html' },
-    });
-    const cookiesServidor = (respuestaHome.headers.getSetCookie?.() ?? [])
-      .map((c) => c.split(';')[0])
-      .join('; ');
-    const cookieBase = [cookiesServidor, `Search=${cookieBusqueda}`].filter(Boolean).join('; ');
-
-    const cabeceros = (cookieExtra?: string, referer = HOME_URL): Record<string, string> => ({
-      ...cabecerosBase,
-      cookie: cookieExtra ? `${cookieBase}; ${cookieExtra}` : cookieBase,
-      referer,
-    });
-
-    // 1) Inicializar la búsqueda de la venta
-    const [anio, mes, dia] = fechaIso.split('-');
-    const fechaLarga = `${dia}/${mes}/${anio}`;
-    const form = new URLSearchParams({
-      tipoBusqueda: 'autocomplete',
-      currenLocation: 'menuBusqueda',
-      vengoderenfecom: 'SI',
-      desOrigen: origen.nombre,
-      desDestino: destino.nombre,
-      cdgoOrigen: origen.codigo,
-      cdgoDestino: destino.codigo,
-      idiomaBusqueda: 'ES',
-      FechaIdaSel: fechaLarga,
-      FechaVueltaSel: '',
-      _fechaIdaVisual: fechaLarga,
-      _fechaVueltaVisual: '',
-      adultos_: '1',
-      ninos_: '0',
-      ninosMenores: '0',
-      codPromocional: '',
-      plazaH: 'false',
-      sinEnlace: 'false',
-      asistencia: 'false',
-      franjaHoraI: '',
-      franjaHoraV: '',
-      Idioma: 'es',
-      Pais: 'ES',
-    });
-    await textoConTimeout(SEARCH_URL, {
-      method: 'POST',
-      headers: { ...cabeceros(), 'content-type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-    });
-
-    // 2) Token DWR (dos llamadas: priming y con searchId)
-    const primerGenerate = payloadGenerateId(batchId++, null);
-    await textoConTimeout(SYSTEM_ID_URL, {
-      method: 'POST',
-      headers: { ...cabeceros(), 'content-type': 'text/plain; charset=utf-8' },
-      body: primerGenerate,
-    });
-    const segundaGenerate = payloadGenerateId(batchId++, searchId);
-    const respuestaToken = await textoConTimeout(SYSTEM_ID_URL, {
-      method: 'POST',
-      headers: { ...cabeceros(), 'content-type': 'text/plain; charset=utf-8' },
-      body: segundaGenerate,
-    });
-    const token = extraerToken(await respuestaToken.text());
-    const cookieSesion = `DWRSESSIONID=${token}`;
-    const scriptSession = scriptSessionId(token);
-
-    // 3) Actualizar sesión
-    await textoConTimeout(UPDATE_SESSION_URL, {
-      method: 'POST',
-      headers: {
-        ...cabeceros(cookieSesion, SEARCH_URL.replace(/\?.*/, '')),
-        'content-type': 'text/plain; charset=utf-8',
-      },
-      body: payloadUpdateSession(batchId++, searchId, scriptSession),
-    });
-
-    // 4) Listado de trenes con tarifas
-    const respuestaLista = await textoConTimeout(TRAIN_LIST_URL, {
-      method: 'POST',
-      headers: {
-        ...cabeceros(cookieSesion, SEARCH_URL.replace(/\?.*/, '')),
-        'content-type': 'text/plain; charset=utf-8',
-      },
-      body: payloadTrainList(batchId++, searchId, scriptSession, fechaLarga),
-    });
-    const datos = extraerListaTrenes(await respuestaLista.text());
-
-    const origenDireccion = datos.listadoTrenes?.[0]?.listviajeViewEnlaceBean ?? [];
-    return origenDireccion.map((t) => {
-      const tramo = t.trayectos?.[0];
-      const numero =
-        tramo?.cdgoTren ?? t.cdgoTren ?? t.numeroTren ?? t.numTren ?? t.codigoTren ?? t.idTren;
-      const fechaTren = t.fecha ?? tramo?.fecha ?? fechaIso;
-      const salida = t.horaSalida ? t.horaSalida.slice(0, 5) : '';
-      return {
-        trenId: `${numero ?? `${origen.codigo}-${destino.codigo}`}-${fechaTren}`,
-        numeroTren: numero ?? 'desconocido',
-        salida,
-        disponible: disponibleSegunReglas(t),
-        precioMin: t.tarifaMinima ? Number(t.tarifaMinima.replace(',', '.')) : null,
+    const resultado: EstadoTrenDisponible[] = [];
+    for (const c of conexiones) {
+      const x = intermedias.get(c.primera.destinoEstacionId);
+      if (!x) continue;
+      const tramo1 = await obtenerTramo(origen, x);
+      const tramo2 = await obtenerTramo(x, destino);
+      const t1 = tramo1.find((t) => t.numeroTren === c.primera.numeroTren);
+      const t2 = tramo2.find((t) => t.numeroTren === c.segunda.numeroTren);
+      if (!t1 || !t2) continue;
+      resultado.push({
+        trenId: `c-${fechaIso}-${c.primera.numeroTren}-${c.segunda.numeroTren}`,
+        numeroTren: `${c.primera.numeroTren} + ${c.segunda.numeroTren}`,
+        salida: c.primera.salida.toISOString().slice(11, 16),
+        disponible: t1.disponible && t2.disponible,
+        precioMin:
+          t1.precioMin != null && t2.precioMin != null
+            ? Math.round((t1.precioMin + t2.precioMin) * 100) / 100
+            : null,
         moneda: 'EUR' as const,
-      };
-    });
+      });
+    }
+    return resultado.length > 0 ? resultado : null;
   }
+}
+
+export async function consultarVentaDwr(
+  origen: { codigo: string; nombre: string },
+  destino: { codigo: string; nombre: string },
+  fechaIso: string,
+): Promise<EstadoTrenDisponible[]> {
+  const searchId = crearSearchId();
+  let batchId = 0;
+  const cookieBusqueda = encodeURIComponent(
+    JSON.stringify({
+      origen: { code: origen.codigo, name: origen.nombre },
+      destino: { code: destino.codigo, name: destino.nombre },
+      pasajerosAdultos: 1,
+      pasajerosNinos: 0,
+      pasajerosSpChild: 0,
+    }),
+  );
+  const cabecerosBase = {
+    'user-agent': UA,
+    accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'accept-language': 'es-ES,es;q=0.9,en;q=0.8',
+  };
+
+  // 0) Sesión del servidor (JSESSIONID + WAF): sin ella buscarTren.do devuelve 500
+  const respuestaHome = await textoConTimeout(HOME_URL, {
+    headers: { ...cabecerosBase, accept: 'text/html' },
+  });
+  const cookiesServidor = (respuestaHome.headers.getSetCookie?.() ?? [])
+    .map((c) => c.split(';')[0])
+    .join('; ');
+  const cookieBase = [cookiesServidor, `Search=${cookieBusqueda}`].filter(Boolean).join('; ');
+
+  const cabeceros = (cookieExtra?: string, referer = HOME_URL): Record<string, string> => ({
+    ...cabecerosBase,
+    cookie: cookieExtra ? `${cookieBase}; ${cookieExtra}` : cookieBase,
+    referer,
+  });
+
+  // 1) Inicializar la búsqueda de la venta
+  const [anio, mes, dia] = fechaIso.split('-');
+  const fechaLarga = `${dia}/${mes}/${anio}`;
+  const form = new URLSearchParams({
+    tipoBusqueda: 'autocomplete',
+    currenLocation: 'menuBusqueda',
+    vengoderenfecom: 'SI',
+    desOrigen: origen.nombre,
+    desDestino: destino.nombre,
+    cdgoOrigen: origen.codigo,
+    cdgoDestino: destino.codigo,
+    idiomaBusqueda: 'ES',
+    FechaIdaSel: fechaLarga,
+    FechaVueltaSel: '',
+    _fechaIdaVisual: fechaLarga,
+    _fechaVueltaVisual: '',
+    adultos_: '1',
+    ninos_: '0',
+    ninosMenores: '0',
+    codPromocional: '',
+    plazaH: 'false',
+    sinEnlace: 'false',
+    asistencia: 'false',
+    franjaHoraI: '',
+    franjaHoraV: '',
+    Idioma: 'es',
+    Pais: 'ES',
+  });
+  await textoConTimeout(SEARCH_URL, {
+    method: 'POST',
+    headers: { ...cabeceros(), 'content-type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+
+  // 2) Token DWR (dos llamadas: priming y con searchId)
+  const primerGenerate = payloadGenerateId(batchId++, null);
+  await textoConTimeout(SYSTEM_ID_URL, {
+    method: 'POST',
+    headers: { ...cabeceros(), 'content-type': 'text/plain; charset=utf-8' },
+    body: primerGenerate,
+  });
+  const segundaGenerate = payloadGenerateId(batchId++, searchId);
+  const respuestaToken = await textoConTimeout(SYSTEM_ID_URL, {
+    method: 'POST',
+    headers: { ...cabeceros(), 'content-type': 'text/plain; charset=utf-8' },
+    body: segundaGenerate,
+  });
+  const token = extraerToken(await respuestaToken.text());
+  const cookieSesion = `DWRSESSIONID=${token}`;
+  const scriptSession = scriptSessionId(token);
+
+  // 3) Actualizar sesión
+  await textoConTimeout(UPDATE_SESSION_URL, {
+    method: 'POST',
+    headers: {
+      ...cabeceros(cookieSesion, SEARCH_URL.replace(/\?.*/, '')),
+      'content-type': 'text/plain; charset=utf-8',
+    },
+    body: payloadUpdateSession(batchId++, searchId, scriptSession),
+  });
+
+  // 4) Listado de trenes con tarifas
+  const respuestaLista = await textoConTimeout(TRAIN_LIST_URL, {
+    method: 'POST',
+    headers: {
+      ...cabeceros(cookieSesion, SEARCH_URL.replace(/\?.*/, '')),
+      'content-type': 'text/plain; charset=utf-8',
+    },
+    body: payloadTrainList(batchId++, searchId, scriptSession, fechaLarga),
+  });
+  const datos = extraerListaTrenes(await respuestaLista.text());
+
+  const origenDireccion = datos.listadoTrenes?.[0]?.listviajeViewEnlaceBean ?? [];
+  return origenDireccion.map((t) => {
+    const tramo = t.trayectos?.[0];
+    const numero =
+      tramo?.cdgoTren ?? t.cdgoTren ?? t.numeroTren ?? t.numTren ?? t.codigoTren ?? t.idTren;
+    const fechaTren = t.fecha ?? tramo?.fecha ?? fechaIso;
+    const salida = t.horaSalida ? t.horaSalida.slice(0, 5) : '';
+    return {
+      trenId: `${numero ?? `${origen.codigo}-${destino.codigo}`}-${fechaTren}`,
+      numeroTren: numero ?? 'desconocido',
+      salida,
+      disponible: disponibleSegunReglas(t),
+      precioMin: t.tarifaMinima ? Number(t.tarifaMinima.replace(',', '.')) : null,
+      moneda: 'EUR' as const,
+    };
+  });
 }

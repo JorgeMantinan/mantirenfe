@@ -2,13 +2,13 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
+  cruzarConexiones,
   HorarioTrenResponse,
   parsearRetrasos,
   PosicionTrenResponse,
   PuntoTraza,
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
-import { cruzarConexiones } from './conexiones';
 import { enriquecerPosiciones } from './enriquecer';
 
 interface CachePosiciones {

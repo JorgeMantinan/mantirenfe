@@ -1,4 +1,5 @@
 export * from './constantes';
+export * from './conexiones';
 export * from './errores-auth';
 export * from './gtfs-rt';
 export * from './dto/auth';

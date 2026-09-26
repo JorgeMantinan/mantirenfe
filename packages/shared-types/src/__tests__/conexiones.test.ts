@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cruzarConexiones, mismoGrupoTransbordo, type TramoHorario } from './conexiones';
+import { cruzarConexiones, mismoGrupoTransbordo, type TramoHorario } from '../conexiones';
 
 const tramo = (sobrantes: Partial<TramoHorario>): TramoHorario => ({
   numeroTren: 'T1',
