@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mantirenfe.app"
+      "bundleIdentifier": "com.mantirenfe.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,10 +33,23 @@
       "expo-router",
       "expo-status-bar",
       "expo-sqlite",
-      ["expo-notifications", { "color": "#75258c", "defaultChannel": "default" }]
+      [
+        "expo-notifications",
+        {
+          "color": "#75258c",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6d1d0127-ac67-4b9c-81e4-ccbd2d5b991c"
+      }
+    },
+    "owner": "jorgemantinan"
   }
 }
