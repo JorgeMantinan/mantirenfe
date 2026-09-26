@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BONOS, INTERVALOS_SONDEO_MIN, type EstacionResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
@@ -19,16 +19,30 @@ export default function NuevaAlerta() {
 
   const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  useEffect(() => {
-    api<EstacionResponse[]>('/estaciones?limite=40')
-      .then(setEstaciones)
-      .catch(() => setEstaciones([]));
-  }, []);
+  // Búsqueda remota con debounce: la lista fija de40 no incluía, p.ej., Vigo
+  const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peticionActual = useRef(0);
 
-  const sugerencias = (texto: string) =>
-    estaciones
-      .filter((e) => e.nombre.toLowerCase().includes(texto.trim().toLowerCase()))
-      .slice(0, 5);
+  const buscarEstaciones = (texto: string) => {
+    clearTimeout(timerBusqueda.current);
+    const q = texto.trim();
+    if (q.length < 2) {
+      setEstaciones([]);
+      return;
+    }
+    timerBusqueda.current = setTimeout(() => {
+      const id = ++peticionActual.current;
+      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=8`)
+        .then((r) => {
+          if (peticionActual.current === id) setEstaciones(r);
+        })
+        .catch(() => undefined);
+    }, 250);
+  };
+
+  useEffect(() => () => clearTimeout(timerBusqueda.current), []);
+
+  const sugerencias = () => estaciones.slice(0, 5);
 
   const enviar = async () => {
     const datos = {
@@ -72,10 +86,13 @@ export default function NuevaAlerta() {
         placeholder="Estación de origen"
         placeholderTextColor={colores.textoSecundario}
         value={origen}
-        onChangeText={setOrigen}
+        onChangeText={(v) => {
+          setOrigen(v);
+          buscarEstaciones(v);
+        }}
       />
       {origen.trim().length >= 2 &&
-        sugerencias(origen).map((e) => (
+        sugerencias().map((e) => (
           <Text key={e.id} style={estilos.sugerencia} onPress={() => setOrigen(e.nombre)}>
             {e.nombre}
           </Text>
@@ -87,10 +104,13 @@ export default function NuevaAlerta() {
         placeholder="Estación de destino"
         placeholderTextColor={colores.textoSecundario}
         value={destino}
-        onChangeText={setDestino}
+        onChangeText={(v) => {
+          setDestino(v);
+          buscarEstaciones(v);
+        }}
       />
       {destino.trim().length >= 2 &&
-        sugerencias(destino).map((e) => (
+        sugerencias().map((e) => (
           <Text key={e.id} style={estilos.sugerencia} onPress={() => setDestino(e.nombre)}>
             {e.nombre}
           </Text>

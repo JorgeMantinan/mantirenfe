@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
@@ -40,11 +40,29 @@ export function PaginaNuevaAlerta() {
 
   const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  useEffect(() => {
-    api<EstacionResponse[]>('/estaciones?limite=40')
-      .then(setEstaciones)
-      .catch(() => setEstaciones([]));
-  }, []);
+  // Búsqueda de estaciones mientras se escribe (con debounce): la lista inicial
+  // solo traía las primeras40 alfabéticas y nunca aparecían, p.ej., las de Vigo.
+  const timerBusqueda = useRef<number | undefined>(undefined);
+  const peticionActual = useRef(0);
+
+  const buscarEstaciones = (texto: string) => {
+    window.clearTimeout(timerBusqueda.current);
+    const q = texto.trim();
+    if (q.length < 2) {
+      setEstaciones([]);
+      return;
+    }
+    timerBusqueda.current = window.setTimeout(() => {
+      const id = ++peticionActual.current;
+      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=10`)
+        .then((r) => {
+          if (peticionActual.current === id) setEstaciones(r);
+        })
+        .catch(() => undefined);
+    }, 250);
+  };
+
+  useEffect(() => () => window.clearTimeout(timerBusqueda.current), []);
 
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,7 +137,10 @@ export function PaginaNuevaAlerta() {
                   id="origen"
                   list="estaciones"
                   value={origen}
-                  onChange={(e) => setOrigen(e.target.value)}
+                  onChange={(e) => {
+                    setOrigen(e.target.value);
+                    buscarEstaciones(e.target.value);
+                  }}
                   placeholder="Madrid-Atocha"
                   required
                   minLength={2}
@@ -131,7 +152,10 @@ export function PaginaNuevaAlerta() {
                   id="destino"
                   list="estaciones"
                   value={destino}
-                  onChange={(e) => setDestino(e.target.value)}
+                  onChange={(e) => {
+                    setDestino(e.target.value);
+                    buscarEstaciones(e.target.value);
+                  }}
                   placeholder="Barcelona-Sants"
                   required
                   minLength={2}
