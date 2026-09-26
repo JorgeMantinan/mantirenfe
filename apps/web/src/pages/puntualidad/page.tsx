@@ -119,6 +119,8 @@ export function PaginaPuntualidad() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-3 font-medium">#</th>
                     <th className="py-2 pr-3 font-medium">Tren</th>
+                    <th className="py-2 pr-3 font-medium">Trayecto habitual</th>
+                    <th className="py-2 pr-3 font-medium">Salida</th>
                     <th className="py-2 pr-3 font-medium text-right">Servicios impuntuales</th>
                     <th className="py-2 pr-3 font-medium text-right">Retraso medio</th>
                     <th className="py-2 font-medium text-right">Peor retraso</th>
@@ -129,6 +131,16 @@ export function PaginaPuntualidad() {
                     <tr key={f.vehiculoId} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 text-muted-foreground">{i + 1}</td>
                       <td className="py-2 pr-3 font-medium">{f.numeroTren ?? f.vehiculoId}</td>
+                      <td className="py-2 pr-3">
+                        {f.origenNombre && f.destinoNombre ? (
+                          <>
+                            {f.origenNombre} → {f.destinoNombre}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">{f.salida ?? '—'}</td>
                       <td className="py-2 pr-3 text-right">{f.vecesImpuntuales}</td>
                       <td className="py-2 pr-3 text-right">{formatMinutos(f.retrasoMedioSeg)}</td>
                       <td className="py-2 text-right">{formatMinutos(f.retrasoMaxSeg)}</td>

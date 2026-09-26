@@ -50,6 +50,12 @@
         "projectId": "6d1d0127-ac67-4b9c-81e4-ccbd2d5b991c"
       }
     },
-    "owner": "jorgemantinan"
+    "owner": "jorgemantinan",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6d1d0127-ac67-4b9c-81e4-ccbd2d5b991c"
+    }
   }
 }

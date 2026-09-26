@@ -3,9 +3,11 @@ import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
   cruzarConexiones,
+  horaGtfs,
   HorarioTrenResponse,
   parsearRetrasos,
   PosicionTrenResponse,
+  prefijoTripId,
   PuntualidadTrenResponse,
   PuntoTraza,
 } from '@mantirenfe/shared-types';
@@ -436,6 +438,78 @@ export class TrenesService {
       retrasoMedioSeg: Math.round(f._avg.retrasoMaxSeg ?? 0),
       retrasoMaxSeg: f._max.retrasoMaxSeg ?? 0,
     }));
+
+    // Enriquecer con el trayecto y horario habitual de sus servicios impuntuales
+    try {
+      const servicios = await getPrisma().impuntualidadTren.findMany({
+        where: { fecha: { gte: desde, lt: hasta } },
+        select: { vehiculoId: true, numeroTren: true, tripId: true, fecha: true },
+      });
+      const numeros = new Set<string>();
+      for (const s of servicios) {
+        if (s.numeroTren) numeros.add(s.numeroTren);
+        numeros.add(prefijoTripId(s.tripId));
+      }
+      if (numeros.size > 0) {
+        const horarios = await getPrisma().horarioTren.findMany({
+          where: { numeroTren: { in: [...numeros] }, fecha: { gte: desde, lt: hasta } },
+          select: {
+            numeroTren: true,
+            fecha: true,
+            salida: true,
+            origen: { select: { nombre: true } },
+            destino: { select: { nombre: true } },
+          },
+        });
+        const porClave = new Map(
+          horarios.map((h) => [`${h.numeroTren}|${h.fecha.toISOString().slice(0, 10)}`, h]),
+        );
+        const trayectosPorVehiculo = new Map<
+          string,
+          Map<
+            string,
+            { cuenta: number; origen: string; destino: string; salida: string; fecha: string }
+          >
+        >();
+        for (const s of servicios) {
+          const dia = s.fecha.toISOString().slice(0, 10);
+          const horario =
+            porClave.get(`${s.numeroTren ?? ''}|${dia}`) ??
+            porClave.get(`${prefijoTripId(s.tripId)}|${dia}`);
+          if (!horario) continue;
+          const clave = `${horario.origen.nombre}→${horario.destino.nombre}|${horaGtfs(horario.salida.toISOString())}`;
+          const porVehiculo = trayectosPorVehiculo.get(s.vehiculoId) ?? new Map();
+          const previo = porVehiculo.get(clave);
+          porVehiculo.set(
+            clave,
+            previo
+              ? { ...previo, cuenta: previo.cuenta + 1 }
+              : {
+                  cuenta: 1,
+                  origen: horario.origen.nombre,
+                  destino: horario.destino.nombre,
+                  salida: horaGtfs(horario.salida.toISOString()),
+                  fecha: dia,
+                },
+          );
+          trayectosPorVehiculo.set(s.vehiculoId, porVehiculo);
+        }
+        for (const fila of resultado) {
+          const mejor = [...(trayectosPorVehiculo.get(fila.vehiculoId)?.values() ?? [])].sort(
+            (a, b) => b.cuenta - a.cuenta,
+          )[0];
+          if (mejor) {
+            fila.origenNombre = mejor.origen;
+            fila.destinoNombre = mejor.destino;
+            fila.salida = mejor.salida;
+            fila.fecha = mejor.fecha;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo enriquecer la puntualidad: ${String(error)}`);
+    }
+
     if (orden === 'impuntualidad') {
       resultado.sort((a, b) => b.retrasoMedioSeg - a.retrasoMedioSeg);
     } else {

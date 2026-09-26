@@ -109,4 +109,11 @@ export interface PuntualidadTrenResponse {
   retrasoMedioSeg: number;
   /** Peor retraso visto en el mes, en segundos */
   retrasoMaxSeg: number;
+  /** Trayecto habitual entre sus servicios impuntuales */
+  origenNombre?: string | null;
+  destinoNombre?: string | null;
+  /** Salida habitual del trayecto (hora peninsular HH:MM) */
+  salida?: string | null;
+  /** Fecha del servicio impuntual representativo (YYYY-MM-DD) */
+  fecha?: string | null;
 }
