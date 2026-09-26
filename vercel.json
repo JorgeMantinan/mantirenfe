@@ -13,6 +13,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://mantirenfe.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
