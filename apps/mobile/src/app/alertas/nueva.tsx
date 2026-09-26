@@ -1,7 +1,13 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BONOS, INTERVALOS_SONDEO_MIN, type EstacionResponse } from '@mantirenfe/shared-types';
+import {
+  BONOS,
+  INTERVALOS_SONDEO_MIN,
+  horaGtfs,
+  type EstacionResponse,
+  type HorarioTrenResponse,
+} from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { api } from '@/lib/api';
 import { etiquetaBono, validarAlerta } from '@/lib/alertas';
@@ -16,8 +22,85 @@ export default function NuevaAlerta() {
   const [notas, setNotas] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
+  const [numeroTren, setNumeroTren] = useState('');
+  const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
+
+  const params = useLocalSearchParams<{
+    origen?: string;
+    destino?: string;
+    fecha?: string;
+    numeroTren?: string;
+    editar?: string;
+  }>();
+  const editandoId = typeof params.editar === 'string' && params.editar ? params.editar : undefined;
 
   const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Precarga desde la búsqueda de trenes o carga completa en modo edición
+  useEffect(() => {
+    if (typeof params.origen === 'string' && params.origen) setOrigen(params.origen);
+    if (typeof params.destino === 'string' && params.destino) setDestino(params.destino);
+    if (typeof params.fecha === 'string' && params.fecha) setFecha(params.fecha);
+    if (typeof params.numeroTren === 'string' && params.numeroTren)
+      setNumeroTren(params.numeroTren);
+    if (!editandoId) return;
+    api<{
+      origenNombre: string;
+      destinoNombre: string;
+      fechaViaje: string;
+      horaDesde: string | null;
+      horaHasta: string | null;
+      numeroTren: string | null;
+      intervaloSondeoMin: number;
+      bono: string;
+      notas: string | null;
+    }>(`/alertas/${editandoId}`)
+      .then((a) => {
+        setOrigen(a.origenNombre);
+        setDestino(a.destinoNombre);
+        setFecha(a.fechaViaje);
+        setIntervalo(a.intervaloSondeoMin);
+        setBono(a.bono);
+        setNotas(a.notas ?? '');
+        setNumeroTren(a.numeroTren ?? '');
+      })
+      .catch(() => Alert.alert('Error', 'No se pudo cargar la alerta'));
+  }, [params, editandoId]);
+
+  // Los3 próximos trenes de la ruta
+  const timerTrenes = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peticionTrenes = useRef(0);
+  useEffect(() => {
+    clearTimeout(timerTrenes.current);
+    if (origen.trim().length < 2 || destino.trim().length < 2 || !fecha) {
+      setTrenesSugeridos([]);
+      return;
+    }
+    timerTrenes.current = setTimeout(() => {
+      const id = ++peticionTrenes.current;
+      api<{ trenes: HorarioTrenResponse[] }>(
+        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
+      )
+        .then((d) => {
+          if (peticionTrenes.current !== id) return;
+          const hoyIso = new Date().toISOString().slice(0, 10);
+          const horaAhora = new Intl.DateTimeFormat('es-ES', {
+            timeZone: 'Europe/Madrid',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).format(new Date());
+          const futuros = d.trenes.filter((t) => {
+            if (t.transbordo) return false;
+            if (fecha !== hoyIso) return true;
+            return horaGtfs(t.salida) > horaAhora;
+          });
+          setTrenesSugeridos(futuros.slice(0, 3));
+        })
+        .catch(() => undefined);
+    }, 400);
+    return () => clearTimeout(timerTrenes.current);
+  }, [origen, destino, fecha]);
 
   // Búsqueda remota con debounce: la lista fija de40 no incluía, p.ej., Vigo
   const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,6 +132,7 @@ export default function NuevaAlerta() {
       origenNombre: origen.trim(),
       destinoNombre: destino.trim(),
       fechaViaje: fecha,
+      numeroTren: numeroTren.trim() || null,
       criterio: 'DISPONIBILIDAD' as const,
       intervaloSondeoMin: intervalo,
       bono,
@@ -63,11 +147,17 @@ export default function NuevaAlerta() {
 
     setEnviando(true);
     try {
-      await api('/alertas', { method: 'POST', json: validacion.data });
-      Alert.alert('Alerta creada', 'Empezamos a vigilar este trayecto.');
+      await api(editandoId ? `/alertas/${editandoId}` : '/alertas', {
+        method: editandoId ? 'PATCH' : 'POST',
+        json: validacion.data,
+      });
+      Alert.alert(
+        editandoId ? 'Alerta actualizada' : 'Alerta creada',
+        editandoId ? 'Los cambios ya están aplicados.' : 'Empezamos a vigilar este trayecto.',
+      );
       router.back();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo crear la alerta');
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar la alerta');
     } finally {
       setEnviando(false);
     }
@@ -75,9 +165,11 @@ export default function NuevaAlerta() {
 
   return (
     <ScrollView style={estilos.pantalla} contentContainerStyle={estilos.contenido}>
-      <Text style={estilos.titulo}>Nueva alerta</Text>
+      <Text style={estilos.titulo}>{editandoId ? 'Editar alerta' : 'Nueva alerta'}</Text>
       <Text style={estilos.subtitulo}>
-        Te avisaremos cuando cambie la disponibilidad de este trayecto
+        {editandoId
+          ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta'
+          : 'Te avisaremos cuando cambie la disponibilidad de este trayecto'}
       </Text>
 
       <Text style={estilos.etiqueta}>Origen</Text>
@@ -126,6 +218,32 @@ export default function NuevaAlerta() {
         onChangeText={setFecha}
       />
       <Text style={estilos.pista}>Mínimo: {fechaMin}</Text>
+
+      <Text style={estilos.etiqueta}>Tren concreto (opcional)</Text>
+      <TextInput
+        style={estilos.campo}
+        placeholder="Ej.: 03311 — vacío = todos los trenes"
+        placeholderTextColor={colores.textoSecundario}
+        value={numeroTren}
+        onChangeText={setNumeroTren}
+        autoCapitalize="characters"
+      />
+      {trenesSugeridos.length > 0 && !numeroTren.trim() && (
+        <>
+          <Text style={estilos.pista}>Próximos trenes (toca para elegir):</Text>
+          <View style={estilos.chips}>
+            {trenesSugeridos.map((t) => (
+              <Text
+                key={`${t.numeroTren}-${t.salida}`}
+                style={[estilos.chip, numeroTren === t.numeroTren && estilos.chipActivo]}
+                onPress={() => setNumeroTren(t.numeroTren)}
+              >
+                {horaGtfs(t.salida)} · {t.numeroTren}
+              </Text>
+            ))}
+          </View>
+        </>
+      )}
 
       <Text style={estilos.etiqueta}>Intervalo de sondeo</Text>
       <View style={estilos.chips}>

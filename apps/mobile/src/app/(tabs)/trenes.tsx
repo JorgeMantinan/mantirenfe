@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
-import type {
-  EstacionResponse,
-  HorarioTrenResponse,
-  PosicionTrenResponse,
+import {
+  horaGtfs,
+  type EstacionResponse,
+  type HorarioTrenResponse,
+  type PosicionTrenResponse,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
@@ -208,15 +209,9 @@ export default function Trenes() {
                 <Etiqueta tono="primario">{item.duracionMin} min</Etiqueta>
               </View>
               <Text style={estilos.meta}>
-                {new Date(item.salida).toLocaleTimeString('es-ES', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {horaGtfs(item.salida)}
                 {' → '}
-                {new Date(item.llegada).toLocaleTimeString('es-ES', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {horaGtfs(item.llegada)}
                 {' · '}
                 {item.origenNombre} → {item.destinoNombre}
               </Text>
@@ -226,21 +221,31 @@ export default function Trenes() {
                   <Etiqueta tono="primario">Transbordo en {item.transbordo.estacion}</Etiqueta>
                   <Text style={estilos.meta}>
                     {item.transbordo.trenPrimera} llega a las{' '}
-                    {new Date(item.transbordo.llegadaPrimera).toLocaleTimeString('es-ES', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {horaGtfs(item.transbordo.llegadaPrimera)}
                     {' · espera '}
                     {item.transbordo.esperaMin} min
                     {' · '}
                     {item.transbordo.trenSegunda} sale a las{' '}
-                    {new Date(item.transbordo.salidaSegunda).toLocaleTimeString('es-ES', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {horaGtfs(item.transbordo.salidaSegunda)}
                   </Text>
                 </View>
               ) : null}
+              <Boton
+                titulo="+ Alerta"
+                variante="contorno"
+                onPress={() =>
+                  router.push({
+                    pathname: '/alertas/nueva',
+                    params: {
+                      origen,
+                      destino,
+                      fecha,
+                      numeroTren: item.transbordo ? '' : item.numeroTren,
+                    },
+                  })
+                }
+                style={{ marginTop: 8, alignSelf: 'flex-start' }}
+              />
             </Tarjeta>
           )}
         />

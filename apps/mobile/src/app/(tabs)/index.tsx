@@ -118,6 +118,14 @@ export default function Alertas() {
                 style={estilos.botonAccion}
               />
               <Boton
+                titulo="Editar"
+                variante="contorno"
+                onPress={() =>
+                  router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
+                }
+                style={estilos.botonAccion}
+              />
+              <Boton
                 titulo="Eliminar"
                 variante="fantasma"
                 onPress={() => eliminar(item)}

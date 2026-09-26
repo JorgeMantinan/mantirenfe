@@ -155,16 +155,9 @@ export function PaginaTrenes() {
                           </Badge>
                           <p className="text-xs text-muted-foreground">
                             {t.transbordo.trenPrimera} llega a las{' '}
-                            {new Date(t.transbordo.llegadaPrimera).toLocaleTimeString('es-ES', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}{' '}
-                            · espera {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale
-                            a las{' '}
-                            {new Date(t.transbordo.salidaSegunda).toLocaleTimeString('es-ES', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {horaGtfs(t.transbordo.llegadaPrimera)} · espera{' '}
+                            {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale a las{' '}
+                            {horaGtfs(t.transbordo.salidaSegunda)}
                           </p>
                         </div>
                       )}
