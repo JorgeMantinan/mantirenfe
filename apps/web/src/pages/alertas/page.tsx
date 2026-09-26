@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { BellRing, Pause, Play, Plus, Trash2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { BellRing, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
 import type { AlertaResponse } from '@mantirenfe/shared-types';
 
 export function PaginaAlertas() {
+  const navigate = useNavigate();
   const [alertas, setAlertas] = useState<AlertaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<AlertaResponse | null>(null);
@@ -162,6 +163,13 @@ export function PaginaAlertas() {
                         <Play aria-hidden="true" /> Reanudar
                       </>
                     )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/alertas/nueva?editar=${alerta.id}`)}
+                  >
+                    <Pencil aria-hidden="true" /> Editar
                   </Button>
                   <Button
                     variant="ghost"

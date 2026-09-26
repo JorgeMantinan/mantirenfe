@@ -6,6 +6,16 @@ export const busquedaHorariosQuerySchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+/**
+ * Las horas GTFS se guardan como hora peninsular tratada como UTC: para
+ * mostrarlas hay que leer el ISO directamente (sin convertir a la zona del
+ * navegador, que añadiría1-2 horas).
+ */
+export function horaGtfs(iso: string | null | undefined): string {
+  if (!iso) return '--:--';
+  return iso.length >= 16 ? iso.slice(11, 16) : iso;
+}
+
 export type BusquedaHorariosQuery = z.infer<typeof busquedaHorariosQuerySchema>;
 
 export interface TramoTransbordo {
@@ -37,6 +47,14 @@ export interface PosicionTrenResponse {
   velocidadKmh: number | null;
   retrasoSeg: number | null;
   actualizadaEn: string;
+  /** Trip del feed GTFS-RT (match de trayecto para Cercanías) */
+  tripId?: string | null;
+  /** Trayecto actual del tren (cruzado con horarioTren) si se conoce */
+  origenNombre?: string | null;
+  destinoNombre?: string | null;
+  salida?: string | null;
+  llegada?: string | null;
+  operador?: string | null;
 }
 
 export interface PuntoTraza {

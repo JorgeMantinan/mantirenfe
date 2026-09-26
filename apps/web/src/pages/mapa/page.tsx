@@ -6,7 +6,16 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { PosicionTrenResponse, PuntoTraza } from '@mantirenfe/shared-types';
+import { horaGtfs, type PosicionTrenResponse, type PuntoTraza } from '@mantirenfe/shared-types';
+
+// Tiles: por defecto Esri World Street (gratis, sin API key). Si quieres CARTO
+// u otro proveedor, define VITE_TILES_URL (+ VITE_TILES_ATTRIBUTION) en Vercel.
+const TILES_URL =
+  (import.meta.env.VITE_TILES_URL as string | undefined) ??
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+const TILES_ATTRIBUTION =
+  (import.meta.env.VITE_TILES_ATTRIBUTION as string | undefined) ??
+  '© <a href="https://www.esri.com/">Esri</a>, HERE, NAVTEQ, OpenStreetMap, NGA, USGS, NPS, METI, Garmin, GIS Finland, and the GIS community';
 
 const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 
@@ -117,10 +126,7 @@ export function PaginaMapa() {
               className="h-[480px] w-full"
               scrollWheelZoom
             >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-              />
+              <TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />
               <Actualizador posiciones={trenes ?? []} />
               {(trenes ?? []).map((tren) => (
                 <CircleMarker
@@ -136,7 +142,21 @@ export function PaginaMapa() {
                 >
                   <Popup>
                     <div className="space-y-1 text-sm">
-                      <strong>{tren.numeroTren ?? 'Tren'}</strong>
+                      <strong>
+                        {tren.numeroTren ?? 'Tren'}
+                        {tren.operador ? ` · ${tren.operador}` : ''}
+                      </strong>
+                      {tren.origenNombre && tren.destinoNombre && (
+                        <p className="font-medium">
+                          {tren.origenNombre} → {tren.destinoNombre}
+                        </p>
+                      )}
+                      {tren.salida && (
+                        <p>
+                          Salida {horaGtfs(tren.salida)}
+                          {tren.llegada ? ` · Llegada ${horaGtfs(tren.llegada)}` : ''}
+                        </p>
+                      )}
                       {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
                       {tren.retrasoSeg != null && (
                         <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>

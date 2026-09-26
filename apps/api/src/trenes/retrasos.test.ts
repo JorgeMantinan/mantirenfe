@@ -30,7 +30,12 @@ describe('aplicarRetrasos', () => {
 
     expect(salida.map((p) => p.retrasoSeg)).toEqual([480, 0, null, null]);
     expect(salida.every((p) => p.actualizadaEn === '2026-09-24T12:00:00.000Z')).toBe(true);
-    expect(salida.every((p) => !('tripId' in p))).toBe(true);
+    expect(salida.map((p) => p.tripId)).toEqual([
+      '3065J23573C1',
+      '3065J23574C1',
+      'sin-datos',
+      null,
+    ]);
   });
 
   it('funciona sin información de retrasos', () => {

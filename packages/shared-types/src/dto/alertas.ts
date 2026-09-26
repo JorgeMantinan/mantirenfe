@@ -55,6 +55,27 @@ export const actualizarAlertaSchema = z.object({
     .refine((v) => (INTERVALOS_SONDEO_MIN as readonly number[]).includes(v))
     .optional(),
   notas: z.string().trim().max(500).nullable().optional(),
+  // Campos editables de la ruta/viaje
+  origenNombre: z.string().trim().min(2, 'Indica la estación de origen').max(120).optional(),
+  destinoNombre: z.string().trim().min(2, 'Indica la estación de destino').max(120).optional(),
+  fechaViaje: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)')
+    .refine((v) => !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime()), 'Fecha inválida')
+    .optional(),
+  horaDesde: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Formato HH:MM')
+    .optional()
+    .nullable(),
+  horaHasta: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Formato HH:MM')
+    .optional()
+    .nullable(),
+  numeroTren: z.string().trim().max(20).optional().nullable(),
+  criterio: criterioAlertaSchema.optional(),
+  bono: z.enum(BONOS).optional(),
 });
 
 export type ActualizarAlertaInput = z.infer<typeof actualizarAlertaSchema>;

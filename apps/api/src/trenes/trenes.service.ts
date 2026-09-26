@@ -9,6 +9,7 @@ import {
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { cruzarConexiones } from './conexiones';
+import { enriquecerPosiciones } from './enriquecer';
 
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
@@ -179,16 +180,17 @@ export class TrenesService {
       }
 
       const datos = aplicarRetrasos(crudas, retrasos, new Date().toISOString());
+      const enriquecidos = await this.enriquecerConHorarios(datos);
 
-      this.cachePosiciones = { datos, caduca: Date.now() + ttl };
+      this.cachePosiciones = { datos: enriquecidos, caduca: Date.now() + ttl };
 
       // Historial: guarda un snapshot cada N minutos (no en cada refresco)
       if (Date.now() - this.ultimaPersistenciaPosiciones >= this.intervaloPersistenciaMs) {
         this.ultimaPersistenciaPosiciones = Date.now();
-        void this.persistirPosiciones(datos);
+        void this.persistirPosiciones(enriquecidos);
       }
 
-      return { fuente: 'gtfs-rt', trenes: datos, total: datos.length };
+      return { fuente: 'gtfs-rt', trenes: enriquecidos, total: enriquecidos.length };
     } catch (error) {
       this.logger.warn(`No se pudieron obtener posiciones GTFS-RT: ${String(error)}`);
       if (this.cachePosiciones) {
@@ -207,6 +209,61 @@ export class TrenesService {
       return { fuente: 'gtfs-rt', trenes: [], total: 0 };
     } finally {
       this.enCurso = false;
+    }
+  }
+
+  /**
+   * Añade el trayecto actual (origen/destino/horas/operador) a cada posición
+   * cruzándola con los horarios de ayer y hoy en la BD. Si algo falla, las
+   * posiciones se devuelven sin enriquecer (no bloquea el mapa).
+   */
+  private async enriquecerConHorarios(
+    posiciones: PosicionTrenResponse[],
+  ): Promise<PosicionTrenResponse[]> {
+    try {
+      const claves = new Set<string>();
+      for (const p of posiciones) {
+        if (p.numeroTren) claves.add(p.numeroTren);
+        if (p.tripId) claves.add(p.tripId);
+      }
+      if (claves.size === 0) return posiciones;
+
+      const hoy = new Date();
+      hoy.setUTCHours(0, 0, 0, 0);
+      const ayer = new Date(hoy);
+      ayer.setUTCDate(ayer.getUTCDate() - 1);
+
+      const horarios = await getPrisma().horarioTren.findMany({
+        where: {
+          fecha: { in: [ayer, hoy] },
+          numeroTren: { in: [...claves] },
+        },
+        select: {
+          numeroTren: true,
+          salida: true,
+          llegada: true,
+          operador: true,
+          origen: { select: { nombre: true } },
+          destino: { select: { nombre: true } },
+        },
+      });
+      if (horarios.length === 0) return posiciones;
+
+      return enriquecerPosiciones(
+        posiciones,
+        horarios.map((h) => ({
+          numeroTren: h.numeroTren,
+          origenNombre: h.origen.nombre,
+          destinoNombre: h.destino.nombre,
+          salida: h.salida,
+          llegada: h.llegada,
+          operador: h.operador,
+        })),
+        new Date(),
+      );
+    } catch (error) {
+      this.logger.warn(`No se pudieron enriquecer posiciones con horarios: ${String(error)}`);
+      return posiciones;
     }
   }
 

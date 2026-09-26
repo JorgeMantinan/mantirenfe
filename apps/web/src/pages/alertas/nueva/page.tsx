@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -10,7 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SELECT_CLS } from '@/lib/ui-constants';
 import { BONOS, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
-import type { EstacionResponse } from '@mantirenfe/shared-types';
+import {
+  horaGtfs,
+  type AlertaResponse,
+  type EstacionResponse,
+  type HorarioTrenResponse,
+} from '@mantirenfe/shared-types';
 
 const ETIQUETAS_BONOS: Record<string, string> = {
   GENERAL: 'Sin bono / general',
@@ -26,6 +31,8 @@ const ETIQUETAS_BONOS: Record<string, string> = {
 
 export function PaginaNuevaAlerta() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const editandoId = params.get('editar');
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
@@ -34,9 +41,11 @@ export function PaginaNuevaAlerta() {
   const [criterio, setCriterio] = useState('DISPONIBILIDAD');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState('GENERAL');
+  const [numeroTren, setNumeroTren] = useState('');
   const [notas, setNotas] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
+  const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
 
   const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -64,6 +73,71 @@ export function PaginaNuevaAlerta() {
 
   useEffect(() => () => window.clearTimeout(timerBusqueda.current), []);
 
+  // Precarga desde la búsqueda de trenes (?origen=&destino=&fecha=&numeroTren=)
+  // o carga completa al modo edición (?editar=<id>)
+  useEffect(() => {
+    const origenParam = params.get('origen');
+    const destinoParam = params.get('destino');
+    const fechaParam = params.get('fecha');
+    const trenParam = params.get('numeroTren');
+    if (origenParam) setOrigen(origenParam);
+    if (destinoParam) setDestino(destinoParam);
+    if (fechaParam) setFecha(fechaParam);
+    if (trenParam) setNumeroTren(trenParam);
+
+    if (editandoId) {
+      api<AlertaResponse>(`/alertas/${editandoId}`)
+        .then((a) => {
+          setOrigen(a.origenNombre);
+          setDestino(a.destinoNombre);
+          setFecha(a.fechaViaje);
+          setHoraDesde(a.horaDesde ?? '');
+          setHoraHasta(a.horaHasta ?? '');
+          setCriterio(a.criterio);
+          setIntervalo(a.intervaloSondeoMin);
+          setBono(a.bono);
+          setNotas(a.notas ?? '');
+          setNumeroTren(a.numeroTren ?? '');
+        })
+        .catch(() => toast.error('No se pudo cargar la alerta'));
+    }
+  }, [params, editandoId]);
+
+  // Los 3 próximos trenes de la ruta (para elegir sin escribir el número)
+  useEffect(() => {
+    if (origen.trim().length < 2 || destino.trim().length < 2 || !fecha) {
+      setTrenesSugeridos([]);
+      return;
+    }
+    const controlador = new AbortController();
+    const timer = window.setTimeout(() => {
+      api<{ trenes: HorarioTrenResponse[] }>(
+        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
+        { signal: controlador.signal },
+      )
+        .then((d) => {
+          const hoyIso = new Date().toISOString().slice(0, 10);
+          const horaAhora = new Intl.DateTimeFormat('es-ES', {
+            timeZone: 'Europe/Madrid',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).format(new Date());
+          const futuros = d.trenes.filter((t) => {
+            if (t.transbordo) return false;
+            if (fecha !== hoyIso) return true;
+            return horaGtfs(t.salida) > horaAhora;
+          });
+          setTrenesSugeridos(futuros.slice(0, 3));
+        })
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controlador.abort();
+    };
+  }, [origen, destino, fecha]);
+
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
     if (origen.trim().length < 2 || destino.trim().length < 2) {
@@ -77,14 +151,17 @@ export function PaginaNuevaAlerta() {
 
     setEnviando(true);
     try {
-      const resultado = await api<{ id?: string; error?: unknown }>('/alertas', {
-        method: 'POST',
+      const url = editandoId ? `/alertas/${editandoId}` : '/alertas';
+      const metodo = editandoId ? 'PATCH' : 'POST';
+      const resultado = await api<{ id?: string; error?: unknown }>(url, {
+        method: metodo,
         json: {
           origenNombre: origen.trim(),
           destinoNombre: destino.trim(),
           fechaViaje: fecha,
           horaDesde: horaDesde || null,
           horaHasta: horaHasta || null,
+          numeroTren: numeroTren.trim() || null,
           criterio,
           intervaloSondeoMin: intervalo,
           bono,
@@ -97,10 +174,10 @@ export function PaginaNuevaAlerta() {
         return;
       }
 
-      toast.success('Alerta creada. Empezamos a vigilarla.');
+      toast.success(editandoId ? 'Alerta actualizada.' : 'Alerta creada. Empezamos a vigilarla.');
       navigate('/alertas');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo crear la alerta');
+      toast.error(e instanceof Error ? e.message : 'No se pudo guardar la alerta');
     } finally {
       setEnviando(false);
     }
@@ -112,9 +189,13 @@ export function PaginaNuevaAlerta() {
         <Button variant="ghost" size="sm" onClick={() => navigate('/alertas')} className="-ml-2">
           <ArrowLeft aria-hidden="true" /> Volver
         </Button>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Nueva alerta</h1>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">
+          {editandoId ? 'Editar alerta' : 'Nueva alerta'}
+        </h1>
         <p className="text-muted-foreground">
-          Te avisaremos cuando cambie la disponibilidad de este trayecto
+          {editandoId
+            ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta'
+            : 'Te avisaremos cuando cambie la disponibilidad de este trayecto'}
         </p>
       </div>
 
@@ -202,6 +283,40 @@ export function PaginaNuevaAlerta() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="numeroTren">Tren concreto (opcional)</Label>
+              <Input
+                id="numeroTren"
+                value={numeroTren}
+                onChange={(e) => setNumeroTren(e.target.value)}
+                placeholder="Ej.: 03311 — vacío = se vigila todos los trenes"
+                maxLength={20}
+              />
+              {trenesSugeridos.length > 0 && !numeroTren.trim() && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Próximos:</span>
+                  {trenesSugeridos.map((t) => (
+                    <Button
+                      key={`${t.numeroTren}-${t.salida}`}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setNumeroTren(t.numeroTren)}
+                    >
+                      {horaGtfs(t.salida)} · {t.numeroTren}
+                      {t.operador ? ` · ${t.operador}` : ''}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {trenesSugeridos.length > 0 && !numeroTren.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  Elige uno de los próximos o déjalo en blanco para vigilar todos.
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="criterio">Qué quieres detectar</Label>
@@ -267,7 +382,11 @@ export function PaginaNuevaAlerta() {
             </div>
 
             <Button type="submit" className="w-full" disabled={enviando}>
-              {enviando ? 'Creando...' : 'Crear alerta y empezar a vigilar'}
+              {enviando
+                ? 'Guardando...'
+                : editandoId
+                  ? 'Guardar cambios'
+                  : 'Crear alerta y empezar a vigilar'}
             </Button>
           </form>
         </CardContent>

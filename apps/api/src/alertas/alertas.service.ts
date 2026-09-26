@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
+import { buscarEstaciones, getPrisma, Prisma } from '@mantirenfe/database';
 import {
   AlertaResponse,
   COLA_SONDEO,
@@ -106,19 +106,66 @@ export class AlertasService {
     const existente = await prisma.alerta.findFirst({ where: { id, usuarioId: usuario.sub } });
     if (!existente) throw new NotFoundException('Alerta no encontrada');
 
+    // Si cambia la ruta o el viaje, se re-resuelve la estación y se resetea el
+    // estado para que el próximo sondeo no compare contra datos de otra ruta.
+    const nuevaRuta: Record<string, unknown> = {};
+    let cambioRuta = false;
+
+    if (datos.origenNombre !== undefined && datos.origenNombre !== existente.origenNombre) {
+      const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
+      nuevaRuta.origenNombre = datos.origenNombre;
+      nuevaRuta.origenEstacionId = origen?.id ?? null;
+      cambioRuta = true;
+    }
+    if (datos.destinoNombre !== undefined && datos.destinoNombre !== existente.destinoNombre) {
+      const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
+      nuevaRuta.destinoNombre = datos.destinoNombre;
+      nuevaRuta.destinoEstacionId = destino?.id ?? null;
+      cambioRuta = true;
+    }
+    if (datos.fechaViaje !== undefined) {
+      nuevaRuta.fechaViaje = new Date(`${datos.fechaViaje}T00:00:00Z`);
+      cambioRuta = true;
+      // Se re-arman los avisos del día de viaje
+      nuevaRuta.recordatorioEnviadoEn = null;
+      nuevaRuta.resumenEnviadoEn = null;
+    }
+    if (datos.horaDesde !== undefined) {
+      nuevaRuta.horaDesde = datos.horaDesde;
+      cambioRuta = true;
+    }
+    if (datos.horaHasta !== undefined) {
+      nuevaRuta.horaHasta = datos.horaHasta;
+      cambioRuta = true;
+    }
+    if (datos.numeroTren !== undefined) {
+      nuevaRuta.numeroTren = datos.numeroTren;
+      cambioRuta = true;
+    }
+
+    const data: Record<string, unknown> = { ...nuevaRuta };
+    if (datos.estado !== undefined) data.estado = datos.estado;
+    if (datos.intervaloSondeoMin !== undefined) data.intervaloSondeoMin = datos.intervaloSondeoMin;
+    if (datos.notas !== undefined) data.notas = datos.notas;
+    if (datos.criterio !== undefined) {
+      data.criterio = datos.criterio;
+      cambioRuta = true;
+    }
+    if (datos.bono !== undefined) data.bono = datos.bono;
+    if (cambioRuta) {
+      data.ultimoEstado = Prisma.JsonNull;
+      data.ultimoSondeoEn = null;
+    }
+
     const alerta = await prisma.alerta.update({
       where: { id },
-      data: {
-        estado: datos.estado,
-        intervaloSondeoMin: datos.intervaloSondeoMin,
-        notas: datos.notas === undefined ? undefined : datos.notas,
-      },
+      data: data as never,
     });
 
     if (datos.estado === 'PAUSA' || datos.estado === 'COMPLETADA') {
       const jobs = await this.colaSondeo.getJobs(['delayed', 'waiting', 'prioritized']);
       await Promise.all(jobs.filter((job) => job.data?.alertaId === id).map((job) => job.remove()));
-    } else if (datos.estado === 'ACTIVA') {
+    } else if (datos.estado === 'ACTIVA' || cambioRuta) {
       await this.encolarSondeo(id);
     }
 

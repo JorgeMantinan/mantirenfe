@@ -21,6 +21,7 @@ export function aplicarRetrasos(
 
   return [...porVehiculo.values()].map(({ tripId, ...posicion }) => ({
     ...posicion,
+    tripId,
     retrasoSeg: tripId !== null ? (retrasos.get(prefijoTripId(tripId)) ?? null) : null,
     actualizadaEn,
   }));

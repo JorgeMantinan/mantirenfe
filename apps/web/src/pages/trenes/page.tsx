@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Search, TrainFront } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { BellPlus, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import type { HorarioTrenResponse } from '@mantirenfe/shared-types';
+import { horaGtfs, type HorarioTrenResponse } from '@mantirenfe/shared-types';
 
 export function PaginaTrenes() {
+  const navigate = useNavigate();
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
@@ -138,15 +140,7 @@ export function PaginaTrenes() {
                   >
                     <div>
                       <p className="font-medium">
-                        {new Date(t.salida).toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}{' '}
-                        →{' '}
-                        {new Date(t.llegada).toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {horaGtfs(t.salida)} → {horaGtfs(t.llegada)}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {t.origenNombre} · {t.destinoNombre} · {t.duracionMin} min
@@ -178,6 +172,22 @@ export function PaginaTrenes() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{t.numeroTren}</Badge>
                       {t.operador && <Badge variant="secondary">{t.operador}</Badge>}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          navigate(
+                            `/alertas/nueva?origen=${encodeURIComponent(t.origenNombre)}` +
+                              `&destino=${encodeURIComponent(t.destinoNombre)}` +
+                              `&fecha=${fecha}` +
+                              (t.transbordo
+                                ? ''
+                                : `&numeroTren=${encodeURIComponent(t.numeroTren)}`),
+                          )
+                        }
+                      >
+                        <BellPlus className="h-4 w-4" aria-hidden="true" /> Alerta
+                      </Button>
                     </div>
                   </li>
                 ))}
