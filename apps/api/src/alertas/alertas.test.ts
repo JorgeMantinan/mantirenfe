@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actualizaAlertaSchema, crearAlertaSchema } from '@mantirenfe/shared-types';
+import { actualizarAlertaSchema, crearAlertaSchema } from '@mantirenfe/shared-types';
 
 describe('API (schemas compartidos)', () => {
   it('el esquema de alertas es el mismo que usa la web', () => {
@@ -16,7 +16,7 @@ describe('API (schemas compartidos)', () => {
 
 describe('actualizarAlertaSchema (edición)', () => {
   it('acepta cambiar la ruta, la fecha y el tren', () => {
-    const resultado = actualizaAlertaSchema.safeParse({
+    const resultado = actualizarAlertaSchema.safeParse({
       origenNombre: 'Madrid-Puerta de Atocha',
       destinoNombre: 'Barcelona-Sants',
       fechaViaje: '2026-10-05',
@@ -29,14 +29,14 @@ describe('actualizarAlertaSchema (edición)', () => {
   });
 
   it('acepta cambios parciales (solo estado o solo notas)', () => {
-    expect(actualizaAlertaSchema.safeParse({ estado: 'PAUSA' }).success).toBe(true);
-    expect(actualizaAlertaSchema.safeParse({ notas: null }).success).toBe(true);
-    expect(actualizaAlertaSchema.safeParse({ intervaloSondeoMin: 15 }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ estado: 'PAUSA' }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ notas: null }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ intervaloSondeoMin: 15 }).success).toBe(true);
   });
 
   it('rechaza fechas y horas inválidas', () => {
-    expect(actualizaAlertaSchema.safeParse({ fechaViaje: 'mañana' }).success).toBe(false);
-    expect(actualizaAlertaSchema.safeParse({ horaDesde: '25:99' }).success).toBe(false);
-    expect(actualizaAlertaSchema.safeParse({ criterio: 'NINGUNO' }).success).toBe(false);
+    expect(actualizarAlertaSchema.safeParse({ fechaViaje: 'mañana' }).success).toBe(false);
+    expect(actualizarAlertaSchema.safeParse({ horaDesde: '25:99' }).success).toBe(false);
+    expect(actualizarAlertaSchema.safeParse({ criterio: 'NINGUNO' }).success).toBe(false);
   });
 });
