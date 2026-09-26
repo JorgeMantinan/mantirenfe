@@ -23,6 +23,8 @@ services:
       # Obligatorias (rellenar en el dashboard)
       - key: WEB_ORIGIN
         sync: false
+      - key: SUPABASE_URL
+        sync: false
       - key: DATABASE_URL_APP
         sync: false
       - key: REDIS_URL
