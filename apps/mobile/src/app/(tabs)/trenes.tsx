@@ -338,9 +338,24 @@ export default function Trenes() {
                   </Etiqueta>
                 ) : null}
               </View>
-              <Text style={estilos.meta}>
-                {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
-              </Text>
+              {item.origenNombre && item.destinoNombre ? (
+                <Text style={estilos.meta}>
+                  {item.origenNombre} → {item.destinoNombre}
+                </Text>
+              ) : null}
+              {item.salida || item.llegada ? (
+                <Text style={estilos.meta}>
+                  {item.salida ? `Salida ${horaGtfs(item.salida)}` : ''}
+                  {item.salida && item.llegada ? ' · ' : ''}
+                  {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
+                </Text>
+              ) : null}
+              {item.operador ? <Text style={estilos.meta}>{item.operador}</Text> : null}
+              {!item.origenNombre ? (
+                <Text style={estilos.meta}>
+                  {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
+                </Text>
+              ) : null}
             </Tarjeta>
           )}
         />
