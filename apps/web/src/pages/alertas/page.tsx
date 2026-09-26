@@ -22,6 +22,8 @@ export function PaginaAlertas() {
   const [alertas, setAlertas] = useState<AlertaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<AlertaResponse | null>(null);
+  const [filtro, setFiltro] = useState<'TODAS' | 'ACTIVA' | 'PAUSA' | 'COMPLETADA'>('TODAS');
+  const visibles = (alertas ?? []).filter((a) => filtro === 'TODAS' || a.estado === filtro);
 
   const cargar = useCallback(() => {
     api<AlertaResponse[]>('/alertas')
@@ -78,6 +80,28 @@ export function PaginaAlertas() {
         </Button>
       </div>
 
+      {alertas !== null && alertas.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['TODAS', 'Todas'],
+              ['ACTIVA', 'Activas'],
+              ['PAUSA', 'En pausa'],
+              ['COMPLETADA', 'Completadas'],
+            ] as const
+          ).map(([valor, etiqueta]) => (
+            <Button
+              key={valor}
+              variant={filtro === valor ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFiltro(valor)}
+            >
+              {etiqueta}
+            </Button>
+          ))}
+        </div>
+      )}
+
       {alertas === null ? (
         <div className="space-y-3">
           <Skeleton className="h-24 w-full" />
@@ -105,7 +129,10 @@ export function PaginaAlertas() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {alertas.map((alerta) => (
+          {visibles.length === 0 && (
+            <p className="text-sm text-muted-foreground">No hay alertas con ese estado.</p>
+          )}
+          {visibles.map((alerta) => (
             <Card key={alerta.id} className="transition-shadow hover:shadow-md">
               <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
                 <div className="space-y-1">

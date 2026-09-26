@@ -23,7 +23,15 @@ export default function DetalleAlerta() {
     ])
       .then(([datos, todas]) => {
         setAlerta(datos);
-        setNotificaciones(todas.filter((n) => n.alertaId === id));
+        const deEstaAlerta = todas.filter((n) => n.alertaId === id);
+        setNotificaciones(deEstaAlerta);
+        // Al abrir el detalle se marcan como leídos los avisos de esta alerta
+        const sinLeer = deEstaAlerta.filter((n) => !n.leida).map((n) => n.id);
+        if (sinLeer.length > 0) {
+          void api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids: sinLeer } })
+            .then(() => setNotificaciones(deEstaAlerta.map((n) => ({ ...n, leida: true }))))
+            .catch(() => undefined);
+        }
         setError(null);
       })
       .catch((e: Error) => setError(e.message))
