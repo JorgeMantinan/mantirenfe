@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import AdmZip from 'adm-zip';
+import unzipper from 'unzipper';
 import { getPrisma } from '@mantirenfe/database';
 
 const URLS_GTFS_DEFECTO = [
@@ -7,45 +7,91 @@ const URLS_GTFS_DEFECTO = [
   'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip',
 ];
 
-function parsearCsv(contenido: string): Array<Record<string, string>> {
-  const lineas = contenido.trim().split(/\r?\n/);
-  const cabecera = (lineas[0] ?? '').split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+/** Entries que se retienen completos (son pequeños). El resto ni se extrae. */
+const ENTRADAS_PEQUENAS = [
+  'stops.txt',
+  'calendar.txt',
+  'calendar_dates.txt',
+  'routes.txt',
+  'agency.txt',
+  'trips.txt',
+];
+
+function memoriaMb(): number {
+  const u = process.memoryUsage();
+  return Math.round((u.heapUsed + u.external + u.arrayBuffers) / 1048576);
+}
+
+/** Parsea una línea CSV (con comillas) en celdas ya limpias. */
+function parsearLinea(linea: string): string[] {
+  const celdas: string[] = [];
+  let actual = '';
+  let dentroComillas = false;
+  for (let i = 0; i < linea.length; i++) {
+    const char = linea[i];
+    if (char === '"') {
+      dentroComillas = !dentroComillas;
+    } else if (char === ',' && !dentroComillas) {
+      celdas.push(actual.trim().replace(/^"|"$/g, ''));
+      actual = '';
+    } else {
+      actual += char;
+    }
+  }
+  celdas.push(actual.trim().replace(/^"|"$/g, ''));
+  return celdas;
+}
+
+function parsearCsv(contenido: string | Buffer): Array<Record<string, string>> {
+  const texto = typeof contenido === 'string' ? contenido : contenido.toString('utf8');
+  const lineas = texto.trim().split(/\r?\n/);
+  const cabecera = parsearLinea(lineas[0] ?? '');
   const resultados: Array<Record<string, string>> = [];
 
-  for (const linea of lineas.slice(1)) {
+  for (let i = 1; i < lineas.length; i++) {
+    const linea = lineas[i] ?? '';
     if (!linea.trim()) continue;
-    const celdas: string[] = [];
-    let actual = '';
-    let dentroComillas = false;
-    for (let i = 0; i < linea.length; i++) {
-      const char = linea[i];
-      if (char === '"') {
-        dentroComillas = !dentroComillas;
-      } else if (char === ',' && !dentroComillas) {
-        celdas.push(actual);
-        actual = '';
-      } else {
-        actual += char;
-      }
-    }
-    celdas.push(actual);
+    const celdas = parsearLinea(linea);
     const fila: Record<string, string> = {};
     cabecera.forEach((clave, index) => {
-      fila[clave] = (celdas[index] ?? '').trim().replace(/^"|"$/g, '');
+      fila[clave] = celdas[index] ?? '';
     });
     resultados.push(fila);
   }
   return resultados;
 }
 
-function leerEntrada(zip: AdmZip, nombre: string): string | null {
-  const entrada =
-    zip.getEntry(nombre) ??
-    zip
-      .getEntries()
-      .find((e) => e.entryName.endsWith(`/${nombre}`) || e.entryName.endsWith(`\\${nombre}`));
-  if (!entrada) return null;
-  return entrada.getData().toString('utf8');
+/** Recorre un CSV Buffer línea a línea sin crear el array de líneas completo. */
+function recorrerLineas(
+  contenido: Buffer,
+  procesarCabecera: (cabecera: string[]) => void,
+  procesarLineaCb: (celdas: string[]) => void,
+): void {
+  let inicio = 0;
+  if (
+    contenido.length >= 3 &&
+    contenido[0] === 0xef &&
+    contenido[1] === 0xbb &&
+    contenido[2] === 0xbf
+  ) {
+    inicio = 3;
+  }
+  const finCabecera = contenido.indexOf('\n', inicio);
+  if (finCabecera < 0) {
+    procesarCabecera(parsearLinea(contenido.toString('utf8', inicio)));
+    return;
+  }
+  procesarCabecera(parsearLinea(contenido.toString('utf8', inicio, finCabecera)));
+  inicio = finCabecera + 1;
+
+  while (inicio < contenido.length) {
+    let fin = contenido.indexOf('\n', inicio);
+    if (fin < 0) fin = contenido.length;
+    if (fin > inicio) {
+      procesarLineaCb(parsearLinea(contenido.toString('utf8', inicio, fin)));
+    }
+    inicio = fin + 1;
+  }
 }
 
 function minutosDesdeMedianoche(hora: string): number | null {
@@ -121,25 +167,6 @@ function diasActivos(
   return activos;
 }
 
-async function descargarZip(url: string, logger: Logger): Promise<AdmZip | null> {
-  const controlador = new AbortController();
-  const timeout = setTimeout(() => controlador.abort(), 60_000);
-  try {
-    const respuesta = await fetch(url, { signal: controlador.signal });
-    if (!respuesta.ok) {
-      logger.warn({ url, status: respuesta.status }, 'GTFS zip no disponible');
-      return null;
-    }
-    const buffer = Buffer.from(await respuesta.arrayBuffer());
-    return new AdmZip(buffer);
-  } catch (error) {
-    logger.warn({ url, err: error }, 'Error descargando GTFS zip');
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function urlGtfs(): string[] {
   const env = process.env.GTFS_ZIP_URLS?.trim();
   if (!env) return URLS_GTFS_DEFECTO;
@@ -149,19 +176,88 @@ function urlGtfs(): string[] {
     .filter(Boolean);
 }
 
+interface ManejadorStopTimes {
+  cabecera: (celdas: string[]) => void;
+  linea: (celdas: string[]) => void;
+}
+
+/**
+ * Descarga un zip GTFS y recorre sus entries EN STREAMING:
+ * - stop_times.txt (gigante, ~1GB descomprimido en fomento) se procesa línea a
+ *   línea sin retenerse en memoria.
+ * - Los entries pequeños (trips, calendar, stops...) se guardan como Buffer.
+ * - El resto (shapes, etc.) ni se extrae.
+ * Con adm-zip el zip entero se descomprimía en RAM (+1.3GB) y revienta los
+ * contenedores free de Render (512MB) en el sync de las 04:00.
+ */
+async function recorrerZip(
+  url: string,
+  logger: Logger,
+  stopTimes?: ManejadorStopTimes,
+): Promise<Map<string, Buffer>> {
+  const buffers = new Map<string, Buffer>();
+  let descarga: Buffer | null = null;
+  try {
+    const respuesta = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+    if (!respuesta.ok) {
+      logger.warn({ url, status: respuesta.status }, 'GTFS zip no disponible');
+      return buffers;
+    }
+    // El zip crudo en RAM (27-110MB): unzipper solo descomprime los entries
+    // que pedimos. (Pasarlo por streams de red hacia unzipper no mantiene el
+    // event loop y el proceso moría en silencio.)
+    descarga = Buffer.from(await respuesta.arrayBuffer());
+
+    const directorio = await unzipper.Open.buffer(descarga);
+    for (const entry of directorio.files) {
+      const nombre = entry.path.split('/').pop() ?? '';
+      if (nombre === 'stop_times.txt' && stopTimes) {
+        let pendiente = Buffer.alloc(0);
+        let cabeceraHecha = false;
+        const procesarLinea = (linea: string) => {
+          if (!cabeceraHecha) {
+            stopTimes.cabecera(parsearLinea(linea));
+            cabeceraHecha = true;
+          } else if (linea.trim()) {
+            stopTimes.linea(parsearLinea(linea));
+          }
+        };
+        for await (const trozo of entry.stream()) {
+          pendiente = Buffer.concat([pendiente, trozo as Buffer]);
+          let fin = pendiente.indexOf(10);
+          while (fin >= 0) {
+            procesarLinea(pendiente.subarray(0, fin).toString('utf8').replace(/\r$/, ''));
+            pendiente = pendiente.subarray(fin + 1);
+            fin = pendiente.indexOf(10);
+          }
+        }
+        if (pendiente.length > 0) procesarLinea(pendiente.toString('utf8'));
+      } else if (ENTRADAS_PEQUENAS.includes(nombre)) {
+        buffers.set(nombre, await entry.buffer());
+      }
+      // el resto (shapes, etc.) ni se extrae: no consume memoria
+    }
+  } catch (error) {
+    logger.warn({ url, err: error }, 'Error recorriendo GTFS zip');
+  } finally {
+    descarga = null;
+  }
+  return buffers;
+}
+
 export async function sincronizarEstaciones(logger: Logger): Promise<number> {
   const prisma = getPrisma();
   let total = 0;
 
   for (const url of urlGtfs()) {
-    const zip = await descargarZip(url, logger);
-    if (!zip) continue;
-    const contenido = leerEntrada(zip, 'stops.txt');
-    if (!contenido) {
+    const buffers = await recorrerZip(url, logger);
+    const stops = buffers.get('stops.txt');
+    buffers.clear();
+    if (!stops) {
       logger.warn({ url }, 'stops.txt ausente en el zip');
       continue;
     }
-    const filas = parsearCsv(contenido);
+    const filas = parsearCsv(stops);
     for (const fila of filas) {
       const codigo = fila.stop_id || fila.stop_code;
       const nombre = fila.stop_name;
@@ -188,8 +284,57 @@ export async function sincronizarEstaciones(logger: Logger): Promise<number> {
     }
   }
 
-  logger.info({ count: total }, 'Estaciones GTFS sincronizadas');
+  logger.info({ count: total, mb: memoriaMb() }, 'Estaciones GTFS sincronizadas');
   return total;
+}
+
+interface ParadaViaje {
+  stopId: string;
+  orden: number;
+  llegada: number;
+  salida: number;
+}
+
+interface ExtremosViaje {
+  primera: ParadaViaje;
+  ultima: ParadaViaje;
+}
+
+interface TripLigero {
+  tripId: string;
+  serviceId: string;
+  routeId: string;
+  numeroTren: string;
+}
+
+function tripsLigeros(contenido: Buffer): TripLigero[] {
+  const trips: TripLigero[] = [];
+  let iTrip = -1;
+  let iService = -1;
+  let iRoute = -1;
+  let iShort = -1;
+
+  recorrerLineas(
+    contenido,
+    (cabecera) => {
+      iTrip = cabecera.indexOf('trip_id');
+      iService = cabecera.indexOf('service_id');
+      iRoute = cabecera.indexOf('route_id');
+      iShort = cabecera.indexOf('trip_short_name');
+    },
+    (celdas) => {
+      const tripId = iTrip >= 0 ? celdas[iTrip] : '';
+      const serviceId = iService >= 0 ? celdas[iService] : '';
+      if (!tripId || !serviceId) return;
+      trips.push({
+        tripId,
+        serviceId,
+        routeId: iRoute >= 0 ? (celdas[iRoute] ?? '') : '',
+        numeroTren: iShort >= 0 ? (celdas[iShort] ?? '') : '',
+      });
+    },
+  );
+  return trips;
 }
 
 export async function sincronizarHorarios(logger: Logger): Promise<number> {
@@ -204,31 +349,70 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
   let insertados = 0;
 
   for (const url of urlGtfs()) {
-    const zip = await descargarZip(url, logger);
-    if (!zip) continue;
+    // stop_times se acumula solo en sus extremos (primera/ultima parada por trip)
+    const extremos = new Map<string, ExtremosViaje>();
+    let iTrip = -1;
+    let iStop = -1;
+    let iSeq = -1;
+    let iArr = -1;
+    let iDep = -1;
 
-    const tripsCsv = leerEntrada(zip, 'trips.txt');
-    const stopTimesCsv = leerEntrada(zip, 'stop_times.txt');
-    const calendarCsv = leerEntrada(zip, 'calendar.txt');
-    const calendarDatesCsv = leerEntrada(zip, 'calendar_dates.txt');
-    const routesCsv = leerEntrada(zip, 'routes.txt');
-    const agencyCsv = leerEntrada(zip, 'agency.txt');
+    const buffers = await recorrerZip(url, logger, {
+      cabecera: (cabecera) => {
+        iTrip = cabecera.indexOf('trip_id');
+        iStop = cabecera.indexOf('stop_id');
+        iSeq = cabecera.indexOf('stop_sequence');
+        iArr = cabecera.indexOf('arrival_time');
+        iDep = cabecera.indexOf('departure_time');
+      },
+      linea: (celdas) => {
+        const tripId = iTrip >= 0 ? celdas[iTrip] : undefined;
+        const stopId = iStop >= 0 ? celdas[iStop] : undefined;
+        if (!tripId || !stopId) return;
+        const orden = Number(iSeq >= 0 ? celdas[iSeq] : NaN);
+        const llegada = minutosDesdeMedianoche(
+          (iArr >= 0 ? celdas[iArr] : '') || (iDep >= 0 ? celdas[iDep] : '') || '',
+        );
+        const salida = minutosDesdeMedianoche(
+          (iDep >= 0 ? celdas[iDep] : '') || (iArr >= 0 ? celdas[iArr] : '') || '',
+        );
+        if (!Number.isFinite(orden) || llegada === null || salida === null) return;
 
-    if (!tripsCsv || !stopTimesCsv) {
-      logger.warn({ url }, 'trips.txt/stop_times.txt ausentes, se omite este feed');
+        const parada: ParadaViaje = { stopId, orden, llegada, salida };
+        const ext = extremos.get(tripId);
+        if (!ext) {
+          extremos.set(tripId, { primera: parada, ultima: parada });
+        } else {
+          if (orden < ext.primera.orden) ext.primera = parada;
+          if (orden > ext.ultima.orden) ext.ultima = parada;
+        }
+      },
+    });
+
+    logger.info({ fase: 'stop-times', url, mb: memoriaMb(), trips: extremos.size }, 'sync memoria');
+
+    const tripsBuf = buffers.get('trips.txt');
+    const calendarBuf = buffers.get('calendar.txt');
+    const calendarDatesBuf = buffers.get('calendar_dates.txt');
+    const routesBuf = buffers.get('routes.txt');
+    const agencyBuf = buffers.get('agency.txt');
+    buffers.clear();
+
+    if (!tripsBuf) {
+      logger.warn({ url }, 'trips.txt ausente en el zip, se omite este feed');
       continue;
     }
 
     const calendar = new Map<string, Record<string, string>>();
-    if (calendarCsv) {
-      for (const fila of parsearCsv(calendarCsv)) {
+    if (calendarBuf) {
+      for (const fila of parsearCsv(calendarBuf)) {
         if (fila.service_id) calendar.set(fila.service_id, fila);
       }
     }
 
     const calendarDates = new Map<string, Array<{ fecha: string; tipo: string }>>();
-    if (calendarDatesCsv) {
-      for (const fila of parsearCsv(calendarDatesCsv)) {
+    if (calendarDatesBuf) {
+      for (const fila of parsearCsv(calendarDatesBuf)) {
         const fecha = fechaIsoDesdeGtfs(fila.date ?? '');
         if (!fila.service_id || !fecha || !fila.exception_type) continue;
         const lista = calendarDates.get(fila.service_id) ?? [];
@@ -239,13 +423,13 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
 
     const operadorPorRuta = new Map<string, string | null>();
     const agencyPorId = new Map<string, string>();
-    if (agencyCsv) {
-      for (const fila of parsearCsv(agencyCsv)) {
+    if (agencyBuf) {
+      for (const fila of parsearCsv(agencyBuf)) {
         if (fila.agency_id && fila.agency_name) agencyPorId.set(fila.agency_id, fila.agency_name);
       }
     }
-    if (routesCsv) {
-      for (const fila of parsearCsv(routesCsv)) {
+    if (routesBuf) {
+      for (const fila of parsearCsv(routesBuf)) {
         if (!fila.route_id) continue;
         operadorPorRuta.set(
           fila.route_id,
@@ -257,25 +441,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       }
     }
 
-    interface ParadaViaje {
-      stopId: string;
-      orden: number;
-      llegada: number;
-      salida: number;
-    }
-    const paradasPorTrip = new Map<string, ParadaViaje[]>();
-    for (const fila of parsearCsv(stopTimesCsv)) {
-      const tripId = fila.trip_id;
-      const stopId = fila.stop_id;
-      if (!tripId || !stopId) continue;
-      const orden = Number(fila.stop_sequence);
-      const llegada = minutosDesdeMedianoche(fila.arrival_time || fila.departure_time || '');
-      const salida = minutosDesdeMedianoche(fila.departure_time || fila.arrival_time || '');
-      if (!Number.isFinite(orden) || llegada === null || salida === null) continue;
-      const lista = paradasPorTrip.get(tripId) ?? [];
-      lista.push({ stopId, orden, llegada, salida });
-      paradasPorTrip.set(tripId, lista);
-    }
+    const trips = tripsLigeros(tripsBuf);
 
     const estacionesPorCodigo = new Map(
       (await prisma.estacion.findMany({ select: { id: true, codigo: true } })).map((e) => [
@@ -284,8 +450,8 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       ]),
     );
 
-    const trips = parsearCsv(tripsCsv);
-    const lote: Array<{
+    const fechasCache = new Map<string, Set<string>>();
+    let lote: Array<{
       numeroTren: string;
       fecha: Date;
       salida: Date;
@@ -295,12 +461,18 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       destinoEstacionId: string;
     }> = [];
 
-    const fechasCache = new Map<string, Set<string>>();
+    const vaciarLote = async () => {
+      if (lote.length === 0) return;
+      const resultado = await prisma.horarioTren.createMany({
+        data: lote,
+        skipDuplicates: true,
+      });
+      insertados += resultado.count;
+      lote = [];
+    };
 
     for (const trip of trips) {
-      const tripId = trip.trip_id;
-      const serviceId = trip.service_id;
-      if (!tripId || !serviceId) continue;
+      const { tripId, serviceId, routeId, numeroTren: numeroTrenBruto } = trip;
 
       let fechas = fechasCache.get(serviceId);
       if (!fechas) {
@@ -309,20 +481,18 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       }
       if (fechas.size === 0) continue;
 
-      const paradas = paradasPorTrip.get(tripId);
-      if (!paradas || paradas.length < 2) continue;
-      paradas.sort((a, b) => a.orden - b.orden);
+      const ext = extremos.get(tripId);
+      if (!ext) continue;
+      // Equivalente a "al menos 2 paradas" del original
+      if (ext.primera.orden === ext.ultima.orden) continue;
 
-      const primera = paradas[0];
-      const ultima = paradas[paradas.length - 1];
-      if (!primera || !ultima) continue;
-      const origenId = estacionesPorCodigo.get(primera.stopId);
-      const destinoId = estacionesPorCodigo.get(ultima.stopId);
+      const origenId = estacionesPorCodigo.get(ext.primera.stopId);
+      const destinoId = estacionesPorCodigo.get(ext.ultima.stopId);
       if (!origenId || !destinoId || origenId === destinoId) continue;
 
-      const numeroTren = trip.trip_short_name || trip.trip_id || 'sin-numero';
-      const operador = operadorPorRuta.get(trip.route_id ?? '') ?? null;
-      const duracionMin = Math.max(1, ultima.llegada - primera.salida);
+      const numeroTren = numeroTrenBruto || tripId || 'sin-numero';
+      const operador = operadorPorRuta.get(routeId) ?? null;
+      const duracionMin = Math.max(1, ext.ultima.llegada - ext.primera.salida);
 
       for (const fechaIso of fechas) {
         const partes = fechaIso.split('-').map(Number);
@@ -331,7 +501,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         const dia = partes[2];
         if (ano === undefined || mes === undefined || dia === undefined) continue;
         const base = Date.UTC(ano, mes - 1, dia);
-        const salidaMs = base + primera.salida * 60_000;
+        const salidaMs = base + ext.primera.salida * 60_000;
         const llegadaMs = salidaMs + duracionMin * 60_000;
         lote.push({
           numeroTren,
@@ -342,21 +512,13 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
           origenEstacionId: origenId,
           destinoEstacionId: destinoId,
         });
+        if (lote.length >= 500) await vaciarLote();
       }
     }
-
-    const TAM_LOTE = 500;
-    for (let i = 0; i < lote.length; i += TAM_LOTE) {
-      const trozo = lote.slice(i, i + TAM_LOTE);
-      const resultado = await prisma.horarioTren.createMany({
-        data: trozo,
-        skipDuplicates: true,
-      });
-      insertados += resultado.count;
-    }
+    await vaciarLote();
 
     logger.info(
-      { url, trips: trips.length, fechas: fechasCache.size, insertados },
+      { url, trips: trips.length, fechas: fechasCache.size, insertados, mb: memoriaMb() },
       'Horarios GTFS importados',
     );
   }
