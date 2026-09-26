@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
@@ -38,6 +38,52 @@ export default function Trenes() {
       .finally(() => setCargando(false));
   }, []);
 
+  // Búsqueda en el servidor mientras se escribe (la lista fija no incluía,
+  // p.ej., estaciones como Arcade que empiezan pasadas las primeras30)
+  const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peticionBusqueda = useRef(0);
+  const buscarEstacionesTexto = (texto: string) => {
+    clearTimeout(timerBusqueda.current);
+    const q = texto.trim();
+    if (q.length < 2) {
+      cargarEstaciones();
+      return;
+    }
+    timerBusqueda.current = setTimeout(() => {
+      const id = ++peticionBusqueda.current;
+      api<EstacionResponse[]>(`/estaciones?limite=8&q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          if (peticionBusqueda.current === id) setEstaciones(r);
+        })
+        .catch(() => undefined);
+    }, 250);
+  };
+
+  useEffect(() => () => clearTimeout(timerBusqueda.current), []);
+
+  // Sugerencias para el formulario de horarios (también con búsqueda en vivo)
+  const [sugerenciasForm, setSugerenciasForm] = useState<EstacionResponse[]>([]);
+  const timerSugerencias = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peticionSugerencias = useRef(0);
+  const buscarSugerencias = (texto: string) => {
+    clearTimeout(timerSugerencias.current);
+    const q = texto.trim();
+    if (q.length < 2) {
+      setSugerenciasForm([]);
+      return;
+    }
+    timerSugerencias.current = setTimeout(() => {
+      const id = ++peticionSugerencias.current;
+      api<EstacionResponse[]>(`/estaciones?limite=5&q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          if (peticionSugerencias.current === id) setSugerenciasForm(r);
+        })
+        .catch(() => undefined);
+    }, 250);
+  };
+
+  useEffect(() => () => clearTimeout(timerSugerencias.current), []);
+
   const cargarPosiciones = useCallback(() => {
     setCargando(true);
     api<{ trenes: PosicionTrenResponse[] }>('/trenes/posiciones')
@@ -56,17 +102,7 @@ export default function Trenes() {
     }, [modo, cargarEstaciones, cargarPosiciones]),
   );
 
-  const filtradas = useMemo(() => {
-    const texto = buscar.trim().toLowerCase();
-    if (!texto) return estaciones;
-    return estaciones.filter((e) => `${e.nombre} ${e.ciudad ?? ''}`.toLowerCase().includes(texto));
-  }, [estaciones, buscar]);
-
-  const sugerencias = (texto: string) => {
-    const t = texto.trim().toLowerCase();
-    if (t.length < 2) return [];
-    return estaciones.filter((e) => e.nombre.toLowerCase().includes(t)).slice(0, 5);
-  };
+  const sugerencias = () => sugerenciasForm;
 
   const buscarHorarios = async () => {
     if (!origen.trim() || !destino.trim() || !fecha) return;
@@ -119,7 +155,10 @@ export default function Trenes() {
             placeholder="Buscar estación..."
             placeholderTextColor={colores.textoSecundario}
             value={buscar}
-            onChangeText={setBuscar}
+            onChangeText={(v) => {
+              setBuscar(v);
+              buscarEstacionesTexto(v);
+            }}
           />
         )}
 
@@ -130,10 +169,20 @@ export default function Trenes() {
               placeholder="Origen (ej. Madrid)"
               placeholderTextColor={colores.textoSecundario}
               value={origen}
-              onChangeText={setOrigen}
+              onChangeText={(v) => {
+                setOrigen(v);
+                buscarSugerencias(v);
+              }}
             />
-            {sugerencias(origen).map((e) => (
-              <Text key={e.id} style={estilos.sugerencia} onPress={() => setOrigen(e.nombre)}>
+            {sugerencias().map((e) => (
+              <Text
+                key={e.id}
+                style={estilos.sugerencia}
+                onPress={() => {
+                  setOrigen(e.nombre);
+                  setSugerenciasForm([]);
+                }}
+              >
                 {e.nombre}
               </Text>
             ))}
@@ -142,10 +191,20 @@ export default function Trenes() {
               placeholder="Destino (ej. Sevilla)"
               placeholderTextColor={colores.textoSecundario}
               value={destino}
-              onChangeText={setDestino}
+              onChangeText={(v) => {
+                setDestino(v);
+                buscarSugerencias(v);
+              }}
             />
-            {sugerencias(destino).map((e) => (
-              <Text key={e.id} style={estilos.sugerencia} onPress={() => setDestino(e.nombre)}>
+            {sugerencias().map((e) => (
+              <Text
+                key={e.id}
+                style={estilos.sugerencia}
+                onPress={() => {
+                  setDestino(e.nombre);
+                  setSugerenciasForm([]);
+                }}
+              >
                 {e.nombre}
               </Text>
             ))}
@@ -168,7 +227,7 @@ export default function Trenes() {
 
       {modo === 'estaciones' && (
         <FlatList
-          data={filtradas}
+          data={estaciones}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
           contentContainerStyle={estilos.lista}
