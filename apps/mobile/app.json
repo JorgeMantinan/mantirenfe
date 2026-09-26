@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "mantirenfe",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mantirenfe.app",
@@ -39,7 +38,8 @@
           "color": "#75258c",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
