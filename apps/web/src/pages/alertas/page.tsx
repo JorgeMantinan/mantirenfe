@@ -171,6 +171,9 @@ export function PaginaAlertas() {
                   >
                     <Pencil aria-hidden="true" /> Editar
                   </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/alertas/${alerta.id}`}>Avisos</Link>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

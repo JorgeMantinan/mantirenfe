@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { AppShell } from '@/components/layout/AppShell';
 import { PaginaAlertas } from '@/pages/alertas/page';
+import { PaginaDetalleAlerta } from '@/pages/alertas/detalle/page';
 import { PaginaNuevaAlerta } from '@/pages/alertas/nueva/page';
 import { PaginaAuthCallback } from '@/pages/auth/callback/page';
 import { PaginaDashboard } from '@/pages/dashboard/page';
@@ -75,7 +76,7 @@ export default function App() {
           path="/alertas/:id"
           element={
             <RequiereAuth>
-              <PaginaAlertas />
+              <PaginaDetalleAlerta />
             </RequiereAuth>
           }
         />

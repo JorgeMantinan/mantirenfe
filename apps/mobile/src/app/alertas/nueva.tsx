@@ -181,6 +181,7 @@ export default function NuevaAlerta() {
         onChangeText={(v) => {
           setOrigen(v);
           buscarEstaciones(v);
+          setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
         }}
       />
       {origen.trim().length >= 2 &&
@@ -199,6 +200,7 @@ export default function NuevaAlerta() {
         onChangeText={(v) => {
           setDestino(v);
           buscarEstaciones(v);
+          setNumeroTren('');
         }}
       />
       {destino.trim().length >= 2 &&
@@ -215,7 +217,10 @@ export default function NuevaAlerta() {
         placeholderTextColor={colores.textoSecundario}
         keyboardType="numbers-and-punctuation"
         value={fecha}
-        onChangeText={setFecha}
+        onChangeText={(v) => {
+          setFecha(v);
+          setNumeroTren(''); // el tren elegido es de otra fecha
+        }}
       />
       <Text style={estilos.pista}>Mínimo: {fechaMin}</Text>
 

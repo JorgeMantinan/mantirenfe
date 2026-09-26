@@ -221,6 +221,7 @@ export function PaginaNuevaAlerta() {
                   onChange={(e) => {
                     setOrigen(e.target.value);
                     buscarEstaciones(e.target.value);
+                    setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
                   }}
                   placeholder="Madrid-Atocha"
                   required
@@ -236,6 +237,7 @@ export function PaginaNuevaAlerta() {
                   onChange={(e) => {
                     setDestino(e.target.value);
                     buscarEstaciones(e.target.value);
+                    setNumeroTren('');
                   }}
                   placeholder="Barcelona-Sants"
                   required
@@ -259,7 +261,10 @@ export function PaginaNuevaAlerta() {
                   type="date"
                   min={fechaMin}
                   value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  onChange={(e) => {
+                    setFecha(e.target.value);
+                    setNumeroTren(''); // el tren elegido es de otra fecha
+                  }}
                   required
                 />
               </div>
