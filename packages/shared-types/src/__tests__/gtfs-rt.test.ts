@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parsearCancelados, parsearRetrasos, prefijoTripId } from '../gtfs-rt';
+import {
+  parsearCancelados,
+  parsearParadasSuprimidas,
+  parsearRetrasos,
+  prefijoTripId,
+} from '../gtfs-rt';
 
 describe('prefijoTripId', () => {
   it('quita la fecha final de los tripIds de Larga Distancia', () => {
@@ -148,5 +153,111 @@ describe('parsearCancelados', () => {
   it('ignora las entidades CANCELED sin tripId', () => {
     const feed = { entity: [{ tripUpdate: { trip: { scheduleRelationship: 'CANCELED' } } }] };
     expect(parsearCancelados(feed).size).toBe(0);
+  });
+});
+
+describe('parsearParadasSuprimidas', () => {
+  // Formato real del feed de Cercanías (trip_updates.json): cada parada SKIPPED
+  // lleva `stopId` pero NO `stopSequence` ni arrival/departure.
+  const feedCercanias = {
+    header: { timestamp: '1790541000' },
+    entity: [
+      {
+        id: 'TUUPDATE_2068D22233C2',
+        tripUpdate: {
+          trip: { tripId: '2068D22233C2', scheduleRelationship: 'SCHEDULED' },
+          stopTimeUpdate: [
+            { arrival: { delay: 4020, time: '1790542740' }, stopId: '16010' },
+            { stopId: '16011', scheduleRelationship: 'SKIPPED' },
+            { stopId: '16010', scheduleRelationship: 'SKIPPED' },
+            { stopId: '16009', scheduleRelationship: 'SKIPPED' },
+          ],
+          delay: 4020,
+        },
+      },
+      {
+        id: 'TUUPDATE_2068D70773C6',
+        tripUpdate: {
+          trip: { tripId: '2068D70773C6', scheduleRelationship: 'SCHEDULED' },
+          stopTimeUpdate: [
+            { arrival: { delay: 2100, time: '1790542980' }, stopId: '05504' },
+            { stopId: '15211', scheduleRelationship: 'SKIPPED' },
+          ],
+        },
+      },
+    ],
+  };
+
+  it('recoge los stopId SKIPPED por viaje (sin stopSequence)', () => {
+    expect(parsearParadasSuprimidas(feedCercanias)).toEqual([
+      { tripId: '2068D22233C2', stopIds: ['16011', '16010', '16009'] },
+      { tripId: '2068D70773C6', stopIds: ['15211'] },
+    ]);
+  });
+
+  it('omite las paradas normales y las SKIPPED sin stopId', () => {
+    const feed = {
+      entity: [
+        {
+          tripUpdate: {
+            trip: { tripId: 'A' },
+            stopTimeUpdate: [
+              { arrival: { delay: 60 }, stopId: '05504' },
+              { scheduleRelationship: 'SKIPPED' },
+            ],
+          },
+        },
+        { tripUpdate: { trip: { tripId: 'B' }, delay: 60 } },
+        {
+          tripUpdate: {
+            trip: {},
+            stopTimeUpdate: [{ stopId: '05504', scheduleRelationship: 'SKIPPED' }],
+          },
+        },
+        { tripUpdate: { trip: { tripId: 'C' } } },
+      ],
+    };
+    expect(parsearParadasSuprimidas(feed)).toEqual([]);
+  });
+
+  it('filtra por los tripIds indicados cruzando con numeroTren', () => {
+    const feed = {
+      entity: [
+        {
+          tripUpdate: {
+            trip: { tripId: '1309512026-09-24' },
+            stopTimeUpdate: [{ stopId: '05504', scheduleRelationship: 'SKIPPED' }],
+          },
+        },
+        {
+          tripUpdate: {
+            trip: { tripId: '9999912026-09-24' },
+            stopTimeUpdate: [{ stopId: '15211', scheduleRelationship: 'SKIPPED' }],
+          },
+        },
+      ],
+    };
+    expect(parsearParadasSuprimidas(feed, new Set(['13095']))).toEqual([
+      { tripId: '13095', stopIds: ['05504'] },
+    ]);
+    expect(parsearParadasSuprimidas(feed, new Set(['04193']))).toEqual([]);
+  });
+
+  it('devuelve vacío ante un feed inválido o sin SKIPPED (Larga Distancia)', () => {
+    expect(parsearParadasSuprimidas(null)).toEqual([]);
+    expect(parsearParadasSuprimidas({})).toEqual([]);
+    expect(parsearParadasSuprimidas({ entity: 'no' })).toEqual([]);
+    expect(
+      parsearParadasSuprimidas({
+        entity: [
+          {
+            tripUpdate: {
+              trip: { tripId: '0419212026-09-24', scheduleRelationship: 'SCHEDULED' },
+              stopTimeUpdate: [{ arrival: { delay: -120, time: '1790539800' }, stopId: '17000' }],
+            },
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 });

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Map, MapPin, RefreshCw, Search, TrainFront, TriangleAlert } from 'lucide-react';
+import {
+  ExternalLink,
+  Map,
+  MapPin,
+  RefreshCw,
+  Search,
+  TrainFront,
+  TriangleAlert,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import {
   horaGtfs,
+  type EstacionDetalleResponse,
   type EstacionResponse,
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
@@ -19,10 +28,16 @@ function hoy(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function mapaExterno(latitud: number, longitud: number): string {
+  return `https://www.openstreetmap.org/?mlat=${latitud}&mlon=${longitud}#map=16/${latitud}/${longitud}`;
+}
+
 export function PaginaEstaciones() {
   const [texto, setTexto] = useState('');
   const [sugerencias, setSugerencias] = useState<EstacionResponse[]>([]);
   const [sel, setSel] = useState<EstacionResponse | null>(null);
+  const [detalle, setDetalle] = useState<EstacionDetalleResponse | null>(null);
+  const [detalleListo, setDetalleListo] = useState(false);
   const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +45,7 @@ export function PaginaEstaciones() {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const peticion = useRef(0);
   const peticionSalidas = useRef(0);
+  const peticionDetalle = useRef(0);
 
   useEffect(
     () => () => {
@@ -49,6 +65,8 @@ export function PaginaEstaciones() {
     setTexto(valor);
     if (sel && valor !== sel.nombre) {
       setSel(null);
+      setDetalle(null);
+      setDetalleListo(false);
       setSalidas(null);
       setError(null);
     }
@@ -72,6 +90,8 @@ export function PaginaEstaciones() {
   const elegir = (estacion: EstacionResponse) => {
     setTexto(estacion.nombre);
     setSugerencias([]);
+    setDetalle(null);
+    setDetalleListo(false);
     setSel(estacion);
   };
 
@@ -98,6 +118,28 @@ export function PaginaEstaciones() {
       });
   }, [sel]);
 
+  // Ficha oficial (data.renfe.com): si el CKAN de Renfe falla, seguimos sin
+  // ella (dirección, mapa y aforos desaparecen, pero la página no se rompe)
+  useEffect(() => {
+    if (!sel) {
+      setDetalle(null);
+      setDetalleListo(false);
+      return;
+    }
+    const id = ++peticionDetalle.current;
+    api<EstacionDetalleResponse>(`/estaciones/detalle?codigo=${encodeURIComponent(sel.codigo)}`)
+      .then((d) => {
+        if (peticionDetalle.current !== id) return;
+        setDetalle(d);
+        setDetalleListo(true);
+      })
+      .catch(() => {
+        if (peticionDetalle.current !== id) return;
+        setDetalle(null);
+        setDetalleListo(true);
+      });
+  }, [sel]);
+
   useEffect(() => {
     if (sel) cargar();
   }, [sel, cargar]);
@@ -105,6 +147,11 @@ export function PaginaEstaciones() {
   const afectadas = sel
     ? incidencias.filter((incidencia) => incidenciaAfectaA(incidencia, [sel.nombre]))
     : [];
+
+  const latitud = detalle?.latitud ?? sel?.latitud ?? null;
+  const longitud = detalle?.longitud ?? sel?.longitud ?? null;
+  const urlMapa = latitud != null && longitud != null ? mapaExterno(latitud, longitud) : null;
+  const aforos = detalle?.aforos ?? null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
@@ -175,23 +222,105 @@ export function PaginaEstaciones() {
                 {sel.ciudad ? ` · ${sel.ciudad}` : ''}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">Estación {sel.codigo}</Badge>
-                {sel.ciudad ? <Badge variant="secondary">{sel.ciudad}</Badge> : null}
-                <Badge variant={afectadas.length > 0 ? 'aviso' : 'exito'}>
-                  {afectadas.length > 0
-                    ? `${afectadas.length} incidencia${afectadas.length > 1 ? 's' : ''} activa${
-                        afectadas.length > 1 ? 's' : ''
-                      }`
-                    : 'Sin incidencias'}
-                </Badge>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">Estación {sel.codigo}</Badge>
+                  {sel.ciudad ? <Badge variant="secondary">{sel.ciudad}</Badge> : null}
+                  <Badge variant={afectadas.length > 0 ? 'aviso' : 'exito'}>
+                    {afectadas.length > 0
+                      ? `${afectadas.length} incidencia${afectadas.length > 1 ? 's' : ''} activa${
+                          afectadas.length > 1 ? 's' : ''
+                        }`
+                      : 'Sin incidencias'}
+                  </Badge>
+                </div>
+                <Button variant="outline" asChild>
+                  <Link to="/mapa">
+                    <Map className="h-4 w-4" aria-hidden="true" /> Ver en el mapa
+                  </Link>
+                </Button>
               </div>
-              <Button variant="outline" asChild>
-                <Link to="/mapa">
-                  <Map className="h-4 w-4" aria-hidden="true" /> Ver en el mapa
-                </Link>
-              </Button>
+
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1 text-sm">
+                    {!detalleListo ? (
+                      <p className="text-muted-foreground">Cargando datos oficiales...</p>
+                    ) : detalle ? (
+                      <dl className="space-y-1">
+                        {detalle.direccion ? (
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-muted-foreground">Dirección</dt>
+                            <dd>{detalle.direccion}</dd>
+                          </div>
+                        ) : null}
+                        {detalle.cp ? (
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-muted-foreground">CP</dt>
+                            <dd>{detalle.cp}</dd>
+                          </div>
+                        ) : null}
+                        {detalle.poblacion ? (
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-muted-foreground">Población</dt>
+                            <dd>{detalle.poblacion}</dd>
+                          </div>
+                        ) : null}
+                        {detalle.provincia ? (
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-muted-foreground">Provincia</dt>
+                            <dd>{detalle.provincia}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    ) : null}
+                  </div>
+                  {urlMapa ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={urlMapa} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" /> Ver en mapa
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
+
+                {aforos && aforos.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold">Datos históricos de aforo (2018)</h3>
+                      <Badge variant="outline">histórico 2018</Badge>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-background">
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-2 pl-3 pr-3 font-medium">Franja</th>
+                            <th className="py-2 pr-3 font-medium text-right">Viajeros</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aforos.map((aforo) => (
+                            <tr
+                              key={aforo.franja}
+                              className="border-b last:border-b-0 even:bg-muted/40"
+                            >
+                              <td className="py-1.5 pl-3 pr-3">{aforo.franja}</td>
+                              <td className="py-1.5 pr-3 text-right tabular-nums">
+                                {(aforo.subidos + aforo.bajados).toLocaleString('es-ES')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Viajeros subidos y bajados por franja horaria — fuente: data.renfe.com
+                      («Volumen de Viajeros por Franja Horaria», 2018).
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

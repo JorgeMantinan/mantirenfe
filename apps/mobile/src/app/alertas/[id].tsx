@@ -133,6 +133,9 @@ export default function DetalleAlerta() {
                     {tren.precioMin !== null ? (
                       <Text style={s.precio}>Desde {formatearPrecio(tren.precioMin)}</Text>
                     ) : null}
+                    {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
+                      <Text style={s.noPara}>No para en: {tren.paradasSuprimidas.join(', ')}</Text>
+                    ) : null}
                   </View>
                   {tren.cancelado ? (
                     <Etiqueta tono="error">Cancelado</Etiqueta>
@@ -242,6 +245,11 @@ const estilos = (c: Paleta) =>
       color: c.texto,
     },
     precio: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.aviso,
+    },
+    noPara: {
       fontSize: 13,
       fontWeight: '600',
       color: c.aviso,

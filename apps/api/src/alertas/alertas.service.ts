@@ -25,6 +25,9 @@ function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
     const t = item as Partial<EstadoSerializado>;
     if (typeof t.trenId !== 'string' || typeof t.salida !== 'string') continue;
     if (typeof t.disponible !== 'boolean') continue;
+    const estaciones = Array.isArray(t.paradasSuprimidas)
+      ? t.paradasSuprimidas.filter((nombre): nombre is string => typeof nombre === 'string')
+      : [];
     trenes.push({
       trenId: t.trenId,
       numeroTren: typeof t.numeroTren === 'string' ? t.numeroTren : '',
@@ -33,6 +36,7 @@ function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
       precioMin: typeof t.precioMin === 'number' ? t.precioMin : null,
       retrasoSeg: typeof t.retrasoSeg === 'number' ? t.retrasoSeg : null,
       cancelado: t.cancelado === true,
+      ...(estaciones.length > 0 ? { paradasSuprimidas: estaciones } : {}),
     });
   }
   return trenes;

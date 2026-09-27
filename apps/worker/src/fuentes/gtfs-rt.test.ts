@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   parsearCancelados,
+  parsearParadasSuprimidas,
   parsearRetrasos,
   type ConsultaDisponibilidad,
 } from '@mantirenfe/shared-types';
-import { construirEstadoRetrasos, type HorarioRetraso } from './gtfs-rt';
+import { construirEstadoRetrasos, paradasSuprimidasDeLaRuta, type HorarioRetraso } from './gtfs-rt';
 
 const consulta: ConsultaDisponibilidad = {
   origenNombre: 'Sevilla',
@@ -93,5 +94,113 @@ describe('construirEstadoRetrasos', () => {
   it('sin datos de cancelación deja todos los trenes en false', () => {
     const estado = construirEstadoRetrasos(consulta, horarios, new Map([['3065J23573C1', 480]]));
     expect(estado.trenes.map((t) => t.cancelado)).toEqual([false, false, false]);
+  });
+
+  it('marca las paradas suprimidas del tren y no las deja vacías en el resto', () => {
+    const estado = construirEstadoRetrasos(
+      consulta,
+      horarios,
+      new Map([['3065J23574C1', 180]]),
+      new Set(),
+      new Map([['3065J23574C1', ['Córdoba']]]),
+    );
+
+    expect(estado.trenes[0]?.paradasSuprimidas).toEqual(['Córdoba']);
+    expect(estado.trenes[1]?.paradasSuprimidas).toBeUndefined();
+    expect(estado.trenes[2]?.paradasSuprimidas).toBeUndefined();
+  });
+
+  it('sin paradas suprimidas no añade el campo al estado', () => {
+    const estado = construirEstadoRetrasos(consulta, horarios, new Map());
+    expect(estado.trenes.every((t) => t.paradasSuprimidas === undefined)).toBe(true);
+  });
+});
+
+describe('paradasSuprimidasDeLaRuta', () => {
+  const estaciones = [
+    { id: 'e-oviedo', codigo: '15211', nombre: 'Oviedo' },
+    { id: 'e-gijon', codigo: '15410', nombre: 'Gijón-Sanz Crespo' },
+    { id: 'e-aviles', codigo: '16403', nombre: 'Avilés' },
+    { id: 'e-intermedia', codigo: '15400', nombre: 'Veriña' },
+  ];
+  const horarios: HorarioRetraso[] = [
+    {
+      numeroTren: '2068D22233C2',
+      salida: new Date('2026-09-24T06:00:00.000Z'),
+      origenEstacionId: 'e-oviedo',
+      destinoEstacionId: 'e-gijon',
+    },
+    {
+      numeroTren: '2068D70773C6',
+      salida: new Date('2026-09-24T07:00:00.000Z'),
+      origenEstacionId: 'e-aviles',
+      destinoEstacionId: 'e-gijon',
+    },
+  ];
+
+  it('cruza stopId (codigo GTFS) con el origen y el destino del tren', () => {
+    const suprimidas = new Map([
+      ['2068D22233C2', ['16011', '15410']],
+      ['2068D70773C6', ['15400']],
+    ]);
+    const resueltas = paradasSuprimidasDeLaRuta(horarios, suprimidas, estaciones);
+
+    expect([...resueltas]).toEqual([['2068D22233C2', ['Gijón-Sanz Crespo']]]);
+  });
+
+  it('ignora las paradas intermedias y los trenes sin supresión', () => {
+    const suprimidas = new Map([
+      ['2068D22233C2', ['15400']],
+      ['2068D70773C6', ['15211']],
+    ]);
+    expect(paradasSuprimidasDeLaRuta(horarios, suprimidas, estaciones).size).toBe(0);
+    expect(paradasSuprimidasDeLaRuta(horarios, new Map(), estaciones).size).toBe(0);
+  });
+
+  it('acumula origen y destino sin duplicar nombres', () => {
+    const suprimidas = new Map([['2068D22233C2', ['15211', '15410']]]);
+    const mismoOrigenYDestino: HorarioRetraso[] = [
+      {
+        numeroTren: '2068D22233C2',
+        salida: new Date('2026-09-24T06:00:00.000Z'),
+        origenEstacionId: 'e-oviedo',
+        destinoEstacionId: 'e-oviedo',
+      },
+    ];
+    const resueltas = paradasSuprimidasDeLaRuta(mismoOrigenYDestino, suprimidas, estaciones);
+    expect(resueltas.get('2068D22233C2')).toEqual(['Oviedo']);
+  });
+
+  it('el feed real de Cercanías con SKIPPED produce paradas del tren', () => {
+    const feed = {
+      entity: [
+        {
+          tripUpdate: {
+            trip: { tripId: '2068D70773C6', scheduleRelationship: 'SCHEDULED' },
+            stopTimeUpdate: [
+              { arrival: { delay: 2100, time: '1790542980' }, stopId: '05504' },
+              { stopId: '15211', scheduleRelationship: 'SKIPPED' },
+            ],
+          },
+        },
+      ],
+    };
+    const horario: HorarioRetraso[] = [
+      {
+        numeroTren: '2068D70773C6',
+        salida: new Date('2026-09-24T07:00:00.000Z'),
+        origenEstacionId: 'e-oviedo',
+        destinoEstacionId: 'e-gijon',
+      },
+    ];
+    const suprimidas = new Map(parsearParadasSuprimidas(feed).map((p) => [p.tripId, p.stopIds]));
+    const estado = construirEstadoRetrasos(
+      consulta,
+      horario,
+      new Map(),
+      new Set(),
+      paradasSuprimidasDeLaRuta(horario, suprimidas, estaciones),
+    );
+    expect(estado.trenes[0]?.paradasSuprimidas).toEqual(['Oviedo']);
   });
 });

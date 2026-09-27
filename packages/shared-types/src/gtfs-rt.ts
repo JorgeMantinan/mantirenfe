@@ -6,6 +6,8 @@ export interface FeedTripUpdatesCrudo {
       stopTimeUpdate?: Array<{
         arrival?: { delay?: number };
         departure?: { delay?: number };
+        stopId?: string;
+        scheduleRelationship?: string;
       }>;
     };
   }>;
@@ -85,6 +87,7 @@ export function parsearRetrasos(
 }
 
 const RELACION_HORARIO_CANCELADO = 'CANCELED';
+const RELACION_PARADA_SALTADA = 'SKIPPED';
 
 export function parsearCancelados(feed: unknown, soloTripIds?: ReadonlySet<string>): Set<string> {
   const cancelados = new Set<string>();
@@ -99,4 +102,50 @@ export function parsearCancelados(feed: unknown, soloTripIds?: ReadonlySet<strin
     if (clave !== null) cancelados.add(clave);
   }
   return cancelados;
+}
+
+/** Paradas (stopId GTFS = `Estacion.codigo`) que un viaje no va a hacer hoy. */
+export interface ParadaSuprimida {
+  tripId: string;
+  stopIds: string[];
+}
+
+/**
+ * Extrae las paradas suprimidas (`stopTimeUpdate[].scheduleRelationship: "SKIPPED"`)
+ * por viaje. En el feed real de Cercanías cada parada SKIPPED lleva `stopId` pero
+ * NO `stopSequence` (ni arrival/departure), así que el orden hay que deducirlo del
+ * propio array. Larga Distancia hoy no publica SKIPPED: devuelve vacío.
+ * `tripId` es la clave ya normalizada (igual que en `parsearRetrasos`/`parsearCancelados`).
+ */
+export function parsearParadasSuprimidas(
+  feed: unknown,
+  soloTripIds?: ReadonlySet<string>,
+): ParadaSuprimida[] {
+  const resultado = new Map<string, string[]>();
+  const entidades = (feed as FeedTripUpdatesCrudo | null)?.entity;
+  if (!Array.isArray(entidades)) return [];
+
+  for (const entidad of entidades) {
+    const tripId = entidad.tripUpdate?.trip?.tripId;
+    if (!tripId) continue;
+    const stopTimeUpdates = entidad.tripUpdate?.stopTimeUpdate;
+    if (!Array.isArray(stopTimeUpdates)) continue;
+
+    let clave: string | null = null;
+    const stopIds: string[] = [];
+    for (const parada of stopTimeUpdates) {
+      if (parada?.scheduleRelationship !== RELACION_PARADA_SALTADA) continue;
+      if (!parada.stopId) continue;
+      clave ??= resolverClave(tripId, soloTripIds);
+      if (clave === null) break;
+      if (!stopIds.includes(parada.stopId)) stopIds.push(parada.stopId);
+    }
+    if (clave === null || stopIds.length === 0) continue;
+
+    const previos = resultado.get(clave) ?? [];
+    for (const stopId of stopIds) if (!previos.includes(stopId)) previos.push(stopId);
+    resultado.set(clave, previos);
+  }
+
+  return [...resultado].map(([clave, stopIds]) => ({ tripId: clave, stopIds }));
 }

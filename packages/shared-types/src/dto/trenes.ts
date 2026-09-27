@@ -94,6 +94,8 @@ export interface EstadoTrenDisponible {
   moneda: string;
   retrasoSeg?: number | null;
   cancelado?: boolean;
+  /** Nombres de estación que el tren no hace hoy (GTFS-RT SKIPPED) */
+  paradasSuprimidas?: string[];
 }
 
 export interface EstadoDisponibilidad {
@@ -115,6 +117,11 @@ export interface EstadoSerializado {
   precioMin: number | null;
   retrasoSeg?: number | null;
   cancelado?: boolean;
+  /**
+   * Estaciones (origen o destino del tren) que no se hace hoy: solo se guarda
+   * si hay alguna, para no inflar `alerta.ultimoEstado`.
+   */
+  paradasSuprimidas?: string[];
 }
 
 /** Ranking mensual de impuntualidad (servicios con retraso >= umbral) */

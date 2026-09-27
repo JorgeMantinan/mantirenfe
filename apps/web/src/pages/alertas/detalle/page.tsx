@@ -231,6 +231,11 @@ export function PaginaDetalleAlerta() {
                                   {tren.disponible ? 'Hay plazas' : 'Completo'}
                                 </Badge>
                               )}
+                              {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 && (
+                                <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                  No para en: {tren.paradasSuprimidas.join(', ')}
+                                </p>
+                              )}
                             </td>
                             <td className="py-2 text-right text-amber-700 dark:text-amber-300">
                               {formatearPrecio(tren.precioMin)}

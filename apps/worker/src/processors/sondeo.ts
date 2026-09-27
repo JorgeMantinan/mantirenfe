@@ -19,15 +19,21 @@ export type { EstadoSerializado };
 export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
   return [...estado.trenes]
     .sort((a, b) => a.trenId.localeCompare(b.trenId))
-    .map((t) => ({
-      trenId: t.trenId,
-      numeroTren: t.numeroTren,
-      salida: t.salida,
-      disponible: t.disponible,
-      precioMin: t.precioMin,
-      retrasoSeg: t.retrasoSeg ?? null,
-      cancelado: t.cancelado === true,
-    }));
+    .map((t) => {
+      const serializado: EstadoSerializado = {
+        trenId: t.trenId,
+        numeroTren: t.numeroTren,
+        salida: t.salida,
+        disponible: t.disponible,
+        precioMin: t.precioMin,
+        retrasoSeg: t.retrasoSeg ?? null,
+        cancelado: t.cancelado === true,
+      };
+      if (t.paradasSuprimidas && t.paradasSuprimidas.length > 0) {
+        serializado.paradasSuprimidas = [...t.paradasSuprimidas];
+      }
+      return serializado;
+    });
 }
 
 export function diffDisponibles(anterior: EstadoSerializado[], actual: EstadoSerializado[]) {
@@ -73,6 +79,33 @@ export function nuevosCancelados(
 ): EstadoSerializado[] {
   const previos = new Set(anterior.filter((t) => t.cancelado === true).map((t) => t.trenId));
   return filtrarCancelados(actual).filter((t) => !previos.has(t.trenId));
+}
+
+export interface ParadaSuprimidaDetectada {
+  tren: EstadoSerializado;
+  /** Estaciones suprimidas que no estaban en el sondeo anterior (nuevas) */
+  estaciones: string[];
+}
+
+/**
+ * Paradas suprimidas (GTFS-RT SKIPPED) aparecidas desde el último sondeo: se
+ * compara par tren+estación, así una supresión que sigue igual no vuelve a avisar
+ * aunque se repita en cada ciclo.
+ */
+export function nuevasParadasSuprimidas(
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+): ParadaSuprimidaDetectada[] {
+  const previasPorTren = new Map(
+    anterior.map((t) => [t.trenId, new Set(t.paradasSuprimidas ?? [])]),
+  );
+  const detectadas: ParadaSuprimidaDetectada[] = [];
+  for (const tren of actual) {
+    const previas = previasPorTren.get(tren.trenId);
+    const nuevas = (tren.paradasSuprimidas ?? []).filter((nombre) => !previas?.has(nombre));
+    if (nuevas.length > 0) detectadas.push({ tren, estaciones: nuevas });
+  }
+  return detectadas;
 }
 
 /** El histórico de precios de una alerta se conserva 45 días. */
@@ -182,6 +215,11 @@ export function textoIndemnizacion(maxRetrasoSeg: number): string {
 export function textoCancelacion(tren: EstadoSerializado): string {
   const numero = tren.numeroTren || tren.trenId;
   return `Tu tren de las ${horaGtfs(tren.salida)} (${numero}) está cancelado hoy`;
+}
+
+export function textoParadaSuprimida(tren: EstadoSerializado, estacion: string): string {
+  const numero = tren.numeroTren || tren.trenId;
+  return `Tu tren de las ${horaGtfs(tren.salida)} (${numero}) no para hoy en ${estacion}`;
 }
 
 export async function notificar(
@@ -391,6 +429,31 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       logger.info(
         { alertaId, trenes: cancelaciones.length },
         'Notificación de cancelación enviada',
+      );
+    }
+
+    // Un tren cancelado ya avisa por su cuenta: no se duplica con "no para en"
+    const suprimidas = nuevasParadasSuprimidas(anterior, actual).filter(
+      (s) => s.tren.cancelado !== true,
+    );
+    if (suprimidas.length > 0) {
+      const cuerpo = suprimidas
+        .flatMap((s) => s.estaciones.map((estacion) => textoParadaSuprimida(s.tren, estacion)))
+        .join(' · ');
+      await notificar(
+        alerta,
+        'Tu tren no para hoy',
+        cuerpo,
+        {
+          tipo: 'parada_suprimida',
+          trenes: suprimidas.map((s) => s.tren.trenId),
+          estaciones: [...new Set(suprimidas.flatMap((s) => s.estaciones))],
+        },
+        logger,
+      );
+      logger.info(
+        { alertaId, trenes: suprimidas.length },
+        'Notificación de parada suprimida enviada',
       );
     }
 

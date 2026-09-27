@@ -7,11 +7,13 @@ import {
   filtrarCambiosPrecio,
   filtrarCancelados,
   filtrarRetrasados,
+  nuevasParadasSuprimidas,
   nuevosCancelados,
   pushHabilitado,
   serializarEstado,
   textoCancelacion,
   textoIndemnizacion,
+  textoParadaSuprimida,
 } from './sondeo';
 
 function estado(trenes: EstadoDisponibilidad['trenes']): EstadoDisponibilidad {
@@ -126,6 +128,79 @@ describe('filtrarCancelados y nuevosCancelados', () => {
   });
 });
 
+describe('paradas suprimidas (SKIPPED)', () => {
+  const horario = (trenId: string, estaciones?: string[]) =>
+    ({
+      trenId,
+      numeroTren: trenId,
+      salida: '2026-09-27T06:00:00.000Z',
+      disponible: true,
+      precioMin: null,
+      retrasoSeg: null,
+      cancelado: false,
+      ...(estaciones && estaciones.length > 0 ? { paradasSuprimidas: estaciones } : {}),
+    }) as EstadoSerializado;
+
+  it('serializa las estaciones suprimidas y omite el campo si no hay', () => {
+    const serie = serializarEstado(
+      estado([
+        {
+          trenId: '2068D70773C6',
+          numeroTren: '2068D70773C6',
+          salida: '2026-09-27T06:00:00.000Z',
+          disponible: true,
+          precioMin: null,
+          moneda: 'EUR',
+          paradasSuprimidas: ['Oviedo'],
+        },
+        {
+          trenId: '2068D22233C2',
+          numeroTren: '2068D22233C2',
+          salida: '2026-09-27T07:00:00.000Z',
+          disponible: true,
+          precioMin: null,
+          moneda: 'EUR',
+        },
+      ]),
+    );
+    const conSupresion = serie.find((t) => t.trenId === '2068D70773C6');
+    const sinSupresion = serie.find((t) => t.trenId === '2068D22233C2');
+    expect(conSupresion?.paradasSuprimidas).toEqual(['Oviedo']);
+    expect(sinSupresion).not.toHaveProperty('paradasSuprimidas');
+  });
+
+  it('solo considera nuevas las estaciones que no estaban en el estado anterior', () => {
+    const anterior = [horario('t1', ['Oviedo'])];
+    const actual = [horario('t1', ['Oviedo']), horario('t2', ['Gijón-Sanz Crespo'])];
+    const detectadas = nuevasParadasSuprimidas(anterior, actual);
+    expect(detectadas.map((d) => [d.tren.trenId, d.estaciones])).toEqual([
+      ['t2', ['Gijón-Sanz Crespo']],
+    ]);
+  });
+
+  it('no repite la supresión si sigue igual en el siguiente sondeo', () => {
+    const anterior = [horario('t1', ['Oviedo', 'Avilés'])];
+    expect(nuevasParadasSuprimidas(anterior, [horario('t1', ['Oviedo', 'Avilés'])])).toEqual([]);
+  });
+
+  it('avisa solo de la estación recién suprimida', () => {
+    const anterior = [horario('t1', ['Oviedo'])];
+    const actual = [horario('t1', ['Oviedo', 'Avilés'])];
+    const detectadas = nuevasParadasSuprimidas(anterior, actual);
+    expect(detectadas).toHaveLength(1);
+    expect(detectadas[0]?.estaciones).toEqual(['Avilés']);
+  });
+
+  it('notifica todas las estaciones de un tren nuevo', () => {
+    const detectadas = nuevasParadasSuprimidas([], [horario('t1', ['Oviedo', 'Avilés'])]);
+    expect(detectadas[0]?.estaciones).toEqual(['Oviedo', 'Avilés']);
+  });
+
+  it('sin paradas suprimidas no detecta nada', () => {
+    expect(nuevasParadasSuprimidas([horario('t1')], [horario('t1')])).toEqual([]);
+  });
+});
+
 describe('textoCancelacion', () => {
   it('indica hora y número de tren', () => {
     expect(
@@ -151,6 +226,39 @@ describe('textoCancelacion', () => {
         cancelado: true,
       }),
     ).toBe('Tu tren de las 08:10 (3065J23574C1) está cancelado hoy');
+  });
+});
+
+describe('textoParadaSuprimida', () => {
+  it('indica hora, número de tren y estación', () => {
+    expect(
+      textoParadaSuprimida(
+        {
+          trenId: '2068D70773C6',
+          numeroTren: '2068D70773C6',
+          salida: '2026-09-27T06:35:00.000Z',
+          disponible: true,
+          precioMin: null,
+          paradasSuprimidas: ['Oviedo'],
+        },
+        'Oviedo',
+      ),
+    ).toBe('Tu tren de las 06:35 (2068D70773C6) no para hoy en Oviedo');
+  });
+
+  it('usa el trenId si no hay número de tren', () => {
+    expect(
+      textoParadaSuprimida(
+        {
+          trenId: '3065J23574C1',
+          numeroTren: '',
+          salida: '08:10',
+          disponible: true,
+          precioMin: null,
+        },
+        'Córdoba',
+      ),
+    ).toBe('Tu tren de las 08:10 (3065J23574C1) no para hoy en Córdoba');
   });
 });
 
