@@ -12,6 +12,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  funcionIndemnizacion,
   horaGtfs,
   type EstacionResponse,
   type HorarioTrenResponse,
@@ -489,39 +490,50 @@ export default function Trenes() {
               <Text style={s.vacio}>Sin trenes que coincidan con «{filtroPos}»</Text>
             ) : null
           }
-          renderItem={({ item }) => (
-            <Tarjeta>
-              <View style={s.fila}>
-                <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
-                {item.velocidadKmh != null ? (
-                  <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
+          renderItem={({ item }) => {
+            const indemnizacion =
+              item.retrasoSeg != null ? funcionIndemnizacion(item.retrasoSeg) : null;
+            return (
+              <Tarjeta>
+                <View style={s.fila}>
+                  <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
+                  {item.velocidadKmh != null ? (
+                    <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
+                  ) : null}
+                  {item.retrasoSeg != null ? (
+                    <Etiqueta tono={item.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
+                      {item.retrasoSeg > 0
+                        ? `+${Math.round(item.retrasoSeg / 60)} min`
+                        : 'A tiempo'}
+                    </Etiqueta>
+                  ) : null}
+                </View>
+                {item.origenNombre && item.destinoNombre ? (
+                  <Text style={s.meta}>
+                    {item.origenNombre} → {item.destinoNombre}
+                  </Text>
                 ) : null}
-                {item.retrasoSeg != null ? (
-                  <Etiqueta tono={item.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
-                    {item.retrasoSeg > 0 ? `+${Math.round(item.retrasoSeg / 60)} min` : 'A tiempo'}
-                  </Etiqueta>
+                {item.salida || item.llegada ? (
+                  <Text style={s.meta}>
+                    {item.salida ? `Salida ${horaGtfs(item.salida)}` : ''}
+                    {item.salida && item.llegada ? ' · ' : ''}
+                    {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
+                  </Text>
                 ) : null}
-              </View>
-              {item.origenNombre && item.destinoNombre ? (
-                <Text style={s.meta}>
-                  {item.origenNombre} → {item.destinoNombre}
-                </Text>
-              ) : null}
-              {item.salida || item.llegada ? (
-                <Text style={s.meta}>
-                  {item.salida ? `Salida ${horaGtfs(item.salida)}` : ''}
-                  {item.salida && item.llegada ? ' · ' : ''}
-                  {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
-                </Text>
-              ) : null}
-              {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
-              {!item.origenNombre ? (
-                <Text style={s.meta}>
-                  {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
-                </Text>
-              ) : null}
-            </Tarjeta>
-          )}
+                {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
+                {!item.origenNombre ? (
+                  <Text style={s.meta}>
+                    {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
+                  </Text>
+                ) : null}
+                {indemnizacion ? (
+                  <Text style={s.indemnizacion}>
+                    Compromiso de Renfe: {indemnizacion.descripcion}
+                  </Text>
+                ) : null}
+              </Tarjeta>
+            );
+          }}
         />
       )}
     </View>
@@ -603,6 +615,11 @@ const estilos = (c: Paleta) =>
     meta: {
       fontSize: 13,
       color: c.textoSecundario,
+    },
+    indemnizacion: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.aviso,
     },
     vacio: {
       textAlign: 'center',

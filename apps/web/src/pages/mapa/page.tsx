@@ -7,7 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { horaGtfs, type PosicionTrenResponse, type PuntoTraza } from '@mantirenfe/shared-types';
+import {
+  funcionIndemnizacion,
+  horaGtfs,
+  type PosicionTrenResponse,
+  type PuntoTraza,
+} from '@mantirenfe/shared-types';
 
 // Tiles: por defecto Esri World Street (gratis, sin API key). Si quieres CARTO
 // u otro proveedor, define VITE_TILES_URL (+ VITE_TILES_ATTRIBUTION) en Vercel.
@@ -182,68 +187,77 @@ export function PaginaMapa() {
             >
               <TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />
               <Actualizador posiciones={trenes ?? []} />
-              {visibles.map((tren) => (
-                <CircleMarker
-                  key={tren.id}
-                  center={[tren.latitud, tren.longitud]}
-                  radius={7}
-                  pathOptions={{
-                    color: '#75258c',
-                    fillColor: '#75258c',
-                    fillOpacity: 0.85,
-                    weight: 2,
-                  }}
-                >
-                  <Popup>
-                    <div className="space-y-1 text-sm">
-                      <strong>
-                        {tren.numeroTren ?? 'Tren'}
-                        {tren.operador ? ` · ${tren.operador}` : ''}
-                      </strong>
-                      {tren.origenNombre && tren.destinoNombre && (
-                        <p className="font-medium">
-                          {tren.origenNombre} → {tren.destinoNombre}
+              {visibles.map((tren) => {
+                const indemnizacion =
+                  tren.retrasoSeg != null ? funcionIndemnizacion(tren.retrasoSeg) : null;
+                return (
+                  <CircleMarker
+                    key={tren.id}
+                    center={[tren.latitud, tren.longitud]}
+                    radius={7}
+                    pathOptions={{
+                      color: '#75258c',
+                      fillColor: '#75258c',
+                      fillOpacity: 0.85,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup>
+                      <div className="space-y-1 text-sm">
+                        <strong>
+                          {tren.numeroTren ?? 'Tren'}
+                          {tren.operador ? ` · ${tren.operador}` : ''}
+                        </strong>
+                        {tren.origenNombre && tren.destinoNombre && (
+                          <p className="font-medium">
+                            {tren.origenNombre} → {tren.destinoNombre}
+                          </p>
+                        )}
+                        {tren.salida && (
+                          <p>
+                            Salida {horaGtfs(tren.salida)}
+                            {tren.llegada ? ` · Llegada ${horaGtfs(tren.llegada)}` : ''}
+                          </p>
+                        )}
+                        {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
+                        {tren.retrasoSeg != null && (
+                          <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>
+                            {tren.retrasoSeg > 0
+                              ? `Retraso +${Math.round(tren.retrasoSeg / 60)} min`
+                              : 'A tiempo'}
+                          </p>
+                        )}
+                        {indemnizacion && (
+                          <p className="font-semibold text-red-600">
+                            Compromiso de Renfe: {indemnizacion.descripcion}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          Actualizado {new Date(tren.actualizadaEn).toLocaleTimeString('es-ES')}
                         </p>
-                      )}
-                      {tren.salida && (
-                        <p>
-                          Salida {horaGtfs(tren.salida)}
-                          {tren.llegada ? ` · Llegada ${horaGtfs(tren.llegada)}` : ''}
-                        </p>
-                      )}
-                      {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
-                      {tren.retrasoSeg != null && (
-                        <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>
-                          {tren.retrasoSeg > 0
-                            ? `Retraso +${Math.round(tren.retrasoSeg / 60)} min`
-                            : 'A tiempo'}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500">
-                        Actualizado {new Date(tren.actualizadaEn).toLocaleTimeString('es-ES')}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={cargandoTraza}
-                        onClick={() => void alternarTraza(tren.id, tren.tripId)}
-                      >
-                        {cargandoTraza && traza?.vehiculo !== tren.id
-                          ? 'Cargando...'
-                          : traza?.vehiculo === tren.id
-                            ? 'Ocultar traza'
-                            : 'Ver traza (24 h)'}
-                      </Button>
-                      {traza?.vehiculo === tren.id && traza.puntos.length <= 1 && (
-                        <p className="text-xs text-amber-600">
-                          Solo 1 punto registrado (muestreo cada 10 min) — vuelve a pulsar en un
-                          rato.
-                        </p>
-                      )}
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              ))}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={cargandoTraza}
+                          onClick={() => void alternarTraza(tren.id, tren.tripId)}
+                        >
+                          {cargandoTraza && traza?.vehiculo !== tren.id
+                            ? 'Cargando...'
+                            : traza?.vehiculo === tren.id
+                              ? 'Ocultar traza'
+                              : 'Ver traza (24 h)'}
+                        </Button>
+                        {traza?.vehiculo === tren.id && traza.puntos.length <= 1 && (
+                          <p className="text-xs text-amber-600">
+                            Solo 1 punto registrado (muestreo cada 10 min) — vuelve a pulsar en un
+                            rato.
+                          </p>
+                        )}
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
               {traza &&
                 visibles.some((v) => v.id === traza.vehiculo) &&
                 segmentarPorHuecos(traza.puntos).map((segmento, i) =>
@@ -264,6 +278,12 @@ export function PaginaMapa() {
           )}
         </CardContent>
       </Card>
+
+      <p className="text-xs text-muted-foreground">
+        Compromiso de Puntualidad de Renfe (fuente: renfe.com, consulta 27/09/2026) · solo
+        informativo: el porcentaje de devolución real depende del tipo de servicio y de las
+        exclusiones aplicables.
+      </p>
     </div>
   );
 }
