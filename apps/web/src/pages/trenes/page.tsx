@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BellPlus, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -8,7 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { horaGtfs, type HorarioTrenResponse } from '@mantirenfe/shared-types';
+import {
+  horaGtfs,
+  type EstacionResponse,
+  type HorarioTrenResponse,
+} from '@mantirenfe/shared-types';
 
 export function PaginaTrenes() {
   const navigate = useNavigate();
@@ -19,6 +23,54 @@ export function PaginaTrenes() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fuente, setFuente] = useState<string | null>(null);
+  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
+  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
+  const timerOrigen = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const timerDestino = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const petOrigen = useRef(0);
+  const petDestino = useRef(0);
+
+  useEffect(
+    () => () => {
+      clearTimeout(timerOrigen.current);
+      clearTimeout(timerDestino.current);
+    },
+    [],
+  );
+
+  // Búsqueda con debounce mientras se escribe (patrón del móvil)
+  const sugerir = (campo: 'origen' | 'destino', texto: string) => {
+    const timer = campo === 'origen' ? timerOrigen : timerDestino;
+    const peticion = campo === 'origen' ? petOrigen : petDestino;
+    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
+    if (campo === 'origen') setOrigen(texto);
+    else setDestino(texto);
+    clearTimeout(timer.current);
+    if (texto.trim().length < 2) {
+      set([]);
+      return;
+    }
+    timer.current = setTimeout(() => {
+      const id = ++peticion.current;
+      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(texto.trim())}&limite=5`)
+        .then((r) => {
+          if (peticion.current === id) set(r);
+        })
+        .catch(() => {
+          if (peticion.current === id) set([]);
+        });
+    }, 250);
+  };
+
+  const elegir = (campo: 'origen' | 'destino', nombre: string) => {
+    if (campo === 'origen') {
+      setOrigen(nombre);
+      setSugOrigen([]);
+    } else {
+      setDestino(nombre);
+      setSugDestino([]);
+    }
+  };
 
   const buscar = async (event: FormEvent) => {
     event.preventDefault();
@@ -57,25 +109,63 @@ export function PaginaTrenes() {
         </CardHeader>
         <CardContent>
           <form onSubmit={buscar} className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <Label htmlFor="origen">Origen</Label>
               <Input
                 id="origen"
                 value={origen}
-                onChange={(e) => setOrigen(e.target.value)}
+                onChange={(e) => sugerir('origen', e.target.value)}
                 placeholder="Madrid-Atocha"
                 required
+                autoComplete="off"
               />
+              {sugOrigen.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border bg-popover shadow-md">
+                  {sugOrigen.map((e) => (
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                        onClick={() => elegir('origen', e.nombre)}
+                      >
+                        {e.nombre}
+                        {e.ciudad ? (
+                          <span className="text-muted-foreground"> · {e.ciudad}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <Label htmlFor="destino">Destino</Label>
               <Input
                 id="destino"
                 value={destino}
-                onChange={(e) => setDestino(e.target.value)}
+                onChange={(e) => sugerir('destino', e.target.value)}
                 placeholder="Sevilla-Santa Justa"
                 required
+                autoComplete="off"
               />
+              {sugDestino.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border bg-popover shadow-md">
+                  {sugDestino.map((e) => (
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                        onClick={() => elegir('destino', e.nombre)}
+                      >
+                        {e.nombre}
+                        {e.ciudad ? (
+                          <span className="text-muted-foreground"> · {e.ciudad}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="fecha">Fecha</Label>
