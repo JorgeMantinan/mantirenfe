@@ -428,6 +428,31 @@ export class TrenesService {
     };
   }
 
+  async salidasEstacion(estacion: string, fecha: string): Promise<HorarioTrenResponse[]> {
+    const prisma = getPrisma();
+    const encontradas = await buscarEstaciones(prisma, estacion, 3);
+    const mejor = encontradas[0];
+    if (!mejor) return [];
+    const horarios = await prisma.horarioTren.findMany({
+      where: {
+        origenEstacionId: mejor.id,
+        fecha: new Date(`${fecha}T00:00:00Z`),
+      },
+      orderBy: { salida: 'asc' },
+      take: 100,
+      include: { origen: true, destino: true },
+    });
+    return horarios.map((h) => ({
+      numeroTren: h.numeroTren,
+      origenNombre: h.origen.nombre,
+      destinoNombre: h.destino.nombre,
+      salida: h.salida.toISOString(),
+      llegada: h.llegada.toISOString(),
+      duracionMin: Math.round((h.llegada.getTime() - h.salida.getTime()) / 60_000),
+      operador: h.operador,
+    }));
+  }
+
   async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
     let desde: Date;
     let hasta: Date;

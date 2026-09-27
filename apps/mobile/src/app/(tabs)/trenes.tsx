@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   horaGtfs,
   type EstacionResponse,
@@ -50,6 +58,23 @@ export default function Trenes() {
       .catch(() => setEstaciones([]))
       .finally(() => setCargando(false));
   }, []);
+
+  const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
+  const [cargandoSalidas, setCargandoSalidas] = useState(false);
+  const [estacionSel, setEstacionSel] = useState('');
+
+  const cargarSalidas = (nombre: string) => {
+    const fecha = new Date().toISOString().slice(0, 10);
+    setEstacionSel(nombre);
+    setSalidas(null);
+    setCargandoSalidas(true);
+    api<HorarioTrenResponse[]>(
+      `/trenes/estacion?estacion=${encodeURIComponent(nombre)}&fecha=${fecha}`,
+    )
+      .then(setSalidas)
+      .catch(() => setSalidas([]))
+      .finally(() => setCargandoSalidas(false));
+  };
 
   // Búsqueda en el servidor mientras se escribe (la lista fija no incluía,
   // p.ej., estaciones como Arcade que empiezan pasadas las primeras30)
@@ -248,6 +273,40 @@ export default function Trenes() {
         )}
       </View>
 
+      {modo === 'estaciones' && (cargandoSalidas || salidas !== null) && (
+        <Tarjeta style={{ borderColor: colores.primario, marginHorizontal: espaciado.md }}>
+          <View style={estilos.fila}>
+            <Text style={estilos.nombre}>
+              {cargandoSalidas ? 'Cargando salidas...' : `Salidas de ${estacionSel} hoy`}
+            </Text>
+            <Text
+              style={{ color: colores.primario, fontWeight: '600' }}
+              onPress={() => {
+                setSalidas(null);
+                setEstacionSel('');
+              }}
+            >
+              Cerrar
+            </Text>
+          </View>
+          {!cargandoSalidas && (salidas ?? []).length === 0 ? (
+            <Text style={estilos.meta}>Sin salidas registradas hoy</Text>
+          ) : (
+            (salidas ?? []).map((s, i) => (
+              <View key={`${s.numeroTren}-${s.salida}-${i}`} style={{ marginTop: 6 }}>
+                <Text style={estilos.nombre}>
+                  {horaGtfs(s.salida)} · {s.numeroTren}
+                </Text>
+                <Text style={estilos.meta}>
+                  {s.origenNombre} → {s.destinoNombre}
+                  {s.operador ? ` · ${s.operador}` : ''}
+                </Text>
+              </View>
+            ))
+          )}
+        </Tarjeta>
+      )}
+
       {modo === 'estaciones' && (
         <FlatList
           data={estaciones}
@@ -255,12 +314,16 @@ export default function Trenes() {
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
           contentContainerStyle={estilos.lista}
           renderItem={({ item }) => (
-            <Tarjeta>
-              <Text style={estilos.nombre}>{item.nombre}</Text>
-              <Text style={estilos.meta}>
-                {item.codigo}
-                {item.ciudad ? ` · ${item.ciudad}` : ''}
-              </Text>
+            <Tarjeta
+              style={{ borderColor: estacionSel === item.nombre ? colores.primario : undefined }}
+            >
+              <Pressable onPress={() => cargarSalidas(item.nombre)}>
+                <Text style={estilos.nombre}>{item.nombre}</Text>
+                <Text style={estilos.meta}>
+                  {item.codigo}
+                  {item.ciudad ? ` · ${item.ciudad}` : ''} — toca para ver salidas
+                </Text>
+              </Pressable>
             </Tarjeta>
           )}
           ListEmptyComponent={<Text style={estilos.vacio}>No se encontraron estaciones</Text>}

@@ -40,6 +40,19 @@ export class TrenesController {
     return this.trenesService.traza(vehiculo, horas ? Number(horas) : 24, tripId ?? null);
   }
 
+  @Get('estacion')
+  @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 15 } })
+  salidasEstacion(@Query('estacion') estacion?: string, @Query('fecha') fecha?: string) {
+    if (!estacion) {
+      throw new BadRequestException('Falta el parámetro estacion');
+    }
+    if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new BadRequestException('Fecha inválida (formato YYYY-MM-DD)');
+    }
+    return this.trenesService.salidasEstacion(estacion, fecha);
+  }
+
   @Get('puntualidad')
   @EsPublico()
   @Throttle({ default: { ttl: 10_000, limit: 10 } })
