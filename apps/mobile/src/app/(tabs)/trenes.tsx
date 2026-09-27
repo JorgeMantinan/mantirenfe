@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Marker, UrlTile } from 'react-native-maps';
+import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import {
   horaGtfs,
@@ -448,33 +448,11 @@ export default function Trenes() {
           {errorPosiciones ? (
             <Text style={[s.vacio, { color: paleta.error }]}>{errorPosiciones}</Text>
           ) : null}
-          <MapView
+          <WebView
+            source={{ uri: 'https://mantirenfe.vercel.app/mapa' }}
             style={{ flex: 1 }}
-            initialRegion={{ latitude: 40.2, longitude: -3.7, latitudeDelta: 6, longitudeDelta: 6 }}
-          >
-            <UrlTile urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
-            {posicionesVisibles.map((p) => (
-              <Marker
-                key={p.id}
-                coordinate={{ latitude: p.latitud, longitude: p.longitud }}
-                title={p.numeroTren ?? p.id}
-                description={[
-                  p.origenNombre && p.destinoNombre
-                    ? `${p.origenNombre} → ${p.destinoNombre}`
-                    : null,
-                  p.velocidadKmh != null ? `${Math.round(p.velocidadKmh)} km/h` : null,
-                  p.retrasoSeg != null
-                    ? p.retrasoSeg > 0
-                      ? `+${Math.round(p.retrasoSeg / 60)} min`
-                      : 'A tiempo'
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                pinColor="#75258c"
-              />
-            ))}
-          </MapView>
+            startInLoadingState
+          />
         </View>
       )}
 

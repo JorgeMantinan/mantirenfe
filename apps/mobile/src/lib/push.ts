@@ -8,6 +8,18 @@ export interface ResultadoRegistroPush {
   error?: string;
 }
 
+/** Los errores crudos de Firebase no ayudan: los traducimos a una acción concreta */
+function traducirErrorPush(error: unknown): string {
+  const mensaje = error instanceof Error ? error.message : String(error);
+  if (/Firebase/i.test(mensaje)) {
+    return (
+      'Push no disponible en esta build: faltan las credenciales de Firebase (FCM). ' +
+      'Configúralas con "npx eas credentials" → Android → Push notifications y vuelve a compilar el APK.'
+    );
+  }
+  return mensaje;
+}
+
 function projectIdEas(): string | null {
   const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
   const easConfig = (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig;
@@ -30,7 +42,7 @@ export async function desregistrarPushMovil(): Promise<ResultadoRegistroPush> {
     await api('/notificaciones/push-token/unsubscribe', { method: 'POST', json: { token: data } });
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: traducirErrorPush(error) };
   }
 }
 
@@ -79,6 +91,6 @@ export async function registrarPushMovil(): Promise<ResultadoRegistroPush> {
     });
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: traducirErrorPush(error) };
   }
 }
