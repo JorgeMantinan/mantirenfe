@@ -18,4 +18,13 @@ export const BONOS = [
 
 export const OPERADORES = ['RENFE', 'AVLO', 'OUIGO', 'IRYO', 'OTRO'] as const;
 
+/**
+ * true si el `operador` de `horarioTren` corresponde a OUIGO. Los feeds de
+ * Renfe guardan marcas ("AVE", "AVLO", "MD") o el nombre de la ruta; el de
+ * OUIGO se importa con el operador literal "OUIGO".
+ */
+export function esOuigo(operador?: string | null): boolean {
+  return (operador ?? '').toUpperCase().includes('OUIGO');
+}
+
 export const TITULO_APP = 'MantiRenfe';

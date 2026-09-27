@@ -12,6 +12,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  esOuigo,
   funcionIndemnizacion,
   horaGtfs,
   type EstacionResponse,
@@ -521,7 +522,13 @@ export default function Trenes() {
                 {' · '}
                 {item.origenNombre} → {item.destinoNombre}
               </Text>
-              {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
+              {item.operador ? (
+                esOuigo(item.operador) ? (
+                  <Etiqueta tono="aviso">{item.operador}</Etiqueta>
+                ) : (
+                  <Text style={s.meta}>{item.operador}</Text>
+                )
+              ) : null}
               {item.transbordo ? (
                 <View style={{ marginTop: 4, gap: 2 }}>
                   <Etiqueta tono="primario">Transbordo en {item.transbordo.estacion}</Etiqueta>

@@ -7,6 +7,52 @@ const URLS_GTFS_DEFECTO = [
   'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip',
 ];
 
+/** Un feed a sincronizar: de dónde se descarga y con qué operador se guarda. */
+export interface FuenteGtfs {
+  url: string;
+  /**
+   * Operador impuesto a todas las filas del feed. Solo lo traen los feeds
+   * secundarios: el GTFS de OUIGO publica la ruta ("MADRID-CHAMARTIN -- ...")
+   * en route_long_name, no el nombre del operador.
+   */
+  operador?: string;
+}
+
+function listaUrlsGtfs(variable: string, defecto: string[]): string[] {
+  const valor = process.env[variable]?.trim();
+  if (!valor) return defecto;
+  return valor
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Feeds GTFS a sincronizar: los principales (`GTFS_ZIP_URLS`, Renfe) y, solo
+ * si se configuran, los multioperador (`GTFS_ZIP_URLS_OUIGO`, todas sus filas
+ * con operador OUIGO). Sin esa variable no se descarga nada de Ouigo.
+ */
+export function fuentesGtfs(): FuenteGtfs[] {
+  const principales = listaUrlsGtfs('GTFS_ZIP_URLS', URLS_GTFS_DEFECTO).map((url) => ({ url }));
+  const ouigo = listaUrlsGtfs('GTFS_ZIP_URLS_OUIGO', []).map((url) => ({
+    url,
+    operador: 'OUIGO',
+  }));
+  return [...principales, ...ouigo];
+}
+
+/**
+ * El Punto de Acceso Nacional (nap.transportes.gob.es) exige una ApiKey
+ * gratuita en la cabecera `ApiKey`. La clave solo viaja a ese dominio: nunca
+ * se envía a hosts de terceros.
+ */
+export function cabecerasGtfs(url: string): Record<string, string> | undefined {
+  const clave = process.env.NAP_API_KEY?.trim();
+  if (!clave) return undefined;
+  if (!url.includes('nap.transportes.gob.es')) return undefined;
+  return { ApiKey: clave };
+}
+
 /** Entries que se retienen completos (son pequeños). El resto ni se extrae. */
 const ENTRADAS_PEQUENAS = [
   'stops.txt',
@@ -167,15 +213,6 @@ function diasActivos(
   return activos;
 }
 
-function urlGtfs(): string[] {
-  const env = process.env.GTFS_ZIP_URLS?.trim();
-  if (!env) return URLS_GTFS_DEFECTO;
-  return env
-    .split(',')
-    .map((u) => u.trim())
-    .filter(Boolean);
-}
-
 interface ManejadorStopTimes {
   cabecera: (celdas: string[]) => void;
   linea: (celdas: string[]) => void;
@@ -198,9 +235,19 @@ async function recorrerZip(
   const buffers = new Map<string, Buffer>();
   let descarga: Buffer | null = null;
   try {
-    const respuesta = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+    const respuesta = await fetch(url, {
+      headers: cabecerasGtfs(url),
+      signal: AbortSignal.timeout(300_000),
+    });
     if (!respuesta.ok) {
-      logger.warn({ url, status: respuesta.status }, 'GTFS zip no disponible');
+      if (respuesta.status === 401 && url.includes('nap.transportes.gob.es')) {
+        logger.warn(
+          { url },
+          'GTFS del NAP rechazado (401): falta NAP_API_KEY — alta gratuita en nap.transportes.gob.es',
+        );
+      } else {
+        logger.warn({ url, status: respuesta.status }, 'GTFS zip no disponible');
+      }
       return buffers;
     }
     // El zip crudo en RAM (27-110MB): unzipper solo descomprime los entries
@@ -249,15 +296,48 @@ export async function sincronizarEstaciones(logger: Logger): Promise<number> {
   const prisma = getPrisma();
   let total = 0;
 
-  for (const url of urlGtfs()) {
-    const buffers = await recorrerZip(url, logger);
+  for (const fuente of fuentesGtfs()) {
+    const buffers = await recorrerZip(fuente.url, logger);
     const stops = buffers.get('stops.txt');
     buffers.clear();
     if (!stops) {
-      logger.warn({ url }, 'stops.txt ausente en el zip');
+      logger.warn({ url: fuente.url }, 'stops.txt ausente en el zip');
       continue;
     }
     const filas = parsearCsv(stops);
+
+    if (fuente.operador) {
+      // Feed secundario (OUIGO): reutiliza el mapeo de estaciones que ya
+      // existe y solo añade las que falten. Así su tipografía ("MADRID
+      // CHAMARTIN") no pisa nombres/coordenadas de los feeds principales.
+      const nuevas: Array<{
+        id: string;
+        codigo: string;
+        nombre: string;
+        latitud: number | null;
+        longitud: number | null;
+      }> = [];
+      for (const fila of filas) {
+        const codigo = fila.stop_id || fila.stop_code;
+        const nombre = fila.stop_name;
+        if (!codigo || !nombre) continue;
+        const lat = Number(fila.stop_lat);
+        const lon = Number(fila.stop_lon);
+        nuevas.push({
+          id: codigo,
+          codigo,
+          nombre,
+          latitud: Number.isFinite(lat) ? lat : null,
+          longitud: Number.isFinite(lon) ? lon : null,
+        });
+      }
+      if (nuevas.length > 0) {
+        const creadas = await prisma.estacion.createMany({ data: nuevas, skipDuplicates: true });
+        total += creadas.count;
+      }
+      continue;
+    }
+
     for (const fila of filas) {
       const codigo = fila.stop_id || fila.stop_code;
       const nombre = fila.stop_name;
@@ -348,7 +428,8 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
 
   let insertados = 0;
 
-  for (const url of urlGtfs()) {
+  for (const fuente of fuentesGtfs()) {
+    const url = fuente.url;
     // stop_times se acumula solo en sus extremos (primera/ultima parada por trip)
     const extremos = new Map<string, ExtremosViaje>();
     let iTrip = -1;
@@ -491,7 +572,9 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       if (!origenId || !destinoId || origenId === destinoId) continue;
 
       const numeroTren = numeroTrenBruto || tripId || 'sin-numero';
-      const operador = operadorPorRuta.get(routeId) ?? null;
+      // Los feeds secundarios imponen su operador: en el GTFS de OUIGO
+      // route_long_name es la ruta ("MADRID-CHAMARTIN -- ..."), no el operador.
+      const operador = fuente.operador ?? operadorPorRuta.get(routeId) ?? null;
       const duracionMin = Math.max(1, ext.ultima.llegada - ext.primera.salida);
 
       for (const fechaIso of fechas) {

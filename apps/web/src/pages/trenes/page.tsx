@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BellPlus, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
+import { BloqueBilletes } from '@/components/BloqueBilletes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,10 +10,23 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import {
+  esOuigo,
   horaGtfs,
   type EstacionResponse,
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
+
+/**
+ * Agrupa el `operador` de horarioTren para poder comparar operadores: los
+ * feeds de Renfe guardan marcas ("AVE", "AVLO", "MD") o el nombre de la ruta,
+ * no el nombre del operador.
+ */
+function grupoOperador(operador: string | null | undefined): 'Renfe' | 'Ouigo' | 'Iryo' | null {
+  if (!operador) return null;
+  if (esOuigo(operador)) return 'Ouigo';
+  if (operador.toUpperCase().includes('IRYO')) return 'Iryo';
+  return 'Renfe';
+}
 
 export function PaginaTrenes() {
   const navigate = useNavigate();
@@ -29,6 +43,13 @@ export function PaginaTrenes() {
   const timerDestino = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const petOrigen = useRef(0);
   const petDestino = useRef(0);
+
+  // Operadores presentes en los resultados (para poder compararlos)
+  const operadoresEncontrados = useMemo(() => {
+    const presentes = new Set((resultados ?? []).map((t) => grupoOperador(t.operador)));
+    return (['Renfe', 'Ouigo', 'Iryo'] as const).filter((grupo) => presentes.has(grupo));
+  }, [resultados]);
+  const hayOuigo = operadoresEncontrados.includes('Ouigo');
 
   useEffect(
     () => () => {
@@ -96,7 +117,8 @@ export function PaginaTrenes() {
       <div>
         <h1 className="font-heading text-3xl font-bold tracking-tight">Buscar trenes</h1>
         <p className="text-muted-foreground">
-          Horarios programados entre estaciones (datos GTFS de Renfe)
+          Horarios programados entre estaciones (GTFS de Renfe y de los demás operadores
+          sincronizados)
         </p>
       </div>
 
@@ -212,6 +234,33 @@ export function PaginaTrenes() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {resultados.length > 0 && (
+              <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-3 py-2">
+                <p className="text-sm font-medium">
+                  Compara operadores: {operadoresEncontrados.join(' · ')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Las alertas cubren solo lo que su criterio alcance: disponibilidad y retraso se
+                  miden con datos de Renfe, y el horario con este mismo GTFS.
+                  {hayOuigo ? (
+                    <>
+                      {' '}
+                      Por eso un tren de Ouigo no se vigila con una alerta de disponibilidad. Datos
+                      de Ouigo: NAP del Ministerio —{' '}
+                      <a
+                        href="https://www.transportes.gob.es"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline"
+                      >
+                        Powered by MITRAMS
+                      </a>
+                      .
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            )}
             {resultados.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
@@ -254,7 +303,11 @@ export function PaginaTrenes() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{t.numeroTren}</Badge>
-                      {t.operador && <Badge variant="secondary">{t.operador}</Badge>}
+                      {t.operador && (
+                        <Badge variant={esOuigo(t.operador) ? 'aviso' : 'secondary'}>
+                          {t.operador}
+                        </Badge>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -279,6 +332,8 @@ export function PaginaTrenes() {
           </CardContent>
         </Card>
       )}
+
+      <BloqueBilletes />
     </div>
   );
 }

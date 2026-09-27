@@ -19,7 +19,10 @@ import { PaginaNotificaciones } from '@/pages/notificaciones/page';
 import { PaginaRecuperarPassword } from '@/pages/reset/page';
 import { PaginaRegistro } from '@/pages/registro/page';
 import { PaginaAjustes } from '@/pages/ajustes/page';
+import { PaginaCookies } from '@/pages/cookies/page';
+import { PaginaTransparencia } from '@/pages/transparencia/page';
 import { PaginaTrenes } from '@/pages/trenes/page';
+import { PaginaTrayecto, PaginaTrayectos } from '@/pages/trayectos/page';
 
 function RequiereAuth({ children }: { children: ReactNode }) {
   const { user, cargando, authConfigurada } = useAuth();
@@ -46,10 +49,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<PaginaLanding />} />
+      <Route path="/trayectos" element={<PaginaTrayectos />} />
+      <Route path="/trayectos/:origenSlug/:destinoSlug" element={<PaginaTrayecto />} />
       <Route path="/login" element={<PaginaLogin />} />
       <Route path="/registro" element={<PaginaRegistro />} />
       <Route path="/reset-password" element={<PaginaRecuperarPassword />} />
       <Route path="/auth/callback" element={<PaginaAuthCallback />} />
+      <Route path="/transparencia" element={<PaginaTransparencia />} />
+      <Route path="/cookies" element={<PaginaCookies />} />
       <Route element={<AppShell />}>
         <Route
           path="/dashboard"

@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BellRing, Clock, MapPinned, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  BellRing,
+  Clock,
+  Heart,
+  MapPinned,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { BloqueBilletes } from '@/components/BloqueBilletes';
+import { TrayectosPopulares } from '@/components/TrayectosPopulares';
 import { useAuth } from '@/hooks/useAuth';
+import { hayAfiliacion, hayDonaciones, urlDonaciones } from '@/lib/monetizacion';
 
 const CARACTERISTICAS = [
   {
@@ -193,6 +205,14 @@ export function PaginaLanding() {
         </div>
       </section>
 
+      {hayAfiliacion && (
+        <section id="billetes" className="border-t bg-muted/30 py-10">
+          <div className="container">
+            <BloqueBilletes />
+          </div>
+        </section>
+      )}
+
       <section id="como-funciona" className="py-20">
         <div className="container grid gap-8 md:grid-cols-3">
           {PASOS.map((paso) => (
@@ -201,6 +221,20 @@ export function PaginaLanding() {
               <p className="text-muted-foreground">{paso.texto}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section id="trayectos" className="border-t bg-muted/30 py-20">
+        <div className="container space-y-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="font-heading text-3xl font-bold tracking-tight">Trayectos populares</h2>
+            <p className="mt-3 text-muted-foreground">
+              Mira las primeras salidas de hoy de los trayectos más buscados de España, con
+              duración, número de tren y operador de cada servicio. En cada página encuentras la
+              tabla del día y un botón para crear una alerta sobre ese trayecto.
+            </p>
+          </div>
+          <TrayectosPopulares cantidad={10} />
         </div>
       </section>
 
@@ -218,12 +252,30 @@ export function PaginaLanding() {
       </section>
 
       <footer className="border-t bg-muted/30 py-10">
-        <div className="container space-y-3 text-center text-sm text-muted-foreground">
+        <div className="container flex flex-col items-center gap-4 text-center text-sm text-muted-foreground">
+          {hayDonaciones && (
+            <div className="space-y-1">
+              <Button variant="ghost" size="sm" asChild>
+                <a href={urlDonaciones} target="_blank" rel="noopener noreferrer">
+                  <Heart className="h-4 w-4" aria-hidden="true" /> Apoya el proyecto
+                </a>
+              </Button>
+              <p className="text-xs">Las donaciones sostienen el proyecto independiente.</p>
+            </div>
+          )}
           <p>
             <strong>MantiRenfe</strong> es un proyecto independiente y no está afiliado, patrocinado
             ni respaldado por Renfe Operadora, Adif ni ningún operador ferroviario.
           </p>
           <p>Origen de los datos: Renfe Operadora (open data, CC-BY 4.0) · © 2026 MantiRenfe</p>
+          <nav className="flex flex-wrap justify-center gap-4 text-xs">
+            <Link to="/transparencia" className="hover:text-foreground">
+              Transparencia
+            </Link>
+            <Link to="/cookies" className="hover:text-foreground">
+              Cookies
+            </Link>
+          </nav>
         </div>
       </footer>
     </div>
