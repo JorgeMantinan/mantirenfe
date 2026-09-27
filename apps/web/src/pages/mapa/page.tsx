@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CircleDot, RefreshCw } from 'lucide-react';
+import { CircleDot, RefreshCw, Search } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { horaGtfs, type PosicionTrenResponse, type PuntoTraza } from '@mantirenfe/shared-types';
 
@@ -35,6 +36,7 @@ export function PaginaMapa() {
   const [cargando, setCargando] = useState(true);
   const [traza, setTraza] = useState<{ vehiculo: string; puntos: PuntoTraza[] } | null>(null);
   const [cargandoTraza, setCargandoTraza] = useState(false);
+  const [filtro, setFiltro] = useState('');
 
   const alternarTraza = useCallback(
     async (vehiculo: string) => {
@@ -82,6 +84,16 @@ export function PaginaMapa() {
     return () => window.clearInterval(intervalo);
   }, [cargar]);
 
+  const q = filtro.trim().toLowerCase();
+  const visibles = (trenes ?? []).filter(
+    (t) =>
+      !q ||
+      (t.numeroTren ?? '').toLowerCase().includes(q) ||
+      (t.origenNombre ?? '').toLowerCase().includes(q) ||
+      (t.destinoNombre ?? '').toLowerCase().includes(q) ||
+      t.id.toLowerCase().includes(q),
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -92,8 +104,25 @@ export function PaginaMapa() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+              placeholder="Filtrar trenes..."
+              className="w-48 pl-8"
+              aria-label="Filtrar trenes del mapa"
+            />
+          </div>
           <span className="text-sm text-muted-foreground">
-            {trenes ? `${trenes.length} trenes` : '—'}
+            {trenes
+              ? q
+                ? `${visibles.length} / ${trenes.length} trenes`
+                : `${trenes.length} trenes`
+              : '—'}
           </span>
           <Button variant="outline" size="sm" onClick={() => void cargar()} disabled={cargando}>
             <RefreshCw className={cargando ? 'animate-spin' : ''} aria-hidden="true" /> Actualizar
@@ -105,6 +134,12 @@ export function PaginaMapa() {
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
           {error} — comprueba la API o la URL de GTFS-RT en <code>.env</code>.
         </div>
+      )}
+
+      {trenes !== null && q && visibles.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Ningún tren coincide con «{filtro}». Borra el filtro para verlos todos.
+        </p>
       )}
 
       <Card className="overflow-hidden">
@@ -128,7 +163,7 @@ export function PaginaMapa() {
             >
               <TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />
               <Actualizador posiciones={trenes ?? []} />
-              {(trenes ?? []).map((tren) => (
+              {visibles.map((tren) => (
                 <CircleMarker
                   key={tren.id}
                   center={[tren.latitud, tren.longitud]}
@@ -184,17 +219,19 @@ export function PaginaMapa() {
                   </Popup>
                 </CircleMarker>
               ))}
-              {traza && traza.puntos.length > 1 && (
-                <Polyline
-                  positions={traza.puntos.map((p) => [p.latitud, p.longitud] as [number, number])}
-                  pathOptions={{
-                    color: '#0ea5e9',
-                    weight: 3,
-                    opacity: 0.8,
-                    dashArray: '6 8',
-                  }}
-                />
-              )}
+              {traza &&
+                traza.puntos.length > 1 &&
+                visibles.some((v) => v.id === traza.vehiculo) && (
+                  <Polyline
+                    positions={traza.puntos.map((p) => [p.latitud, p.longitud] as [number, number])}
+                    pathOptions={{
+                      color: '#0ea5e9',
+                      weight: 3,
+                      opacity: 0.8,
+                      dashArray: '6 8',
+                    }}
+                  />
+                )}
             </MapContainer>
           )}
         </CardContent>

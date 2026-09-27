@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
@@ -28,6 +28,19 @@ export default function Trenes() {
 
   const [posiciones, setPosiciones] = useState<PosicionTrenResponse[]>([]);
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
+  const [filtroPos, setFiltroPos] = useState('');
+
+  const posicionesVisibles = useMemo(() => {
+    const q = filtroPos.trim().toLowerCase();
+    if (!q) return posiciones;
+    return posiciones.filter(
+      (p) =>
+        (p.numeroTren ?? '').toLowerCase().includes(q) ||
+        (p.origenNombre ?? '').toLowerCase().includes(q) ||
+        (p.destinoNombre ?? '').toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q),
+    );
+  }, [posiciones, filtroPos]);
 
   const cargarEstaciones = useCallback((q?: string) => {
     setCargando(true);
@@ -159,6 +172,16 @@ export default function Trenes() {
               setBuscar(v);
               buscarEstacionesTexto(v);
             }}
+          />
+        )}
+
+        {modo === 'posiciones' && (
+          <TextInput
+            style={estilos.campo}
+            placeholder="Filtrar trenes (nº, origen, destino)..."
+            placeholderTextColor={colores.textoSecundario}
+            value={filtroPos}
+            onChangeText={setFiltroPos}
           />
         )}
 
@@ -312,7 +335,7 @@ export default function Trenes() {
 
       {modo === 'posiciones' && (
         <FlatList
-          data={posiciones}
+          data={posicionesVisibles}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
           contentContainerStyle={estilos.lista}
@@ -323,6 +346,8 @@ export default function Trenes() {
               </Tarjeta>
             ) : posiciones.length === 0 ? (
               <Text style={estilos.vacio}>Sin posiciones GTFS-RT ahora mismo</Text>
+            ) : posicionesVisibles.length === 0 ? (
+              <Text style={estilos.vacio}>Sin trenes que coincidan con «{filtroPos}»</Text>
             ) : null
           }
           renderItem={({ item }) => (
