@@ -8,6 +8,7 @@ import { PaginaDetalleAlerta } from '@/pages/alertas/detalle/page';
 import { PaginaNuevaAlerta } from '@/pages/alertas/nueva/page';
 import { PaginaAuthCallback } from '@/pages/auth/callback/page';
 import { PaginaDashboard } from '@/pages/dashboard/page';
+import { PaginaIncidencias } from '@/pages/incidencias/page';
 import { PaginaLanding } from '@/pages/landing/page';
 import { PaginaLogin } from '@/pages/login/page';
 import { PaginaMapa } from '@/pages/mapa/page';
@@ -98,6 +99,7 @@ export default function App() {
           }
         />
         <Route path="/mapa" element={<PaginaMapa />} />
+        <Route path="/incidencias" element={<PaginaIncidencias />} />
         <Route path="/trenes" element={<PaginaTrenes />} />
         <Route path="/puntualidad" element={<PaginaPuntualidad />} />
         <Route path="*" element={<PaginaNoEncontrada />} />

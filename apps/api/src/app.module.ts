@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { EstacionesModule } from './estaciones/estaciones.module';
 import { FiltroExcepcionesGlobal } from './common/filtro-excepciones';
 import { HealthModule } from './health/health.module';
+import { IncidenciasModule } from './incidencias/incidencias.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { QueueModule } from './queue/queue.module';
@@ -26,6 +27,7 @@ import { TrenesModule } from './trenes/trenes.module';
     NotificacionesModule,
     EstacionesModule,
     TrenesModule,
+    IncidenciasModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

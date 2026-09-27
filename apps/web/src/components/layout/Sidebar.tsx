@@ -10,6 +10,7 @@ import {
   Settings,
   Ticket,
   TrendingDown,
+  TriangleAlert,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const GRUPOS: ItemMenu[] = [
     titulo: 'Explorar',
     items: [
       { href: '/mapa', etiqueta: 'Mapa en tiempo real', icono: Map },
+      { href: '/incidencias', etiqueta: 'Incidencias', icono: TriangleAlert },
       { href: '/trenes', etiqueta: 'Buscar trenes', icono: Ticket },
       { href: '/puntualidad', etiqueta: 'Trenes impuntuales', icono: TrendingDown },
     ],

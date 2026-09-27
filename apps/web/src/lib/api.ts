@@ -20,7 +20,13 @@ export async function api<T>(
   opciones: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const token = await obtenerToken();
-  const rutasPublicas = ['/estaciones', '/trenes/horarios', '/trenes/posiciones', '/health'];
+  const rutasPublicas = [
+    '/estaciones',
+    '/incidencias',
+    '/trenes/horarios',
+    '/trenes/posiciones',
+    '/health',
+  ];
   const esPublica = rutasPublicas.some((r) => ruta.startsWith(r));
   if (!token && !esPublica) {
     // Falla en local para no mandar una petición que sabemos que será 401

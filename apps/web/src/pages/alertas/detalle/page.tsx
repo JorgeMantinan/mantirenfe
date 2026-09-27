@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, BellRing } from 'lucide-react';
+import { ArrowLeft, BellRing, TriangleAlert } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
 
 export function PaginaDetalleAlerta() {
   const { id } = useParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
   const [avisos, setAvisos] = useState<NotificacionResponse[]>([]);
+  const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -21,9 +23,16 @@ export function PaginaDetalleAlerta() {
     Promise.all([
       api<AlertaResponse>(`/alertas/${id}`),
       api<NotificacionResponse[]>('/notificaciones'),
+      // Si el feed de incidencias no responde, el detalle se muestra igual
+      api<IncidenciaResponse[]>('/incidencias').catch(() => [] as IncidenciaResponse[]),
     ])
-      .then(([a, todas]) => {
+      .then(([a, todas, incidenciasActivas]) => {
         setAlerta(a);
+        setIncidencias(
+          incidenciasActivas.filter((inc) =>
+            incidenciaAfectaA(inc, [a.origenNombre, a.destinoNombre]),
+          ),
+        );
         const deEstaAlerta = todas.filter((n) => n.alertaId === id);
         setAvisos(deEstaAlerta);
         // Al abrir el detalle se marcan como leídos los avisos de esta alerta
@@ -68,6 +77,36 @@ export function PaginaDetalleAlerta() {
       ) : (
         alerta && (
           <>
+            {incidencias.length > 0 && (
+              <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+                <p className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
+                  <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Incidencia de servicio que puede afectar a esta ruta
+                </p>
+                <ul className="mt-2 space-y-3">
+                  {incidencias.map((incidencia) => (
+                    <li key={incidencia.id} className="space-y-1">
+                      <p className="font-medium">{incidencia.titulo ?? 'Incidencia de servicio'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatoPeriodo(incidencia.desde, incidencia.hasta)}
+                      </p>
+                      {incidencia.estacionesAfectadas.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Estaciones: {incidencia.estacionesAfectadas.join(', ')}
+                        </p>
+                      )}
+                      {incidencia.mensaje && (
+                        <p className="text-muted-foreground">{incidencia.mensaje}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/incidencias" className="mt-2 inline-block font-medium underline">
+                  Ver todas las incidencias
+                </Link>
+              </div>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">

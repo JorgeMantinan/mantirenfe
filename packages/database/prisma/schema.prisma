@@ -181,6 +181,21 @@ model PosicionHistorial {
   @@index([en])
 }
 
+// Incidencias de servicio en vivo (GTFS-RT alerts de Renfe, feed alerts.pb)
+model Incidencia {
+  id                  String   @id
+  titulo              String?
+  mensaje             String?
+  causa               String?
+  estacionesAfectadas String[]
+  desde               DateTime?
+  hasta               DateTime?
+  activa              Boolean  @default(true)
+  actualizadaEn       DateTime @default(now())
+
+  @@index([activa])
+}
+
 model ImpuntualidadTren {
   id            String   @id @default(cuid())
   tripId        String

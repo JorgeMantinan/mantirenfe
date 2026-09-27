@@ -14,6 +14,7 @@ import {
   procesarResumenes,
 } from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
+import { sincronizarIncidencias } from './processors/incidencias';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -75,7 +76,19 @@ async function programarTareas() {
     },
   );
 
-  logger.info('Tareas repetibles programadas (barrido 1min, sync GTFS diario 04:00)');
+  // Incidencias de servicio (alerts.pb, el feed se renueva cada 20 s)
+  await colaMasiva.add(
+    'incidencias',
+    {},
+    {
+      repeat: { pattern: '*/1 * * * *' },
+      jobId: 'incidencias-gtfs-rt',
+      removeOnComplete: 50,
+      removeOnFail: 100,
+    },
+  );
+
+  logger.info('Tareas repetibles programadas (barrido 1min, incidencias 1min, sync GTFS 04:00)');
   return { colaSondeo, colaMasiva, colaSync };
 }
 
@@ -94,7 +107,14 @@ async function main() {
 
   const workerMasivo = new Worker(
     COLA_SONDEO_MASIVO,
-    async () => {
+    async (job) => {
+      // Mismo queue que el barrido, otro job repetible: las incidencias de
+      // servicio se refrescan solas cada minuto sin tocar el resto
+      if (job.name === 'incidencias') {
+        await sincronizarIncidencias(logger);
+        return;
+      }
+
       const prisma = getPrisma();
 
       // Snapshot de posiciones cada ~5 min: aunque nadie abra el mapa, la traza
