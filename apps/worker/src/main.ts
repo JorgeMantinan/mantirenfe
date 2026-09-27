@@ -91,15 +91,16 @@ async function main() {
         logger.error({ err: error }, 'Fallo completando alertas caducadas');
       }
 
-      const desde = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      // El filtro por intervaloSondeoMin se aplica en memoria más abajo: en SQL
+      // solo se descartan las de otros días y se limita a las más urgentes
       const alertas = await prisma.alerta.findMany({
         where: {
           estado: 'ACTIVA',
-          OR: [{ ultimoSondeoEn: null }, { ultimoSondeoEn: { lt: desde } }],
           fechaViaje: { gte: new Date(new Date().toISOString().slice(0, 10)) },
         },
         select: { id: true, ultimoSondeoEn: true, intervaloSondeoMin: true },
-        take: 200,
+        orderBy: [{ ultimoSondeoEn: 'asc' }, { creadaEn: 'asc' }],
+        take: 500,
       });
 
       const pendientes = alertas.filter((a) => {
