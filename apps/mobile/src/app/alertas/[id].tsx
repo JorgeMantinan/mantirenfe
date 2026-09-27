@@ -1,12 +1,25 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
+import { horaGtfs, type AlertaResponse, type NotificacionResponse } from '@mantirenfe/shared-types';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
+
+/** "hace X min" si es reciente; si no, fecha legible en español. */
+function haceCuanto(iso: string): string {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  return new Date(iso).toLocaleString('es-ES');
+}
+
+function formatearPrecio(precioMin: number | null): string {
+  if (precioMin === null) return '—';
+  return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+}
 
 export default function DetalleAlerta() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,6 +59,10 @@ export default function DetalleAlerta() {
       cargar();
     }, [cargar]),
   );
+
+  const trenes = alerta?.ultimoEstado ?? [];
+  const esDisponibilidad =
+    alerta?.criterio === 'DISPONIBILIDAD' || alerta?.criterio === 'APERTURA_VENTA';
 
   const cabecera = (
     <View style={{ gap: espaciado.sm }}>
@@ -100,6 +117,42 @@ export default function DetalleAlerta() {
               : 'todavía ninguno'}
           </Text>
         </Tarjeta>
+      ) : null}
+
+      {alerta ? (
+        <>
+          <Text style={s.subtitulo}>Plazas de hoy</Text>
+          <Tarjeta>
+            {trenes.length > 0 ? (
+              trenes.map((tren) => (
+                <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
+                  <View style={s.plazaInfo}>
+                    <Text style={s.plazaTren}>
+                      {horaGtfs(tren.salida)} · {tren.numeroTren || '—'}
+                    </Text>
+                    {tren.precioMin !== null ? (
+                      <Text style={s.precio}>Desde {formatearPrecio(tren.precioMin)}</Text>
+                    ) : null}
+                  </View>
+                  <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
+                    {tren.disponible ? 'Hay plazas' : 'Completo'}
+                  </Etiqueta>
+                </View>
+              ))
+            ) : (
+              <>
+                <Text style={s.detalle}>
+                  {esDisponibilidad
+                    ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
+                    : 'Solo para alertas de disponibilidad'}
+                </Text>
+                {alerta.ultimoSondeoEn ? (
+                  <Text style={s.fecha}>Último sondeo: {haceCuanto(alerta.ultimoSondeoEn)}</Text>
+                ) : null}
+              </>
+            )}
+          </Tarjeta>
+        </>
       ) : null}
 
       <Text style={s.subtitulo}>Avisos de esta alerta</Text>
@@ -174,6 +227,20 @@ const estilos = (c: Paleta) =>
       fontWeight: '700',
       color: c.texto,
       flex: 1,
+    },
+    plazaInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    plazaTren: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    precio: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.aviso,
     },
     fecha: {
       fontSize: 12,

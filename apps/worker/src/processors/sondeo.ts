@@ -4,20 +4,16 @@ import {
   funcionIndemnizacion,
   type ConsultaDisponibilidad,
   type EstadoDisponibilidad,
+  type EstadoSerializado,
 } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { enviarPush } from '../notificaciones/web-push';
 import { hoyGtfs } from './reloj';
 
-export interface EstadoSerializado {
-  trenId: string;
-  numeroTren: string;
-  salida: string;
-  disponible: boolean;
-  precioMin: number | null;
-  retrasoSeg?: number | null;
-}
+// El tipo vive en shared-types (lo consumen la API, la web y el móvil);
+// se re-exporta aquí para no romper a nadie que lo importara de este fichero.
+export type { EstadoSerializado };
 
 export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
   return [...estado.trenes]

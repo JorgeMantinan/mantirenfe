@@ -17,6 +17,7 @@ import {
   type EstacionResponse,
   type HorarioTrenResponse,
   type PosicionTrenResponse,
+  type PuntualidadTrenResponse,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
@@ -24,7 +25,33 @@ import { api } from '@/lib/api';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
 
-type Modo = 'estaciones' | 'horarios' | 'posiciones';
+type Modo = 'estaciones' | 'horarios' | 'posiciones' | 'impuntuales';
+type OrdenImpuntuales = 'veces' | 'impuntualidad';
+
+function mesActual(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+/** Mes siguiente/anterior en formato YYYY-MM (sin pasar del mes en curso). */
+function cambiarMes(mes: string, delta: number): string {
+  const [anio, mesNum] = mes.split('-').map(Number);
+  const siguiente = new Date(Date.UTC(anio, mesNum - 1 + delta, 1));
+  const nuevo = siguiente.toISOString().slice(0, 7);
+  return nuevo > mesActual() ? mesActual() : nuevo;
+}
+
+function nombreMes(mes: string): string {
+  return new Date(`${mes}-02T00:00:00Z`).toLocaleDateString('es-ES', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function formatMinutos(segundos: number): string {
+  if (segundos < 60) return `${Math.round(segundos)} s`;
+  return `${Math.round(segundos / 60)} min`;
+}
 
 /** Minúsculas sin tildes, para que "A Coruña" matchee con "La Coruña" o "coruña" */
 function normalizarTexto(texto: string): string {
@@ -55,6 +82,11 @@ export default function Trenes() {
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
   const [filtroPos, setFiltroPos] = useState('');
   const [vistaPos, setVistaPos] = useState<'lista' | 'mapa'>('lista');
+
+  const [mes, setMes] = useState(mesActual);
+  const [orden, setOrden] = useState<OrdenImpuntuales>('veces');
+  const [impuntuales, setImpuntuales] = useState<PuntualidadTrenResponse[] | null>(null);
+  const [errorImpuntuales, setErrorImpuntuales] = useState<string | null>(null);
 
   const { paleta } = useTema();
   const s = useMemo(() => estilos(paleta), [paleta]);
@@ -157,11 +189,36 @@ export default function Trenes() {
       .finally(() => setCargando(false));
   }, []);
 
+  // Depende de mes/orden: useFocusEffect se vuelve a ejecutar al cambiarlos (y al
+  // recuperar el foco), así que no hace falta un useEffect aparte que duplique la llamada.
+  const peticionImpuntuales = useRef(0);
+  const cargarImpuntuales = useCallback(() => {
+    const peticion = ++peticionImpuntuales.current;
+    setImpuntuales(null);
+    setErrorImpuntuales(null);
+    setCargando(true);
+    api<PuntualidadTrenResponse[]>(`/trenes/puntualidad?mes=${mes}&orden=${orden}`)
+      .then((d) => {
+        if (peticion !== peticionImpuntuales.current) return;
+        setImpuntuales(d);
+        setErrorImpuntuales(null);
+      })
+      .catch((e: Error) => {
+        if (peticion !== peticionImpuntuales.current) return;
+        setErrorImpuntuales(e.message);
+        setImpuntuales([]);
+      })
+      .finally(() => {
+        if (peticion === peticionImpuntuales.current) setCargando(false);
+      });
+  }, [mes, orden]);
+
   useFocusEffect(
     useCallback(() => {
       if (modo === 'estaciones') cargarEstaciones();
       if (modo === 'posiciones') cargarPosiciones();
-    }, [modo, cargarEstaciones, cargarPosiciones]),
+      if (modo === 'impuntuales') cargarImpuntuales();
+    }, [modo, cargarEstaciones, cargarPosiciones, cargarImpuntuales]),
   );
 
   const sugerencias = () => sugerenciasForm;
@@ -187,6 +244,7 @@ export default function Trenes() {
     if (modo === 'estaciones') cargarEstaciones(buscar || undefined);
     if (modo === 'posiciones') cargarPosiciones();
     if (modo === 'horarios') void buscarHorarios();
+    if (modo === 'impuntuales') cargarImpuntuales();
   };
 
   return (
@@ -199,6 +257,7 @@ export default function Trenes() {
               ['estaciones', 'Estaciones'],
               ['horarios', 'Horarios'],
               ['posiciones', 'Tiempo real'],
+              ['impuntuales', 'Impuntuales'],
             ] as Array<[Modo, string]>
           ).map(([valor, etiqueta]) => (
             <Text
@@ -210,6 +269,44 @@ export default function Trenes() {
             </Text>
           ))}
         </View>
+
+        {modo === 'impuntuales' && (
+          <>
+            <View style={s.mesFila}>
+              <Text
+                style={s.mesFlecha}
+                onPress={() => setMes((m) => cambiarMes(m, -1))}
+                suppressHighlighting
+              >
+                ‹
+              </Text>
+              <Text style={s.mesNombre}>{nombreMes(mes)}</Text>
+              <Text
+                style={[s.mesFlecha, mes >= mesActual() && s.mesFlechaInactiva]}
+                onPress={() => setMes((m) => (m >= mesActual() ? m : cambiarMes(m, 1)))}
+                suppressHighlighting
+              >
+                ›
+              </Text>
+            </View>
+            <View style={s.modos}>
+              {(
+                [
+                  ['veces', 'Más veces'],
+                  ['impuntualidad', 'Mayor retraso'],
+                ] as Array<[OrdenImpuntuales, string]>
+              ).map(([valor, etiqueta]) => (
+                <Text
+                  key={valor}
+                  style={[s.modo, orden === valor && s.modoActivo]}
+                  onPress={() => setOrden(valor)}
+                >
+                  {etiqueta}
+                </Text>
+              ))}
+            </View>
+          </>
+        )}
 
         {modo === 'estaciones' && (
           <TextInput
@@ -536,6 +633,52 @@ export default function Trenes() {
           }}
         />
       )}
+
+      {modo === 'impuntuales' && (
+        <FlatList
+          data={impuntuales ?? []}
+          keyExtractor={(item) => item.vehiculoId}
+          refreshControl={<RefreshControl refreshing={cargando} onRefresh={refrescar} />}
+          contentContainerStyle={s.lista}
+          ListHeaderComponent={
+            errorImpuntuales ? (
+              <Tarjeta style={{ borderColor: paleta.error }}>
+                <Text style={{ color: paleta.error }}>{errorImpuntuales}</Text>
+              </Tarjeta>
+            ) : null
+          }
+          ListEmptyComponent={
+            errorImpuntuales ? null : (
+              <Text style={s.vacio}>
+                {cargando ? 'Cargando impuntualidad…' : 'Aún sin datos de impuntualidad este mes'}
+              </Text>
+            )
+          }
+          renderItem={({ item }) => (
+            <Tarjeta>
+              <View style={s.fila}>
+                <Text style={s.nombre}>{item.numeroTren ?? item.vehiculoId}</Text>
+                <Etiqueta tono="aviso">{item.vecesImpuntuales} veces</Etiqueta>
+              </View>
+              <Text style={s.meta}>
+                Retraso medio {formatMinutos(item.retrasoMedioSeg)} · Peor{' '}
+                {formatMinutos(item.retrasoMaxSeg)}
+              </Text>
+              {item.origenNombre && item.destinoNombre ? (
+                <Text style={s.meta}>
+                  {item.origenNombre} → {item.destinoNombre}
+                </Text>
+              ) : null}
+              {item.salida ? (
+                <Text style={s.meta}>
+                  Salida {horaGtfs(item.salida)}
+                  {item.fecha ? ` · ${item.fecha}` : ''}
+                </Text>
+              ) : null}
+            </Tarjeta>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -560,6 +703,7 @@ const estilos = (c: Paleta) =>
     },
     modos: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: espaciado.sm,
     },
     modo: {
@@ -577,6 +721,28 @@ const estilos = (c: Paleta) =>
       color: c.primarioOscuro,
       borderColor: c.primario,
       backgroundColor: c.acento,
+    },
+    mesFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    mesFlecha: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: c.primario,
+      paddingHorizontal: espaciado.md,
+      paddingVertical: 2,
+    },
+    mesFlechaInactiva: {
+      color: c.borde,
+    },
+    mesNombre: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.texto,
+      textTransform: 'capitalize',
     },
     formulario: {
       gap: 6,

@@ -7,8 +7,33 @@ import {
   COLA_SONDEO,
   CrearAlertaInput,
   ActualizarAlertaInput,
+  type EstadoSerializado,
 } from '@mantirenfe/shared-types';
 import { UsuarioRequest } from '../common/usuario-actual.decorator';
+
+/**
+ * `alerta.ultimoEstado` es un Json de Prisma: se normaliza para devolver solo
+ * lo que la UI espera (y null si el worker aún no ha guardado nada).
+ */
+function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
+  if (!Array.isArray(valor)) return null;
+  const trenes: EstadoSerializado[] = [];
+  for (const item of valor) {
+    if (!item || typeof item !== 'object') continue;
+    const t = item as Partial<EstadoSerializado>;
+    if (typeof t.trenId !== 'string' || typeof t.salida !== 'string') continue;
+    if (typeof t.disponible !== 'boolean') continue;
+    trenes.push({
+      trenId: t.trenId,
+      numeroTren: typeof t.numeroTren === 'string' ? t.numeroTren : '',
+      salida: t.salida,
+      disponible: t.disponible,
+      precioMin: typeof t.precioMin === 'number' ? t.precioMin : null,
+      retrasoSeg: typeof t.retrasoSeg === 'number' ? t.retrasoSeg : null,
+    });
+  }
+  return trenes;
+}
 
 function formatearAlerta(alerta: {
   id: string;
@@ -26,6 +51,7 @@ function formatearAlerta(alerta: {
   bono: string;
   notas: string | null;
   ultimoSondeoEn: Date | null;
+  ultimoEstado?: unknown;
   creadaEn: Date;
 }): AlertaResponse {
   return {
@@ -44,6 +70,7 @@ function formatearAlerta(alerta: {
     bono: alerta.bono,
     notas: alerta.notas,
     ultimoSondeoEn: alerta.ultimoSondeoEn?.toISOString() ?? null,
+    ultimoEstado: formatearUltimoEstado(alerta.ultimoEstado),
     creadaEn: alerta.creadaEn.toISOString(),
   };
 }

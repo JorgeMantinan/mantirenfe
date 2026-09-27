@@ -1,13 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, BellRing, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BellRing, RefreshCw, Train, TriangleAlert } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
-import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
+import {
+  horaGtfs,
+  type AlertaResponse,
+  type EstadoSerializado,
+  type NotificacionResponse,
+} from '@mantirenfe/shared-types';
+
+/** "hace X min" si es reciente; si no, fecha legible en español. */
+function haceCuanto(iso: string): string {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  return new Date(iso).toLocaleString('es-ES');
+}
+
+function formatearPrecio(precioMin: number | null): string {
+  if (precioMin === null) return '—';
+  return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+}
 
 export function PaginaDetalleAlerta() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +34,7 @@ export function PaginaDetalleAlerta() {
   const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const trenes: EstadoSerializado[] = alerta?.ultimoEstado ?? [];
 
   const cargar = useCallback(() => {
     if (!id) return;
@@ -157,6 +176,66 @@ export function PaginaDetalleAlerta() {
                   Notas: {alerta.notas}
                 </CardContent>
               )}
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                <div className="space-y-1.5">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Train className="h-5 w-5 text-primary" aria-hidden="true" />
+                    Plazas de hoy
+                  </CardTitle>
+                  <CardDescription>
+                    {alerta.ultimoSondeoEn
+                      ? `Último sondeo: ${haceCuanto(alerta.ultimoSondeoEn)}`
+                      : 'Todavía no se ha sondeado esta alerta'}
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={cargar} disabled={cargando}>
+                  <RefreshCw aria-hidden="true" /> Actualizar
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {trenes.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="py-2 pr-3 font-medium">Hora</th>
+                          <th className="py-2 pr-3 font-medium">Tren</th>
+                          <th className="py-2 pr-3 font-medium">Plazas</th>
+                          <th className="py-2 font-medium text-right">Precio desde</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trenes.map((tren) => (
+                          <tr
+                            key={`${tren.trenId}-${tren.salida}`}
+                            className="border-b last:border-b-0"
+                          >
+                            <td className="py-2 pr-3 font-medium">{horaGtfs(tren.salida)}</td>
+                            <td className="py-2 pr-3">{tren.numeroTren || '—'}</td>
+                            <td className="py-2 pr-3">
+                              <Badge variant={tren.disponible ? 'exito' : 'secondary'}>
+                                {tren.disponible ? 'Hay plazas' : 'Completo'}
+                              </Badge>
+                            </td>
+                            <td className="py-2 text-right text-amber-700 dark:text-amber-300">
+                              {formatearPrecio(tren.precioMin)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA'
+                      ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
+                      : 'Solo para alertas de disponibilidad'}
+                  </p>
+                )}
+              </CardContent>
             </Card>
 
             <Card>

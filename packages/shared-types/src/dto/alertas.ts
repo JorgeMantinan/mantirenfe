@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BONOS, INTERVALOS_SONDEO_MIN } from '../constantes';
+import type { EstadoSerializado } from './trenes';
 
 export const criterioAlertaSchema = z.enum([
   'DISPONIBILIDAD',
@@ -104,5 +105,7 @@ export interface AlertaResponse {
   bono: string;
   notas: string | null;
   ultimoSondeoEn: string | null;
+  /** Último estado guardado por el worker (null si aún no hay sondeos). */
+  ultimoEstado?: EstadoSerializado[] | null;
   creadaEn: string;
 }

@@ -100,6 +100,20 @@ export interface EstadoDisponibilidad {
   consultadoEn: string;
 }
 
+/**
+ * Estado de disponibilidad ya serializado: es lo que el worker guarda en
+ * `alerta.ultimoEstado` y lo que la API devuelve en `AlertaResponse.ultimoEstado`
+ * para pintar las plazas de cada tren en web y móvil.
+ */
+export interface EstadoSerializado {
+  trenId: string;
+  numeroTren: string;
+  salida: string;
+  disponible: boolean;
+  precioMin: number | null;
+  retrasoSeg?: number | null;
+}
+
 /** Ranking mensual de impuntualidad (servicios con retraso >= umbral) */
 export interface PuntualidadTrenResponse {
   vehiculoId: string;
