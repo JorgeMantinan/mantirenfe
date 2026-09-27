@@ -1,7 +1,7 @@
 export interface FeedTripUpdatesCrudo {
   entity?: Array<{
     tripUpdate?: {
-      trip?: { tripId?: string };
+      trip?: { tripId?: string; scheduleRelationship?: string };
       delay?: number;
       stopTimeUpdate?: Array<{
         arrival?: { delay?: number };
@@ -39,6 +39,14 @@ function matchNumero(clave: string, candidatos: ReadonlySet<string>): string | n
   return null;
 }
 
+function resolverClave(tripId: string, soloTripIds?: ReadonlySet<string>): string | null {
+  const clave = prefijoTripId(tripId);
+  if (!soloTripIds) return clave;
+  if (soloTripIds.has(clave)) return clave;
+  if (soloTripIds.has(tripId)) return tripId;
+  return matchNumero(clave, soloTripIds);
+}
+
 /**
  * Extrae el retraso en segundos por tripId de un feed GTFS-RT de trip updates.
  * Prioriza `tripUpdate.delay` y, si no viene, el máximo de los delays de paradas.
@@ -57,16 +65,8 @@ export function parsearRetrasos(
     const tripId = entidad.tripUpdate?.trip?.tripId;
     if (!tripId) continue;
 
-    let clave = prefijoTripId(tripId);
-    if (soloTripIds && !soloTripIds.has(clave)) {
-      if (soloTripIds.has(tripId)) {
-        clave = tripId;
-      } else {
-        const numero = matchNumero(clave, soloTripIds);
-        if (numero === null) continue;
-        clave = numero;
-      }
-    }
+    const clave = resolverClave(tripId, soloTripIds);
+    if (clave === null) continue;
 
     let delay = segundosLimpios(entidad.tripUpdate?.delay);
     if (delay === null) {
@@ -82,4 +82,21 @@ export function parsearRetrasos(
     if (delay !== null) retrasos.set(clave, delay);
   }
   return retrasos;
+}
+
+const RELACION_HORARIO_CANCELADO = 'CANCELED';
+
+export function parsearCancelados(feed: unknown, soloTripIds?: ReadonlySet<string>): Set<string> {
+  const cancelados = new Set<string>();
+  const entidades = (feed as FeedTripUpdatesCrudo | null)?.entity;
+  if (!Array.isArray(entidades)) return cancelados;
+
+  for (const entidad of entidades) {
+    const trip = entidad.tripUpdate?.trip;
+    if (trip?.scheduleRelationship !== RELACION_HORARIO_CANCELADO) continue;
+    if (!trip.tripId) continue;
+    const clave = resolverClave(trip.tripId, soloTripIds);
+    if (clave !== null) cancelados.add(clave);
+  }
+  return cancelados;
 }

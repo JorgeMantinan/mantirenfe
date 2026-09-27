@@ -5,9 +5,12 @@ import {
   diffHorarios,
   enFranjaHoraria,
   filtrarCambiosPrecio,
+  filtrarCancelados,
   filtrarRetrasados,
+  nuevosCancelados,
   pushHabilitado,
   serializarEstado,
+  textoCancelacion,
   textoIndemnizacion,
 } from './sondeo';
 
@@ -61,6 +64,93 @@ describe('serializarEstado', () => {
     expect(serie.map((t) => t.trenId)).toEqual(['a', 'b']);
     expect(serie[1]?.retrasoSeg).toBe(600);
     expect(serie[0]?.retrasoSeg).toBeNull();
+  });
+
+  it('serializa la marca de cancelación como booleano', () => {
+    const serie = serializarEstado(
+      estado([
+        {
+          trenId: 'a',
+          numeroTren: '15648',
+          salida: '2026-09-27T06:00:00.000Z',
+          disponible: true,
+          precioMin: null,
+          moneda: 'EUR',
+          cancelado: true,
+        },
+        {
+          trenId: 'b',
+          numeroTren: '04193',
+          salida: '2026-09-27T07:00:00.000Z',
+          disponible: true,
+          precioMin: null,
+          moneda: 'EUR',
+        },
+      ]),
+    );
+    expect(serie.map((t) => t.cancelado)).toEqual([true, false]);
+  });
+});
+
+describe('filtrarCancelados y nuevosCancelados', () => {
+  const horario = (trenId: string, cancelado?: boolean) =>
+    ({
+      trenId,
+      numeroTren: trenId,
+      salida: '2026-09-27T06:00:00.000Z',
+      disponible: true,
+      precioMin: null,
+      retrasoSeg: null,
+      cancelado,
+    }) as EstadoSerializado;
+
+  it('solo devuelve los trenes cancelados', () => {
+    const actual = [horario('t1', true), horario('t2'), horario('t3', false)];
+    expect(filtrarCancelados(actual).map((t) => t.trenId)).toEqual(['t1']);
+  });
+
+  it('solo considera nueva la cancelación que no estaba antes', () => {
+    const actual = [horario('t1', true), horario('t2', true)];
+    const anterior = [horario('t1', true), horario('t2')];
+    expect(nuevosCancelados(anterior, actual).map((t) => t.trenId)).toEqual(['t2']);
+  });
+
+  it('sin cancelación previa en el estado guardado notifica todas', () => {
+    const actual = [horario('t1', true)];
+    expect(nuevosCancelados([], actual).map((t) => t.trenId)).toEqual(['t1']);
+    expect(nuevosCancelados([horario('t1')], actual).map((t) => t.trenId)).toEqual(['t1']);
+  });
+
+  it('no devuelve nada si nadie está cancelado', () => {
+    expect(nuevosCancelados([horario('t1')], [horario('t1', false)])).toEqual([]);
+  });
+});
+
+describe('textoCancelacion', () => {
+  it('indica hora y número de tren', () => {
+    expect(
+      textoCancelacion({
+        trenId: '15648',
+        numeroTren: '15648',
+        salida: '2026-09-27T06:35:00.000Z',
+        disponible: true,
+        precioMin: null,
+        cancelado: true,
+      }),
+    ).toBe('Tu tren de las 06:35 (15648) está cancelado hoy');
+  });
+
+  it('usa el trenId si no hay número de tren', () => {
+    expect(
+      textoCancelacion({
+        trenId: '3065J23574C1',
+        numeroTren: '',
+        salida: '08:10',
+        disponible: true,
+        precioMin: null,
+        cancelado: true,
+      }),
+    ).toBe('Tu tren de las 08:10 (3065J23574C1) está cancelado hoy');
   });
 });
 

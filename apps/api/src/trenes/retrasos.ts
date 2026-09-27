@@ -13,6 +13,7 @@ export function aplicarRetrasos(
   posiciones: PosicionCruda[],
   retrasos: ReadonlyMap<string, number>,
   actualizadaEn: string,
+  cancelados: ReadonlySet<string> = new Set(),
 ): PosicionTrenResponse[] {
   // El feed de Larga Distancia repite el mismo vehículo con sub-trips distintos
   // (p.ej. 041931... y 041932...): en el mapa va una sola vez.
@@ -23,6 +24,7 @@ export function aplicarRetrasos(
     ...posicion,
     tripId,
     retrasoSeg: tripId !== null ? (retrasos.get(prefijoTripId(tripId)) ?? null) : null,
+    cancelado: tripId !== null && cancelados.has(prefijoTripId(tripId)),
     actualizadaEn,
   }));
 }

@@ -601,6 +601,7 @@ export default function Trenes() {
               <Tarjeta>
                 <View style={s.fila}>
                   <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
+                  {item.cancelado ? <Etiqueta tono="error">Cancelado</Etiqueta> : null}
                   {item.velocidadKmh != null ? (
                     <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
                   ) : null}

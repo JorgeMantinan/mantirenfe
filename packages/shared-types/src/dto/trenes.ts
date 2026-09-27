@@ -47,6 +47,7 @@ export interface PosicionTrenResponse {
   velocidadKmh: number | null;
   retrasoSeg: number | null;
   actualizadaEn: string;
+  cancelado?: boolean;
   /** Trip del feed GTFS-RT (match de trayecto para Cercanías) */
   tripId?: string | null;
   /** Trayecto actual del tren (cruzado con horarioTren) si se conoce */
@@ -92,6 +93,7 @@ export interface EstadoTrenDisponible {
   precioMin: number | null;
   moneda: string;
   retrasoSeg?: number | null;
+  cancelado?: boolean;
 }
 
 export interface EstadoDisponibilidad {
@@ -112,6 +114,7 @@ export interface EstadoSerializado {
   disponible: boolean;
   precioMin: number | null;
   retrasoSeg?: number | null;
+  cancelado?: boolean;
 }
 
 /** Ranking mensual de impuntualidad (servicios con retraso >= umbral) */

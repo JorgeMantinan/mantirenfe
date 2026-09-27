@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
+  parsearCancelados,
   parsearRetrasos,
   type ConsultaDisponibilidad,
   type EstadoDisponibilidad,
@@ -20,6 +21,7 @@ export function construirEstadoRetrasos(
   consulta: ConsultaDisponibilidad,
   horarios: HorarioRetraso[],
   retrasos: ReadonlyMap<string, number>,
+  cancelados: ReadonlySet<string> = new Set(),
 ): EstadoDisponibilidad {
   const trenes: EstadoTrenDisponible[] = horarios.map((h) => ({
     trenId: h.numeroTren,
@@ -29,6 +31,7 @@ export function construirEstadoRetrasos(
     precioMin: null,
     moneda: 'EUR',
     retrasoSeg: retrasos.get(h.numeroTren) ?? null,
+    cancelado: cancelados.has(h.numeroTren),
   }));
   return { consulta, trenes, consultadoEn: new Date().toISOString() };
 }
@@ -74,13 +77,15 @@ export class FuenteGtfsRt implements FuenteDatosTren {
     const tripIds = new Set(horarios.map((h) => h.numeroTren));
     const feeds = await Promise.all(urls.map((u) => this.descargarFeed(u)));
     const retrasos = new Map<string, number>();
+    const cancelados = new Set<string>();
     for (const feed of feeds) {
       for (const [clave, delay] of parsearRetrasos(feed, tripIds)) {
         const previo = retrasos.get(clave);
         if (previo === undefined || delay > previo) retrasos.set(clave, delay);
       }
+      for (const clave of parsearCancelados(feed, tripIds)) cancelados.add(clave);
     }
-    return construirEstadoRetrasos(consulta, horarios, retrasos);
+    return construirEstadoRetrasos(consulta, horarios, retrasos, cancelados);
   }
 
   private async descargarFeed(url: string): Promise<unknown> {

@@ -224,9 +224,13 @@ export function PaginaDetalleAlerta() {
                             <td className="py-2 pr-3 font-medium">{horaGtfs(tren.salida)}</td>
                             <td className="py-2 pr-3">{tren.numeroTren || '—'}</td>
                             <td className="py-2 pr-3">
-                              <Badge variant={tren.disponible ? 'exito' : 'secondary'}>
-                                {tren.disponible ? 'Hay plazas' : 'Completo'}
-                              </Badge>
+                              {tren.cancelado ? (
+                                <Badge variant="destructive">Cancelado</Badge>
+                              ) : (
+                                <Badge variant={tren.disponible ? 'exito' : 'secondary'}>
+                                  {tren.disponible ? 'Hay plazas' : 'Completo'}
+                                </Badge>
+                              )}
                             </td>
                             <td className="py-2 text-right text-amber-700 dark:text-amber-300">
                               {formatearPrecio(tren.precioMin)}

@@ -134,9 +134,13 @@ export default function DetalleAlerta() {
                       <Text style={s.precio}>Desde {formatearPrecio(tren.precioMin)}</Text>
                     ) : null}
                   </View>
-                  <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
-                    {tren.disponible ? 'Hay plazas' : 'Completo'}
-                  </Etiqueta>
+                  {tren.cancelado ? (
+                    <Etiqueta tono="error">Cancelado</Etiqueta>
+                  ) : (
+                    <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
+                      {tren.disponible ? 'Hay plazas' : 'Completo'}
+                    </Etiqueta>
+                  )}
                 </View>
               ))
             ) : (

@@ -5,6 +5,7 @@ import {
   cruzarConexiones,
   horaGtfs,
   HorarioTrenResponse,
+  parsearCancelados,
   parsearRetrasos,
   PosicionTrenResponse,
   prefijoTripId,
@@ -17,6 +18,11 @@ import { enriquecerPosiciones } from './enriquecer';
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
   caduca: number;
+}
+
+interface TripUpdates {
+  retrasos: Map<string, number>;
+  cancelados: Set<string>;
 }
 
 @Injectable()
@@ -173,16 +179,21 @@ export class TrenesService {
         process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() ??
         'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
 
-      const [resultados, retrasos] = await Promise.all([
+      const [resultados, tripUpdates] = await Promise.all([
         Promise.allSettled(urls.map((url) => this.obtenerFeed(url))),
-        this.obtenerRetrasos(urlRetrasos),
+        this.obtenerTripUpdates(urlRetrasos),
       ]);
       const crudas: PosicionCruda[] = [];
       for (const resultado of resultados) {
         if (resultado.status === 'fulfilled') crudas.push(...resultado.value);
       }
 
-      const datos = aplicarRetrasos(crudas, retrasos, new Date().toISOString());
+      const datos = aplicarRetrasos(
+        crudas,
+        tripUpdates.retrasos,
+        new Date().toISOString(),
+        tripUpdates.cancelados,
+      );
       const enriquecidos = await this.enriquecerConHorarios(datos);
 
       this.cachePosiciones = { datos: enriquecidos, caduca: Date.now() + ttl };
@@ -561,29 +572,31 @@ export class TrenesService {
     return resultado.slice(0, 100);
   }
 
-  private async obtenerRetrasos(url: string): Promise<Map<string, number>> {
+  private async obtenerTripUpdates(url: string): Promise<TripUpdates> {
     const urls = url
       .split(',')
       .map((u) => u.trim())
       .filter(Boolean);
-    const resultados = await Promise.allSettled(urls.map((u) => this.descargarRetrasos(u)));
+    const resultados = await Promise.allSettled(urls.map((u) => this.descargarTripUpdates(u)));
     const retrasos = new Map<string, number>();
+    const cancelados = new Set<string>();
     for (const [i, resultado] of resultados.entries()) {
       if (resultado.status === 'rejected') {
         this.logger.warn(
-          `No se pudieron obtener retrasos GTFS-RT (${urls[i]}): ${String(resultado.reason)}`,
+          `No se pudieron obtener trip updates GTFS-RT (${urls[i]}): ${String(resultado.reason)}`,
         );
         continue;
       }
-      for (const [clave, delay] of resultado.value) {
+      for (const [clave, delay] of resultado.value.retrasos) {
         const previo = retrasos.get(clave);
         if (previo === undefined || delay > previo) retrasos.set(clave, delay);
       }
+      for (const clave of resultado.value.cancelados) cancelados.add(clave);
     }
-    return retrasos;
+    return { retrasos, cancelados };
   }
 
-  private async descargarRetrasos(url: string): Promise<Map<string, number>> {
+  private async descargarTripUpdates(url: string): Promise<TripUpdates> {
     const controlador = new AbortController();
     const timeout = setTimeout(() => controlador.abort(), 8_000);
     try {
@@ -592,7 +605,11 @@ export class TrenesService {
         headers: { accept: 'application/json' },
       });
       if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
-      return parsearRetrasos(await respuesta.json());
+      const feed = await respuesta.json();
+      return {
+        retrasos: parsearRetrasos(feed),
+        cancelados: parsearCancelados(feed),
+      };
     } finally {
       clearTimeout(timeout);
     }

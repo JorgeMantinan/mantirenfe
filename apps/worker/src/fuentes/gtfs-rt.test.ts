@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parsearRetrasos, type ConsultaDisponibilidad } from '@mantirenfe/shared-types';
+import {
+  parsearCancelados,
+  parsearRetrasos,
+  type ConsultaDisponibilidad,
+} from '@mantirenfe/shared-types';
 import { construirEstadoRetrasos, type HorarioRetraso } from './gtfs-rt';
 
 const consulta: ConsultaDisponibilidad = {
@@ -52,5 +56,42 @@ describe('construirEstadoRetrasos', () => {
     const estado = construirEstadoRetrasos(consulta, horariosLd, parsearRetrasos(feedLd, tripIds));
 
     expect(estado.trenes.map((t) => t.retrasoSeg)).toEqual([300, 1440]);
+  });
+
+  it('marca cancelado los trenes cuyo trip está CANCELED en el feed', () => {
+    const feedLd = {
+      entity: [
+        {
+          id: 'TUCANCEL_1309512026-09-24',
+          tripUpdate: { trip: { tripId: '1309512026-09-24', scheduleRelationship: 'CANCELED' } },
+        },
+        {
+          tripUpdate: {
+            trip: { tripId: '0419322026-09-24', scheduleRelationship: 'SCHEDULED' },
+            delay: 600,
+          },
+        },
+      ],
+    };
+    const horariosLd: HorarioRetraso[] = [
+      { numeroTren: '13095', salida: new Date('2026-09-24T09:00:00.000Z') },
+      { numeroTren: '04193', salida: new Date('2026-09-24T10:00:00.000Z') },
+      { numeroTren: '04786', salida: new Date('2026-09-24T11:00:00.000Z') },
+    ];
+    const tripIds = new Set(horariosLd.map((h) => h.numeroTren));
+    const estado = construirEstadoRetrasos(
+      consulta,
+      horariosLd,
+      parsearRetrasos(feedLd, tripIds),
+      parsearCancelados(feedLd, tripIds),
+    );
+
+    expect(estado.trenes.map((t) => t.cancelado)).toEqual([true, false, false]);
+    expect(estado.trenes[0]?.retrasoSeg).toBeNull();
+  });
+
+  it('sin datos de cancelación deja todos los trenes en false', () => {
+    const estado = construirEstadoRetrasos(consulta, horarios, new Map([['3065J23573C1', 480]]));
+    expect(estado.trenes.map((t) => t.cancelado)).toEqual([false, false, false]);
   });
 });

@@ -219,6 +219,7 @@ export function PaginaMapa() {
                             {tren.llegada ? ` · Llegada ${horaGtfs(tren.llegada)}` : ''}
                           </p>
                         )}
+                        {tren.cancelado && <p className="font-semibold text-red-600">Cancelado</p>}
                         {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
                         {tren.retrasoSeg != null && (
                           <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>

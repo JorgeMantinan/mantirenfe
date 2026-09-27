@@ -32,6 +32,7 @@ function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
       disponible: t.disponible,
       precioMin: typeof t.precioMin === 'number' ? t.precioMin : null,
       retrasoSeg: typeof t.retrasoSeg === 'number' ? t.retrasoSeg : null,
+      cancelado: t.cancelado === true,
     });
   }
   return trenes;

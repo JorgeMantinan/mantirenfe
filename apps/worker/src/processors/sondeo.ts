@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import {
   funcionIndemnizacion,
+  horaGtfs,
   type ConsultaDisponibilidad,
   type EstadoDisponibilidad,
   type EstadoSerializado,
@@ -25,6 +26,7 @@ export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializad
       disponible: t.disponible,
       precioMin: t.precioMin,
       retrasoSeg: t.retrasoSeg ?? null,
+      cancelado: t.cancelado === true,
     }));
 }
 
@@ -59,6 +61,18 @@ export function filtrarRetrasados(
   umbralSeg: number,
 ): EstadoSerializado[] {
   return actual.filter((t) => typeof t.retrasoSeg === 'number' && t.retrasoSeg >= umbralSeg);
+}
+
+export function filtrarCancelados(actual: EstadoSerializado[]): EstadoSerializado[] {
+  return actual.filter((t) => t.cancelado === true);
+}
+
+export function nuevosCancelados(
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+): EstadoSerializado[] {
+  const previos = new Set(anterior.filter((t) => t.cancelado === true).map((t) => t.trenId));
+  return filtrarCancelados(actual).filter((t) => !previos.has(t.trenId));
 }
 
 /** El histórico de precios de una alerta se conserva 45 días. */
@@ -163,6 +177,11 @@ export function enFranjaHoraria(
 export function textoIndemnizacion(maxRetrasoSeg: number): string {
   if (!funcionIndemnizacion(maxRetrasoSeg)) return '';
   return ' ⚠️ Retraso ≥ 60 min: puede dar derecho a indemnización (50-100% según servicio)';
+}
+
+export function textoCancelacion(tren: EstadoSerializado): string {
+  const numero = tren.numeroTren || tren.trenId;
+  return `Tu tren de las ${horaGtfs(tren.salida)} (${numero}) está cancelado hoy`;
 }
 
 export async function notificar(
@@ -355,6 +374,26 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   }
 
   if (alerta.criterio === 'RETRASO') {
+    const cancelaciones = nuevosCancelados(anterior, actual);
+    if (cancelaciones.length > 0) {
+      const cuerpo = cancelaciones.map(textoCancelacion).join(' · ');
+      await notificar(
+        alerta,
+        'Tren cancelado',
+        cuerpo,
+        {
+          tipo: 'cancelacion',
+          numeroTren: cancelaciones.map((t) => t.numeroTren || t.trenId).join(', '),
+          trenes: cancelaciones.map((t) => t.trenId),
+        },
+        logger,
+      );
+      logger.info(
+        { alertaId, trenes: cancelaciones.length },
+        'Notificación de cancelación enviada',
+      );
+    }
+
     const umbral = Number(process.env.RETRASO_UMBRAL_SEG ?? 300);
     const retrasados = filtrarRetrasados(actual, umbral);
     const previos = new Set(

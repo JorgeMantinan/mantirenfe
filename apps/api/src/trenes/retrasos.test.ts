@@ -76,4 +76,40 @@ describe('aplicarRetrasos', () => {
     expect(salida).toHaveLength(1);
     expect(salida[0]?.retrasoSeg).toBe(900);
   });
+
+  it('marca cancelado los viajes presentes en el set de cancelaciones', () => {
+    const salida = aplicarRetrasos(
+      [
+        posicion({ id: 'a', tripId: '3065J23573C1' }),
+        posicion({ id: 'b', tripId: '3065J23574C1' }),
+        posicion({ id: 'c', tripId: null }),
+      ],
+      new Map(),
+      '2026-09-24T12:00:00.000Z',
+      new Set(['3065J23573C1']),
+    );
+    expect(salida.map((p) => p.cancelado)).toEqual([true, false, false]);
+  });
+
+  it('cruza la cancelación de Larga Distancia con el tripId fechado', () => {
+    const salida = aplicarRetrasos(
+      [
+        posicion({ id: 'ld1', numeroTren: '15648', tripId: '1564812026-09-24' }),
+        posicion({ id: 'ld2', numeroTren: '04193', tripId: '0419312026-09-24' }),
+      ],
+      new Map(),
+      '2026-09-24T12:00:00.000Z',
+      new Set(['156481']),
+    );
+    expect(salida.map((p) => p.cancelado)).toEqual([true, false]);
+  });
+
+  it('sin cancelaciones todos los trenes quedan en false', () => {
+    const salida = aplicarRetrasos(
+      [posicion({ tripId: 'x' })],
+      new Map(),
+      '2026-09-24T12:00:00.000Z',
+    );
+    expect(salida[0]?.cancelado).toBe(false);
+  });
 });

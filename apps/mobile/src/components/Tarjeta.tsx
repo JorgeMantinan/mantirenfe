@@ -16,7 +16,7 @@ export function Tarjeta({ children, style }: TarjetaProps) {
 
 interface EtiquetaProps {
   children: ReactNode;
-  tono?: 'exito' | 'aviso' | 'neutro' | 'primario';
+  tono?: 'exito' | 'aviso' | 'neutro' | 'primario' | 'error';
   style?: ViewStyle;
 }
 
@@ -29,12 +29,14 @@ export function Etiqueta({ children, tono = 'neutro', style }: EtiquetaProps) {
     aviso: oscuro ? 'rgba(245, 158, 11, 0.18)' : '#fef3c7',
     neutro: paleta.fondoSecundario,
     primario: paleta.acento,
+    error: oscuro ? 'rgba(248, 113, 113, 0.18)' : '#fee2e2',
   };
   const textos = {
     exito: oscuro ? '#4ade80' : '#166534',
     aviso: oscuro ? '#fbbf24' : '#92400e',
     neutro: paleta.textoSecundario,
     primario: paleta.primarioOscuro,
+    error: oscuro ? '#fca5a5' : '#991b1b',
   };
   return (
     <View style={[s.etiqueta, { backgroundColor: fondos[tono] }, style]}>
