@@ -7,6 +7,7 @@ import {
   filtrarRetrasados,
   pushHabilitado,
   serializarEstado,
+  textoIndemnizacion,
 } from './sondeo';
 
 function estado(trenes: EstadoDisponibilidad['trenes']): EstadoDisponibilidad {
@@ -194,6 +195,26 @@ describe('pushHabilitado', () => {
     expect(pushHabilitado('{"notificacionesPush":false}')).toBe(false);
     expect(pushHabilitado('{"notificacionesPush":true}')).toBe(true);
     expect(pushHabilitado('{no es json')).toBe(true);
+  });
+});
+
+describe('textoIndemnizacion', () => {
+  it('sin aviso por debajo del umbral principal (60 min)', () => {
+    expect(textoIndemnizacion(0)).toBe('');
+    expect(textoIndemnizacion(300)).toBe('');
+    expect(textoIndemnizacion(59 * 60)).toBe('');
+  });
+
+  it('avisa a partir de 60 min de retraso con el rango 50-100%', () => {
+    const aviso = textoIndemnizacion(60 * 60);
+    expect(aviso).toContain('indemnización');
+    expect(aviso).toContain('50-100%');
+    expect(textoIndemnizacion(95 * 60)).toBe(aviso);
+  });
+
+  it('ignora valores no válidos', () => {
+    expect(textoIndemnizacion(-1)).toBe('');
+    expect(textoIndemnizacion(Number.NaN)).toBe('');
   });
 });
 

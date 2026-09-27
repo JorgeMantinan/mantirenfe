@@ -32,6 +32,10 @@ export const crearAlertaSchema = z.object({
     .nullable(),
   numeroTren: z.string().trim().max(20).optional().nullable(),
   criterio: criterioAlertaSchema.default('DISPONIBILIDAD'),
+  // Trayecto cotidiano: sin fecha concreta, se vigila cada día (lun-vie si
+  // soloLaborables). La fechaViaje del formulario se ignora en este caso.
+  recurrente: z.boolean().default(false),
+  soloLaborables: z.boolean().default(false),
   intervaloSondeoMin: z
     .number()
     .int()
@@ -75,6 +79,8 @@ export const actualizarAlertaSchema = z.object({
     .nullable(),
   numeroTren: z.string().trim().max(20).optional().nullable(),
   criterio: criterioAlertaSchema.optional(),
+  recurrente: z.boolean().optional(),
+  soloLaborables: z.boolean().optional(),
   bono: z.enum(BONOS).optional(),
 });
 
@@ -90,6 +96,10 @@ export interface AlertaResponse {
   numeroTren: string | null;
   criterio: CriterioAlerta;
   estado: EstadoAlerta;
+  /** Trayecto cotidiano: se vigila cada día (no caduca ni se completa). */
+  recurrente: boolean;
+  /** Solo aplica con `recurrente`: lunes a viernes. */
+  soloLaborables: boolean;
   intervaloSondeoMin: number;
   bono: string;
   notas: string | null;

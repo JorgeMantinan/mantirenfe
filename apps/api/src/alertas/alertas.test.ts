@@ -14,6 +14,42 @@ describe('API (schemas compartidos)', () => {
   });
 });
 
+describe('crearAlertaSchema (trayecto cotidiano)', () => {
+  const base = {
+    origenNombre: 'Madrid-Atocha',
+    destinoNombre: 'Valencia-Joaquín Sorolla',
+    fechaViaje: '2026-11-15',
+  };
+
+  it('acepta alertas recurrentes (cada día y solo laborables)', () => {
+    const diaria = crearAlertaSchema.safeParse({ ...base, recurrente: true });
+    expect(diaria.success).toBe(true);
+    if (diaria.success) {
+      expect(diaria.data.recurrente).toBe(true);
+      expect(diaria.data.soloLaborables).toBe(false);
+    }
+
+    const laborables = crearAlertaSchema.safeParse({
+      ...base,
+      recurrente: true,
+      soloLaborables: true,
+    });
+    expect(laborables.success).toBe(true);
+    if (laborables.success) {
+      expect(laborables.data.soloLaborables).toBe(true);
+    }
+  });
+
+  it('por defecto sigue siendo una alerta de una sola fecha', () => {
+    const resultado = crearAlertaSchema.safeParse(base);
+    expect(resultado.success).toBe(true);
+    if (resultado.success) {
+      expect(resultado.data.recurrente).toBe(false);
+      expect(resultado.data.soloLaborables).toBe(false);
+    }
+  });
+});
+
 describe('actualizarAlertaSchema (edición)', () => {
   it('acepta cambiar la ruta, la fecha y el tren', () => {
     const resultado = actualizarAlertaSchema.safeParse({

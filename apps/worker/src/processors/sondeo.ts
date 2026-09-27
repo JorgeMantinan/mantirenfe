@@ -1,9 +1,14 @@
 import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
-import type { ConsultaDisponibilidad, EstadoDisponibilidad } from '@mantirenfe/shared-types';
+import {
+  funcionIndemnizacion,
+  type ConsultaDisponibilidad,
+  type EstadoDisponibilidad,
+} from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { enviarPush } from '../notificaciones/web-push';
+import { hoyGtfs } from './reloj';
 
 export interface EstadoSerializado {
   trenId: string;
@@ -97,6 +102,15 @@ export function enFranjaHoraria(
   return true;
 }
 
+/**
+ * Aviso del Compromiso de Puntualidad de Renfe al final del cuerpo de un aviso
+ * de retraso: vacío si el retraso máximo del grupo no alcanza el umbral.
+ */
+export function textoIndemnizacion(maxRetrasoSeg: number): string {
+  if (!funcionIndemnizacion(maxRetrasoSeg)) return '';
+  return ' ⚠️ Retraso ≥ 60 min: puede dar derecho a indemnización (50-100% según servicio)';
+}
+
 export async function notificar(
   alerta: {
     id: string;
@@ -168,10 +182,16 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     return;
   }
 
+  // Trayecto cotidiano: se consulta SIEMPRE el día de hoy (reloj peninsular) en
+  // vez de la fecha de creación, para que los avisos se repitan cada día.
+  const fechaConsulta = alerta.recurrente
+    ? hoyGtfs()
+    : alerta.fechaViaje.toISOString().slice(0, 10);
+
   const consulta: ConsultaDisponibilidad = {
     origenNombre: alerta.origenNombre,
     destinoNombre: alerta.destinoNombre,
-    fecha: alerta.fechaViaje.toISOString().slice(0, 10),
+    fecha: fechaConsulta,
     horaDesde: alerta.horaDesde,
     horaHasta: alerta.horaHasta,
     numeroTren: alerta.numeroTren,
@@ -222,7 +242,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     return;
   }
 
-  const fechaTexto = alerta.fechaViaje.toISOString().slice(0, 10);
+  const fechaTexto = fechaConsulta;
 
   if (criterioCoincide(alerta, 'DISPONIBILIDAD')) {
     const { aparecen } = diffDisponibles(anterior, actual);
@@ -290,7 +310,8 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       })
       .join(', ');
     const titulo = 'Retraso en tu tren';
-    const cuerpo = `${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${detalle}.`;
+    const maxRetrasoDelGrupo = Math.max(...nuevosRetrasos.map((t) => t.retrasoSeg ?? 0));
+    const cuerpo = `${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${detalle}.${textoIndemnizacion(maxRetrasoDelGrupo)}`;
     await notificar(
       alerta,
       titulo,

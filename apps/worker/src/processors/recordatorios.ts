@@ -1,25 +1,10 @@
 import type { Logger } from 'pino';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import { crearFuenteDatos } from '../fuentes';
+import { ahoraRelojGtfs, esDiaAplicable } from './reloj';
 import { notificar } from './sondeo';
 
-/**
- * Hora actual en el mismo "reloj" en el que se guardan las salidas GTFS
- * (hora peninsular tratada como UTC), para poder comparar con horarioTren.salida.
- */
-export function ahoraRelojGtfs(ahora: Date = new Date()): Date {
-  const partes = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(ahora); // "2026-09-25 16:53:07"
-  return new Date(`${partes.replace(' ', 'T')}Z`);
-}
+export { ahoraRelojGtfs, esDiaAplicable, esLaborable, hoyGtfs } from './reloj';
 
 export interface TrenRecordatorio {
   numeroTren: string;
@@ -139,7 +124,8 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
-      fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
+      // El trayecto cotidiano no caduca: se resumen cada día aunque su fechaViaje sea antigua
+      OR: [{ fechaViaje: new Date(`${hoyIso}T00:00:00Z`) }, { recurrente: true }],
       resumenEnviadoEn: null,
       recordatorioEnviadoEn: null, // si ya queda poco para salir, manda el recordatorio
     },
@@ -157,8 +143,9 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
     },
     take: 200,
   });
-  const pendientes = alertas.filter((a) =>
-    preferenciaBooleana(a.usuario.preferencias, 'resumenViaje', true),
+  const pendientes = alertas.filter(
+    (a) =>
+      esDiaAplicable(a, ahora) && preferenciaBooleana(a.usuario.preferencias, 'resumenViaje', true),
   );
 
   let enviados = 0;
@@ -255,7 +242,8 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
-      fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
+      // El trayecto cotidiano no caduca: se recuerda cada día aunque su fechaViaje sea antigua
+      OR: [{ fechaViaje: new Date(`${hoyIso}T00:00:00Z`) }, { recurrente: true }],
     },
     include: {
       usuario: {
@@ -272,8 +260,10 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
     take: 200,
   });
   // Preferencias en memoria (el path-filter de SQL excluye el default "{}")
-  const pendientes = alertas.filter((a) =>
-    preferenciaBooleana(a.usuario.preferencias, 'recordatorioSalida', true),
+  const pendientes = alertas.filter(
+    (a) =>
+      esDiaAplicable(a, ahora) &&
+      preferenciaBooleana(a.usuario.preferencias, 'recordatorioSalida', true),
   );
 
   let enviados = 0;

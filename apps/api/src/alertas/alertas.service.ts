@@ -20,6 +20,8 @@ function formatearAlerta(alerta: {
   numeroTren: string | null;
   criterio: string;
   estado: string;
+  recurrente: boolean;
+  soloLaborables: boolean;
   intervaloSondeoMin: number;
   bono: string;
   notas: string | null;
@@ -36,12 +38,19 @@ function formatearAlerta(alerta: {
     numeroTren: alerta.numeroTren,
     criterio: alerta.criterio as AlertaResponse['criterio'],
     estado: alerta.estado as AlertaResponse['estado'],
+    recurrente: alerta.recurrente,
+    soloLaborables: alerta.soloLaborables,
     intervaloSondeoMin: alerta.intervaloSondeoMin,
     bono: alerta.bono,
     notas: alerta.notas,
     ultimoSondeoEn: alerta.ultimoSondeoEn?.toISOString() ?? null,
     creadaEn: alerta.creadaEn.toISOString(),
   };
+}
+
+/** Fecha (YYYY-MM-DD) del día actual, la referencia de "hoy" del formulario. */
+function hoyIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 @Injectable()
@@ -75,6 +84,10 @@ export class AlertasService {
     const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
     const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
 
+    // Trayecto cotidiano: la fecha del formulario se ignora y se ancla a hoy,
+    // así ninguna query por fecha (barrido, sondeo) caduca nunca.
+    const fechaViaje = datos.recurrente ? hoyIso() : datos.fechaViaje;
+
     const alerta = await prisma.alerta.create({
       data: {
         usuarioId: usuario.sub,
@@ -82,7 +95,10 @@ export class AlertasService {
         destinoNombre: datos.destinoNombre,
         origenEstacionId: origen?.id ?? null,
         destinoEstacionId: destino?.id ?? null,
-        fechaViaje: new Date(`${datos.fechaViaje}T00:00:00Z`),
+        fechaViaje: new Date(`${fechaViaje}T00:00:00Z`),
+        recurrente: datos.recurrente,
+        // soloLaborables solo tiene sentido dentro de un trayecto recurrente
+        soloLaborables: datos.recurrente && datos.soloLaborables,
         horaDesde: datos.horaDesde ?? null,
         horaHasta: datos.horaHasta ?? null,
         numeroTren: datos.numeroTren ?? null,
@@ -153,6 +169,21 @@ export class AlertasService {
       cambioRuta = true;
     }
     if (datos.bono !== undefined) data.bono = datos.bono;
+    if (datos.recurrente !== undefined || datos.soloLaborables !== undefined) {
+      const recurrente = datos.recurrente ?? existente.recurrente;
+      const soloLaborables = datos.soloLaborables ?? existente.soloLaborables;
+      data.recurrente = recurrente;
+      data.soloLaborables = recurrente && soloLaborables;
+      if (recurrente) {
+        // El trayecto cotidiano se ancla a hoy: la fecha dejó de ser relevante
+        data.fechaViaje = new Date(`${hoyIso()}T00:00:00Z`);
+      }
+      // Frecuencia nueva: se re-arman los avisos del día (igual que un cambio de ruta)
+      data.recordatorioEnviadoEn = null;
+      data.resumenEnviadoEn = null;
+      data.recordatorioTrenesEnviados = [];
+      cambioRuta = true;
+    }
     if (cambioRuta) {
       data.ultimoEstado = Prisma.JsonNull;
       data.ultimoSondeoEn = null;

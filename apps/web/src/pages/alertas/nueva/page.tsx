@@ -29,6 +29,19 @@ const ETIQUETAS_BONOS: Record<string, string> = {
   OTRO: 'Otro',
 };
 
+type Frecuencia = 'fecha' | 'diaria' | 'laborables';
+
+const FRECUENCIAS: Array<{ valor: Frecuencia; etiqueta: string }> = [
+  { valor: 'fecha', etiqueta: 'Una fecha' },
+  { valor: 'diaria', etiqueta: 'Cada día' },
+  { valor: 'laborables', etiqueta: 'Lunes a viernes' },
+];
+
+function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia {
+  if (!recurrente) return 'fecha';
+  return soloLaborables ? 'laborables' : 'diaria';
+}
+
 export function PaginaNuevaAlerta() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -36,6 +49,7 @@ export function PaginaNuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
+  const [frecuencia, setFrecuencia] = useState<Frecuencia>('fecha');
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState('DISPONIBILIDAD');
@@ -47,7 +61,11 @@ export function PaginaNuevaAlerta() {
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
 
-  const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const fechaMin = hoyIso;
+  // La fecha que viaja al servidor: un trayecto recurrente se ancla a hoy
+  const fechaEfectiva = frecuencia === 'fecha' ? fecha : hoyIso;
+  const recurrente = frecuencia !== 'fecha';
 
   // Búsqueda de estaciones mientras se escribe (con debounce): la lista inicial
   // solo traía las primeras40 alfabéticas y nunca aparecían, p.ej., las de Vigo.
@@ -91,6 +109,7 @@ export function PaginaNuevaAlerta() {
           setOrigen(a.origenNombre);
           setDestino(a.destinoNombre);
           setFecha(a.fechaViaje);
+          setFrecuencia(frecuenciaDe(a.recurrente, a.soloLaborables));
           setHoraDesde(a.horaDesde ?? '');
           setHoraHasta(a.horaHasta ?? '');
           setCriterio(a.criterio);
@@ -105,18 +124,17 @@ export function PaginaNuevaAlerta() {
 
   // Los 3 próximos trenes de la ruta (para elegir sin escribir el número)
   useEffect(() => {
-    if (origen.trim().length < 2 || destino.trim().length < 2 || !fecha) {
+    if (origen.trim().length < 2 || destino.trim().length < 2 || !fechaEfectiva) {
       setTrenesSugeridos([]);
       return;
     }
     const controlador = new AbortController();
     const timer = window.setTimeout(() => {
       api<{ trenes: HorarioTrenResponse[] }>(
-        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
+        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fechaEfectiva}`,
         { signal: controlador.signal },
       )
         .then((d) => {
-          const hoyIso = new Date().toISOString().slice(0, 10);
           const horaAhora = new Intl.DateTimeFormat('es-ES', {
             timeZone: 'Europe/Madrid',
             hour: '2-digit',
@@ -125,7 +143,7 @@ export function PaginaNuevaAlerta() {
           }).format(new Date());
           const futuros = d.trenes.filter((t) => {
             if (t.transbordo) return false;
-            if (fecha !== hoyIso) return true;
+            if (fechaEfectiva !== hoyIso) return true;
             return horaGtfs(t.salida) > horaAhora;
           });
           setTrenesSugeridos(futuros.slice(0, 3));
@@ -136,7 +154,7 @@ export function PaginaNuevaAlerta() {
       window.clearTimeout(timer);
       controlador.abort();
     };
-  }, [origen, destino, fecha]);
+  }, [origen, destino, fechaEfectiva, hoyIso]);
 
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
@@ -144,7 +162,7 @@ export function PaginaNuevaAlerta() {
       toast.error('Indica estación de origen y destino');
       return;
     }
-    if (!fecha) {
+    if (!recurrente && !fecha) {
       toast.error('Selecciona la fecha del viaje');
       return;
     }
@@ -158,7 +176,10 @@ export function PaginaNuevaAlerta() {
         json: {
           origenNombre: origen.trim(),
           destinoNombre: destino.trim(),
-          fechaViaje: fecha,
+          // Un trayecto cotidiano se ancla a hoy: la fecha dejó de importar
+          fechaViaje: fechaEfectiva,
+          recurrente,
+          soloLaborables: frecuencia === 'laborables',
           horaDesde: horaDesde || null,
           horaHasta: horaHasta || null,
           numeroTren: numeroTren.trim() || null,
@@ -253,21 +274,49 @@ export function PaginaNuevaAlerta() {
               ))}
             </datalist>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="fecha">Fecha del viaje</Label>
-                <Input
-                  id="fecha"
-                  type="date"
-                  min={fechaMin}
-                  value={fecha}
-                  onChange={(e) => {
-                    setFecha(e.target.value);
-                    setNumeroTren(''); // el tren elegido es de otra fecha
-                  }}
-                  required
-                />
+            <div className="space-y-2">
+              <Label>¿Cuándo viajas?</Label>
+              <div className="flex flex-wrap gap-2">
+                {FRECUENCIAS.map((f) => (
+                  <Button
+                    key={f.valor}
+                    type="button"
+                    variant={frecuencia === f.valor ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFrecuencia(f.valor)}
+                  >
+                    {f.etiqueta}
+                  </Button>
+                ))}
               </div>
+              {recurrente && (
+                <p className="text-xs text-muted-foreground">
+                  Trayecto cotidiano: te avisaremos cada día
+                  {frecuencia === 'laborables' ? ', de lunes a viernes' : ''}. No hace falta fecha:
+                  se renueva automáticamente.
+                </p>
+              )}
+            </div>
+
+            <div
+              className={`grid gap-4 ${frecuencia === 'fecha' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}
+            >
+              {frecuencia === 'fecha' && (
+                <div className="space-y-2">
+                  <Label htmlFor="fecha">Fecha del viaje</Label>
+                  <Input
+                    id="fecha"
+                    type="date"
+                    min={fechaMin}
+                    value={fecha}
+                    onChange={(e) => {
+                      setFecha(e.target.value);
+                      setNumeroTren(''); // el tren elegido es de otra fecha
+                    }}
+                    required
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="horaDesde">Hora desde (opcional)</Label>
                 <Input

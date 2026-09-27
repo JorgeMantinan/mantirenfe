@@ -73,6 +73,10 @@ model Alerta {
   origenEstacionId  String?
   destinoEstacionId String?
   fechaViaje        DateTime       @db.Date
+  // Trayecto cotidiano: la alerta no caduca ni se completa, se re-sondea cada
+  // día (soloLaborables solo tiene sentido con recurrente = lun-vie)
+  recurrente        Boolean        @default(false)
+  soloLaborables    Boolean        @default(false)
   horaDesde         String?
   horaHasta         String?
   numeroTren        String?

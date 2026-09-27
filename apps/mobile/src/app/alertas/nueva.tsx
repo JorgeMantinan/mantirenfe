@@ -18,6 +18,7 @@ export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
+  const [frecuencia, setFrecuencia] = useState<Frecuencia>('fecha');
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState<Criterio>('DISPONIBILIDAD');
@@ -40,7 +41,11 @@ export default function NuevaAlerta() {
   }>();
   const editandoId = typeof params.editar === 'string' && params.editar ? params.editar : undefined;
 
-  const fechaMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const fechaMin = hoyIso;
+  // La fecha que viaja al servidor: un trayecto recurrente se ancla a hoy
+  const fechaEfectiva = frecuencia === 'fecha' ? fecha : hoyIso;
+  const recurrente = frecuencia !== 'fecha';
 
   // Precarga desde la búsqueda de trenes o carga completa en modo edición
   useEffect(() => {
@@ -58,6 +63,8 @@ export default function NuevaAlerta() {
       horaHasta: string | null;
       numeroTren: string | null;
       criterio: Criterio;
+      recurrente: boolean;
+      soloLaborables: boolean;
       intervaloSondeoMin: number;
       bono: string;
       notas: string | null;
@@ -66,6 +73,7 @@ export default function NuevaAlerta() {
         setOrigen(a.origenNombre);
         setDestino(a.destinoNombre);
         setFecha(a.fechaViaje);
+        setFrecuencia(frecuenciaDe(a.recurrente, a.soloLaborables));
         setHoraDesde(a.horaDesde ?? '');
         setHoraHasta(a.horaHasta ?? '');
         setIntervalo(a.intervaloSondeoMin);
@@ -82,18 +90,17 @@ export default function NuevaAlerta() {
   const peticionTrenes = useRef(0);
   useEffect(() => {
     clearTimeout(timerTrenes.current);
-    if (origen.trim().length < 2 || destino.trim().length < 2 || !fecha) {
+    if (origen.trim().length < 2 || destino.trim().length < 2 || !fechaEfectiva) {
       setTrenesSugeridos([]);
       return;
     }
     timerTrenes.current = setTimeout(() => {
       const id = ++peticionTrenes.current;
       api<{ trenes: HorarioTrenResponse[] }>(
-        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
+        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fechaEfectiva}`,
       )
         .then((d) => {
           if (peticionTrenes.current !== id) return;
-          const hoyIso = new Date().toISOString().slice(0, 10);
           const horaAhora = new Intl.DateTimeFormat('es-ES', {
             timeZone: 'Europe/Madrid',
             hour: '2-digit',
@@ -102,7 +109,7 @@ export default function NuevaAlerta() {
           }).format(new Date());
           const futuros = d.trenes.filter((t) => {
             if (t.transbordo) return false;
-            if (fecha !== hoyIso) return true;
+            if (fechaEfectiva !== hoyIso) return true;
             return horaGtfs(t.salida) > horaAhora;
           });
           setTrenesSugeridos(futuros.slice(0, 3));
@@ -110,7 +117,7 @@ export default function NuevaAlerta() {
         .catch(() => undefined);
     }, 400);
     return () => clearTimeout(timerTrenes.current);
-  }, [origen, destino, fecha]);
+  }, [origen, destino, fechaEfectiva, hoyIso]);
 
   // Búsqueda remota con debounce: la lista fija de40 no incluía, p.ej., Vigo
   const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -141,7 +148,10 @@ export default function NuevaAlerta() {
     const datos = {
       origenNombre: origen.trim(),
       destinoNombre: destino.trim(),
-      fechaViaje: fecha,
+      // Un trayecto cotidiano se ancla a hoy: la fecha dejó de importar
+      fechaViaje: fechaEfectiva,
+      recurrente,
+      soloLaborables: frecuencia === 'laborables',
       horaDesde: horaDesde.trim() || null,
       horaHasta: horaHasta.trim() || null,
       numeroTren: numeroTren.trim() || null,
@@ -234,19 +244,42 @@ export default function NuevaAlerta() {
           </Text>
         ))}
 
-      <Text style={s.etiqueta}>Fecha del viaje</Text>
-      <TextInput
-        style={s.campo}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={paleta.textoSecundario}
-        keyboardType="numbers-and-punctuation"
-        value={fecha}
-        onChangeText={(v) => {
-          setFecha(v);
-          setNumeroTren(''); // el tren elegido es de otra fecha
-        }}
-      />
-      <Text style={s.pista}>Mínimo: {fechaMin}</Text>
+      <Text style={s.etiqueta}>¿Cuándo viajas?</Text>
+      <View style={s.chips}>
+        {FRECUENCIAS.map(([valor, etiqueta]) => (
+          <Text
+            key={valor}
+            style={[s.chip, frecuencia === valor && s.chipActivo]}
+            onPress={() => setFrecuencia(valor)}
+          >
+            {etiqueta}
+          </Text>
+        ))}
+      </View>
+      {recurrente ? (
+        <Text style={s.pista}>
+          Trayecto cotidiano: te avisaremos cada día
+          {frecuencia === 'laborables' ? ', de lunes a viernes' : ''}. No hace falta indicar fecha.
+        </Text>
+      ) : null}
+
+      {recurrente ? null : (
+        <>
+          <Text style={s.etiqueta}>Fecha del viaje</Text>
+          <TextInput
+            style={s.campo}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={paleta.textoSecundario}
+            keyboardType="numbers-and-punctuation"
+            value={fecha}
+            onChangeText={(v) => {
+              setFecha(v);
+              setNumeroTren(''); // el tren elegido es de otra fecha
+            }}
+          />
+          <Text style={s.pista}>Mínimo: {fechaMin}</Text>
+        </>
+      )}
 
       <Text style={s.etiqueta}>Franja horaria (opcional)</Text>
       <View style={{ flexDirection: 'row', gap: espaciado.sm }}>
@@ -351,6 +384,19 @@ const CRITERIOS = [
 ] as const;
 
 type Criterio = (typeof CRITERIOS)[number][0];
+
+const FRECUENCIAS = [
+  ['fecha', 'Una fecha'],
+  ['diaria', 'Cada día'],
+  ['laborables', 'Lunes a viernes'],
+] as const;
+
+type Frecuencia = (typeof FRECUENCIAS)[number][0];
+
+function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia {
+  if (!recurrente) return 'fecha';
+  return soloLaborables ? 'laborables' : 'diaria';
+}
 
 const DESCRIPCIONES: Record<Criterio, string> = {
   DISPONIBILIDAD: 'Te avisaremos cuando haya plazas libres en este trayecto',

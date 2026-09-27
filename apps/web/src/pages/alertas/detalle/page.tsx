@@ -137,6 +137,11 @@ export function PaginaDetalleAlerta() {
                       : 'Completada'}
                 </Badge>
                 <Badge variant="outline">{alerta.criterio}</Badge>
+                {alerta.recurrente && (
+                  <Badge variant="aviso">
+                    {alerta.soloLaborables ? 'L-V: Cada día laborable' : 'Cada día'}
+                  </Badge>
+                )}
                 <Badge variant="outline">cada {alerta.intervaloSondeoMin} min</Badge>
                 <Badge variant="outline">{alerta.bono}</Badge>
                 {alerta.numeroTren && <Badge variant="outline">tren {alerta.numeroTren}</Badge>}

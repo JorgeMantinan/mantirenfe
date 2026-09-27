@@ -62,17 +62,24 @@ export default function DetalleAlerta() {
               {alerta.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
               {alerta.destinoNombre}
             </Text>
-            <Etiqueta
-              tono={
-                alerta.estado === 'ACTIVA'
-                  ? 'exito'
-                  : alerta.estado === 'PAUSA'
-                    ? 'aviso'
-                    : 'neutro'
-              }
-            >
-              {etiquetaEstado(alerta.estado)}
-            </Etiqueta>
+            <View style={s.etiquetas}>
+              <Etiqueta
+                tono={
+                  alerta.estado === 'ACTIVA'
+                    ? 'exito'
+                    : alerta.estado === 'PAUSA'
+                      ? 'aviso'
+                      : 'neutro'
+                }
+              >
+                {etiquetaEstado(alerta.estado)}
+              </Etiqueta>
+              {alerta.recurrente ? (
+                <Etiqueta tono="primario">
+                  {alerta.soloLaborables ? 'L-V: Cada día laborable' : 'Cada día'}
+                </Etiqueta>
+              ) : null}
+            </View>
           </View>
           <Text style={s.detalle}>
             {alerta.fechaViaje} · {alerta.criterio} · cada {alerta.intervaloSondeoMin} min ·{' '}
@@ -141,6 +148,14 @@ const estilos = (c: Paleta) =>
       fontWeight: '700',
       color: c.texto,
       flex: 1,
+    },
+    etiquetas: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: espaciado.xs,
+      justifyContent: 'flex-end',
+      maxWidth: '55%',
     },
     detalle: {
       fontSize: 13,
