@@ -25,6 +25,19 @@ import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 type Modo = 'estaciones' | 'horarios' | 'posiciones';
 
+/** Minúsculas sin tildes, para que "A Coruña" matchee con "La Coruña" o "coruña" */
+function normalizarTexto(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function quitarArticulo(texto: string): string {
+  return texto.replace(/^(la|el|los|las|a|o)\s+/, '');
+}
+
 export default function Trenes() {
   const [modo, setModo] = useState<Modo>('estaciones');
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
@@ -46,15 +59,18 @@ export default function Trenes() {
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const posicionesVisibles = useMemo(() => {
-    const q = filtroPos.trim().toLowerCase();
+    const q = normalizarTexto(filtroPos);
     if (!q) return posiciones;
-    return posiciones.filter(
-      (p) =>
-        (p.numeroTren ?? '').toLowerCase().includes(q) ||
-        (p.origenNombre ?? '').toLowerCase().includes(q) ||
-        (p.destinoNombre ?? '').toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q),
-    );
+    const palabras = q
+      .split(/\s+/)
+      .filter((w) => !['la', 'el', 'los', 'las', 'a', 'o'].includes(w));
+    if (palabras.length === 0) return posiciones;
+    return posiciones.filter((p) => {
+      const campos = [p.numeroTren, p.origenNombre, p.destinoNombre, p.id, p.operador]
+        .filter(Boolean)
+        .map((c) => quitarArticulo(normalizarTexto(String(c))));
+      return palabras.every((palabra) => campos.some((c) => c.includes(palabra)));
+    });
   }, [posiciones, filtroPos]);
 
   const cargarEstaciones = useCallback((q?: string) => {

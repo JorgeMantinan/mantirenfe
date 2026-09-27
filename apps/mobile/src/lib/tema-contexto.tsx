@@ -29,11 +29,15 @@ export function TemaProvider({ children }: { children: ReactNode }) {
   const esquemaSistema = useColorScheme();
   const [modo, setModoEstado] = useState<ModoTema>('sistema');
   const preferencias = useRef<PreferenciasUsuario | null>(null);
+  // Timestamp del último cambio manual: un GET lento no debe pisarlo
+  const ultimaEdicionRef = useRef(0);
 
   const cargarPreferencias = useCallback(async () => {
+    if (Date.now() - ultimaEdicionRef.current < 8000) return; // no pisar cambios recientes
     try {
       const guardadas = await api<PreferenciasUsuario>('/auth/preferencias');
       preferencias.current = guardadas;
+      if (Date.now() - ultimaEdicionRef.current < 8000) return;
       setModoEstado(guardadas.tema);
     } catch {
       // sin sesión o API no disponible: se mantiene el modo actual
@@ -57,6 +61,7 @@ export function TemaProvider({ children }: { children: ReactNode }) {
   }, [cargarPreferencias]);
 
   const setModo = useCallback((siguiente: ModoTema) => {
+    ultimaEdicionRef.current = Date.now();
     setModoEstado(siguiente);
     void (async () => {
       let actuales: Partial<PreferenciasUsuario> = preferencias.current ?? {};
