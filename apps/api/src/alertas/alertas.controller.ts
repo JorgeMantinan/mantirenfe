@@ -25,6 +25,12 @@ export class AlertasController {
     return this.alertasService.listar(usuario);
   }
 
+  // Declarado antes que :id para que la ruta con dos segmentos no compita
+  @Get(':id/precios')
+  precios(@UsuarioActual() usuario: UsuarioRequest, @Param('id') id: string) {
+    return this.alertasService.precios(usuario, id);
+  }
+
   @Get(':id')
   obtener(@UsuarioActual() usuario: UsuarioRequest, @Param('id') id: string) {
     return this.alertasService.obtener(usuario, id);

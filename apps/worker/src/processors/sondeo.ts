@@ -61,6 +61,64 @@ export function filtrarRetrasados(
   return actual.filter((t) => typeof t.retrasoSeg === 'number' && t.retrasoSeg >= umbralSeg);
 }
 
+/** El histórico de precios de una alerta se conserva 45 días. */
+export const RETENCION_PRECIOS_MS = 45 * 24 * 60 * 60 * 1000;
+
+/**
+ * Trenes cuyo `precioMin` o `disponible` cambió respecto al estado anterior:
+ * son los puntos que merece la pena registrar en el histórico de precios.
+ * En el primer sondeo no hay referencia previa, así que se registran todos.
+ */
+export function filtrarCambiosPrecio(
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+  primeraVez: boolean,
+): EstadoSerializado[] {
+  if (primeraVez) return actual;
+  const previos = new Map(anterior.map((t) => [t.trenId, t]));
+  return actual.filter((t) => {
+    const previo = previos.get(t.trenId);
+    // Un tren que aún no existía también es un cambio (entrada en venta)
+    if (!previo) return true;
+    return previo.precioMin !== t.precioMin || previo.disponible !== t.disponible;
+  });
+}
+
+/**
+ * Guarda un punto de `PrecioTren` por cada tren con cambios y poda lo anterior
+ * a 45 días. Cualquier error se relega a un warn: el historial nunca rompe el
+ * sondeo ni la notificación. Devuelve los puntos insertados.
+ */
+export async function registrarHistorialPrecios(
+  alertaId: string,
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+  primeraVez: boolean,
+  logger: Logger,
+): Promise<number> {
+  const cambios = filtrarCambiosPrecio(anterior, actual, primeraVez);
+  if (cambios.length === 0) return 0;
+  try {
+    const prisma = getPrisma();
+    await prisma.precioTren.createMany({
+      data: cambios.map((t) => ({
+        alertaId,
+        numeroTren: t.numeroTren,
+        salida: t.salida,
+        precioMin: t.precioMin,
+        disponible: t.disponible,
+      })),
+    });
+    await prisma.precioTren.deleteMany({
+      where: { alertaId, registradoEn: { lt: new Date(Date.now() - RETENCION_PRECIOS_MS) } },
+    });
+    return cambios.length;
+  } catch (error) {
+    logger.warn({ alertaId, err: error }, 'No se pudo registrar el histórico de precios');
+    return 0;
+  }
+}
+
 function criterioCoincide(alerta: { criterio: string }, codigo: string): boolean {
   if (alerta.criterio === codigo) return true;
   if (codigo === 'DISPONIBILIDAD') return alerta.criterio === 'APERTURA_VENTA';
@@ -229,6 +287,16 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       ultimoSondeoEn: new Date(),
     },
   });
+
+  // Histórico de precios solo para DISPONIBILIDAD: RETRASO/HORARIO/APERTURA_VENTA
+  // no tienen precio que seguir. Se registra antes de notificar (y también en el
+  // primer sondeo, que luego sale sin comparar) para no perder el punto inicial.
+  if (alerta.criterio === 'DISPONIBILIDAD') {
+    const puntos = await registrarHistorialPrecios(alerta.id, anterior, actual, primeraVez, logger);
+    if (puntos > 0) {
+      logger.debug({ alertaId, puntos }, 'Histórico de precios actualizado');
+    }
+  }
 
   if (primeraVez) {
     logger.debug(

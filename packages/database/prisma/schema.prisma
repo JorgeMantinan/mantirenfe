@@ -99,9 +99,27 @@ model Alerta {
   origen            Estacion?      @relation("AlertaOrigen", fields: [origenEstacionId], references: [id])
   destino           Estacion?      @relation("AlertaDestino", fields: [destinoEstacionId], references: [id])
   notificaciones    Notificacion[]
+  precios           PrecioTren[]
 
   @@index([usuarioId, estado])
   @@index([estado, ultimoSondeoEn])
+}
+
+// Historial de precios de disponibilidad por alerta: el worker solo inserta un
+// punto cuando el precioMin o la disponibilidad de un tren cambia (o en el
+// primer sondeo), y poda lo anterior a 45 días. Alimenta la gráfica
+// "¿compro ahora o espero?" del detalle en web.
+model PrecioTren {
+  id           String   @id @default(cuid())
+  alertaId     String
+  numeroTren   String
+  salida       String
+  precioMin    Float?
+  disponible   Boolean
+  registradoEn DateTime @default(now())
+  alerta       Alerta   @relation(fields: [alertaId], references: [id], onDelete: Cascade)
+
+  @@index([alertaId, registradoEn])
 }
 
 model Notificacion {

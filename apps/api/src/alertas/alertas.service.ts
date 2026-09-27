@@ -8,8 +8,10 @@ import {
   CrearAlertaInput,
   ActualizarAlertaInput,
   type EstadoSerializado,
+  type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 import { UsuarioRequest } from '../common/usuario-actual.decorator';
+import { formatearPuntosPrecio } from './precios';
 
 /**
  * `alerta.ultimoEstado` es un Json de Prisma: se normaliza para devolver solo
@@ -98,6 +100,33 @@ export class AlertasService {
     });
     if (!alerta) throw new NotFoundException('Alerta no encontrada');
     return formatearAlerta(alerta);
+  }
+
+  /**
+   * Histórico de precios de la alerta: solo su dueño puede verlo. Se devuelven
+   * los últimos 500 puntos en orden cronológico ascendente.
+   */
+  async precios(usuario: UsuarioRequest, id: string): Promise<PuntoPrecio[]> {
+    const prisma = getPrisma();
+    const alerta = await prisma.alerta.findFirst({
+      where: { id, usuarioId: usuario.sub },
+      select: { id: true },
+    });
+    if (!alerta) throw new NotFoundException('Alerta no encontrada');
+
+    const filas = await prisma.precioTren.findMany({
+      where: { alertaId: id },
+      orderBy: { registradoEn: 'desc' },
+      take: 500,
+      select: {
+        numeroTren: true,
+        salida: true,
+        precioMin: true,
+        disponible: true,
+        registradoEn: true,
+      },
+    });
+    return formatearPuntosPrecio(filas);
   }
 
   async crear(usuario: UsuarioRequest, datos: CrearAlertaInput): Promise<AlertaResponse> {

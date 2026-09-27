@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, BellRing, RefreshCw, Train, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BellRing, Coins, RefreshCw, Train, TriangleAlert } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import {
+  agruparPrecios,
+  anchoBarra,
+  consejoPrecio,
+  formatearPrecio,
+  MAX_PUNTOS_GRAFICA,
+} from '@/lib/precios';
+import {
   horaGtfs,
   type AlertaResponse,
   type EstadoSerializado,
   type NotificacionResponse,
+  type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 
 /** "hace X min" si es reciente; si no, fecha legible en español. */
@@ -22,19 +30,16 @@ function haceCuanto(iso: string): string {
   return new Date(iso).toLocaleString('es-ES');
 }
 
-function formatearPrecio(precioMin: number | null): string {
-  if (precioMin === null) return '—';
-  return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-}
-
 export function PaginaDetalleAlerta() {
   const { id } = useParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
   const [avisos, setAvisos] = useState<NotificacionResponse[]>([]);
   const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
+  const [precios, setPrecios] = useState<PuntoPrecio[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const trenes: EstadoSerializado[] = alerta?.ultimoEstado ?? [];
+  const seriesPrecios = agruparPrecios(precios);
 
   const cargar = useCallback(() => {
     if (!id) return;
@@ -44,9 +49,12 @@ export function PaginaDetalleAlerta() {
       api<NotificacionResponse[]>('/notificaciones'),
       // Si el feed de incidencias no responde, el detalle se muestra igual
       api<IncidenciaResponse[]>('/incidencias').catch(() => [] as IncidenciaResponse[]),
+      // Histórico de precios: solo existe para alertas de disponibilidad
+      api<PuntoPrecio[]>(`/alertas/${id}/precios`).catch(() => [] as PuntoPrecio[]),
     ])
-      .then(([a, todas, incidenciasActivas]) => {
+      .then(([a, todas, incidenciasActivas, historial]) => {
         setAlerta(a);
+        setPrecios(historial);
         setIncidencias(
           incidenciasActivas.filter((inc) =>
             incidenciaAfectaA(inc, [a.origenNombre, a.destinoNombre]),
@@ -237,6 +245,78 @@ export function PaginaDetalleAlerta() {
                 )}
               </CardContent>
             </Card>
+
+            {(alerta.criterio === 'DISPONIBILIDAD' || seriesPrecios.length > 0) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Coins className="h-5 w-5 text-primary" aria-hidden="true" />
+                    Evolución de precio
+                  </CardTitle>
+                  <CardDescription>
+                    ¿Compro ahora o espero? Puntos registrados en cada sondeo
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {seriesPrecios.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Todavía no hay histórico de precios — se apunta cuando cambia el precio o
+                      aparecen plazas.
+                    </p>
+                  ) : (
+                    <div className="space-y-5">
+                      {seriesPrecios.map((serie) => (
+                        <div key={serie.clave} className="space-y-2">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                            <span className="font-medium">
+                              {horaGtfs(serie.salida)}
+                              {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
+                            </span>
+                          </div>
+                          <ul className="space-y-1">
+                            {serie.puntos.slice(-MAX_PUNTOS_GRAFICA).map((punto, indice) => (
+                              <li
+                                key={`${punto.registradoEn}-${indice}`}
+                                className="flex items-center gap-2"
+                                title={`${new Date(punto.registradoEn).toLocaleString('es-ES')} · ${formatearPrecio(punto.precioMin)} · ${punto.disponible ? 'disponible' : 'completo'}`}
+                              >
+                                <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                                  <span
+                                    className="block h-full rounded-full bg-amber-500"
+                                    style={{
+                                      width: `${anchoBarra(punto.precioMin, serie.minimo, serie.maximo)}%`,
+                                    }}
+                                  />
+                                </span>
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${
+                                    punto.disponible ? 'bg-emerald-500' : 'bg-gray-400'
+                                  }`}
+                                  aria-hidden="true"
+                                />
+                                <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                                  {formatearPrecio(punto.precioMin)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                            {consejoPrecio(serie.puntos)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Basado en nuestros sondeos cada {alerta.intervaloSondeoMin} min; precio
+                    orientativo de venta
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

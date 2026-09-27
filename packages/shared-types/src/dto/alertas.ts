@@ -109,3 +109,17 @@ export interface AlertaResponse {
   ultimoEstado?: EstadoSerializado[] | null;
   creadaEn: string;
 }
+
+/**
+ * Punto del histórico de precios de una alerta (GET /alertas/:id/precios).
+ * El worker solo guarda un punto cuando cambia el precio o la disponibilidad
+ * de un tren, o en el primer sondeo.
+ */
+export interface PuntoPrecio {
+  numeroTren: string;
+  salida: string;
+  precioMin: number | null;
+  disponible: boolean;
+  /** ISO con la fecha/hora en la que se registró el punto. */
+  registradoEn: string;
+}
