@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
-import { colores, espaciado, radio } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 interface BotonProps {
   titulo: string;
@@ -18,11 +20,14 @@ export function Boton({
   cargando,
   style,
 }: BotonProps) {
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
   const fondo =
     variante === 'primario'
-      ? colores.primario
+      ? paleta.primario
       : variante === 'destructivo'
-        ? colores.error
+        ? paleta.error
         : variante === 'contorno'
           ? 'transparent'
           : 'transparent';
@@ -30,9 +35,9 @@ export function Boton({
     variante === 'primario' || variante === 'destructivo'
       ? '#ffffff'
       : variante === 'contorno'
-        ? colores.primario
-        : colores.textoSecundario;
-  const bordeColor = variante === 'contorno' ? colores.primario : 'transparent';
+        ? paleta.primario
+        : paleta.textoSecundario;
+  const bordeColor = variante === 'contorno' ? paleta.primario : 'transparent';
 
   return (
     <Pressable
@@ -40,7 +45,7 @@ export function Boton({
       onPress={onPress}
       disabled={disabled || cargando}
       style={({ pressed }) => [
-        estilos.boton,
+        s.boton,
         {
           backgroundColor: fondo,
           borderColor: bordeColor,
@@ -52,24 +57,25 @@ export function Boton({
       {cargando ? (
         <ActivityIndicator color={textoColor} />
       ) : (
-        <Text style={[estilos.texto, { color: textoColor }]}>{titulo}</Text>
+        <Text style={[s.texto, { color: textoColor }]}>{titulo}</Text>
       )}
     </Pressable>
   );
 }
 
-const estilos = StyleSheet.create({
-  boton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderRadius: radio.md,
-    paddingVertical: espaciado.md - 2,
-    paddingHorizontal: espaciado.lg,
-    minHeight: 48,
-  },
-  texto: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    boton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderRadius: radio.md,
+      paddingVertical: espaciado.md - 2,
+      paddingHorizontal: espaciado.lg,
+      minHeight: 48,
+    },
+    texto: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+  });

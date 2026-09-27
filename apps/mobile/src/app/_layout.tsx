@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '@/hooks/useAuth';
-import { colores } from '@/lib/tema';
+import { TemaProvider, useTema } from '@/lib/tema-contexto';
 
 // Muestra el aviso en primer plano (si no, el sistema lo descarta en foreground)
 Notifications.setNotificationHandler({
@@ -37,14 +37,24 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <TemaProvider>
+      <Aplicacion />
+    </TemaProvider>
+  );
+}
+
+function Aplicacion() {
+  const { paleta, oscuro } = useTema();
+
+  return (
     <AuthProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={oscuro ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: colores.fondo },
-          headerTintColor: colores.primario,
-          headerTitleStyle: { fontWeight: '700', color: colores.texto },
-          contentStyle: { backgroundColor: colores.fondoSecundario },
+          headerStyle: { backgroundColor: paleta.fondo },
+          headerTintColor: paleta.primario,
+          headerTitleStyle: { fontWeight: '700', color: paleta.texto },
+          contentStyle: { backgroundColor: paleta.fondoSecundario },
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />

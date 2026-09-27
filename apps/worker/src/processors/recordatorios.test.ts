@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ahoraRelojGtfs,
+  claveServicioRecordatorio,
   elegirSalidaDelDia,
-  elegirTrenRecordatorio,
+  elegirTrenesRecordatorio,
   preferenciaBooleana,
   type TrenRecordatorio,
 } from './recordatorios';
@@ -20,39 +21,44 @@ describe('ahoraRelojGtfs', () => {
   });
 });
 
-describe('elegirTrenRecordatorio', () => {
+describe('elegirTrenesRecordatorio', () => {
   const ahora = new Date('2026-09-25T10:00:00.000Z');
 
-  it('elige la salida más próxima dentro de la ventana de aviso', () => {
-    const elegido = elegirTrenRecordatorio(
-      salidas(['09:30', '10:30', '11:00', '14:00']),
+  it('devuelve TODAS las salidas dentro de la ventana, ordenadas', () => {
+    const elegidos = elegirTrenesRecordatorio(
+      salidas(['09:30', '10:30', '10:45', '11:00', '14:00']),
       ahora,
       50,
       {},
     );
-    expect(elegido?.tren.numeroTren).toBe('04001'); // 10:30, la más próxima futura
-    expect(elegido?.minutosRestantes).toBe(30);
+    expect(elegidos.map((e) => e.tren.numeroTren)).toEqual(['04001', '04002']); // 10:30 y 10:45
+    expect(elegidos[0]?.minutosRestantes).toBe(30);
   });
 
   it('ignora salidas ya pasadas y fuera de la ventana', () => {
-    expect(elegirTrenRecordatorio(salidas(['09:30', '14:00']), ahora, 50, {})).toBeNull();
+    expect(elegirTrenesRecordatorio(salidas(['09:30', '14:00']), ahora, 50, {})).toEqual([]);
   });
 
   it('respeta la franja horaria de la alerta', () => {
-    const conFranja = elegirTrenRecordatorio(salidas(['10:30', '10:45']), ahora, 50, {
+    const conFranja = elegirTrenesRecordatorio(salidas(['10:30', '10:45']), ahora, 50, {
       horaDesde: '10:40',
       horaHasta: null,
     });
-    expect(conFranja?.tren.numeroTren).toBe('04001'); // 10:45 (10:30 queda fuera)
+    expect(conFranja.map((e) => e.tren.numeroTren)).toEqual(['04001']); // solo 10:45
   });
 
   it('avisa también si quedan menos minutos que el aviso configurado', () => {
-    const elegido = elegirTrenRecordatorio(salidas(['10:05']), ahora, 50, {});
-    expect(elegido?.minutosRestantes).toBe(5);
+    const elegidos = elegirTrenesRecordatorio(salidas(['10:05']), ahora, 50, {});
+    expect(elegidos[0]?.minutosRestantes).toBe(5);
   });
 
-  it('devuelve null sin trenes', () => {
-    expect(elegirTrenRecordatorio([], ahora, 50, {})).toBeNull();
+  it('devuelve vacío sin trenes', () => {
+    expect(elegirTrenesRecordatorio([], ahora, 50, {})).toEqual([]);
+  });
+
+  it('la clave de servicio distingue dos salidas del mismo número', () => {
+    const clave = claveServicioRecordatorio(salidas(['10:30'])[0]);
+    expect(clave).toBe('04000-10:30');
   });
 });
 

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import type { PreferenciasUsuario } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
@@ -7,16 +7,25 @@ import { Tarjeta } from '@/components/Tarjeta';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
 import { desregistrarPushMovil, registrarPushMovil } from '@/lib/push';
-import { colores, espaciado } from '@/lib/tema';
+import { useTema, type ModoTema } from '@/lib/tema-contexto';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
+
+const MODOS_TEMA: Array<[ModoTema, string]> = [
+  ['claro', 'Claro'],
+  ['oscuro', 'Oscuro'],
+  ['sistema', 'Sistema'],
+];
 
 export default function Ajustes() {
   const { user, salir, authConfigurada } = useAuth();
+  const { modo, setModo, paleta } = useTema();
   const [pref, setPref] = useState<PreferenciasUsuario | null>(null);
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
   const [resumen, setResumen] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   useEffect(() => {
     if (!authConfigurada) return;
@@ -49,7 +58,7 @@ export default function Ajustes() {
   const guardar = async (parcial: Partial<PreferenciasUsuario>) => {
     setGuardando(true);
     try {
-      const siguiente = { ...(pref ?? {}), ...parcial } as PreferenciasUsuario;
+      const siguiente = { ...(pref ?? {}), ...parcial, tema: modo } as PreferenciasUsuario;
       const guardado = await api<PreferenciasUsuario>('/auth/preferencias', {
         method: 'POST',
         json: siguiente,
@@ -68,56 +77,69 @@ export default function Ajustes() {
   };
 
   return (
-    <View style={estilos.pantalla}>
-      <Text style={estilos.titulo}>Ajustes</Text>
+    <View style={s.pantalla}>
+      <Text style={s.titulo}>Ajustes</Text>
 
       <Tarjeta>
-        <Text style={estilos.seccion}>Cuenta</Text>
-        <Text style={estilos.valor}>{user?.email ?? 'Sin sesión'}</Text>
-        {!authConfigurada && (
-          <Text style={estilos.aviso}>Supabase sin configurar en este entorno</Text>
-        )}
+        <Text style={s.seccion}>Cuenta</Text>
+        <Text style={s.valor}>{user?.email ?? 'Sin sesión'}</Text>
+        {!authConfigurada && <Text style={s.aviso}>Supabase sin configurar en este entorno</Text>}
       </Tarjeta>
 
       <Tarjeta>
-        <Text style={estilos.seccion}>Notificaciones</Text>
-        <View style={estilos.fila}>
-          <Text style={estilos.etiqueta}>Push de disponibilidad</Text>
+        <Text style={s.seccion}>Apariencia</Text>
+        <View style={s.modos}>
+          {MODOS_TEMA.map(([valor, etiqueta]) => (
+            <Text
+              key={valor}
+              style={[s.modo, modo === valor && s.modoActivo]}
+              onPress={() => setModo(valor)}
+            >
+              {etiqueta}
+            </Text>
+          ))}
+        </View>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Text style={s.seccion}>Notificaciones</Text>
+        <View style={s.fila}>
+          <Text style={s.etiqueta}>Push de disponibilidad</Text>
           <Switch
             value={push}
             onValueChange={(v) => {
               void cambiarPush(v);
             }}
-            trackColor={{ true: colores.primarioClaro, false: colores.borde }}
+            trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
             thumbColor="#fff"
           />
         </View>
-        {estadoPush ? <Text style={estilos.pie}>{estadoPush}</Text> : null}
-        <View style={estilos.fila}>
-          <Text style={estilos.etiqueta}>Recordatorio de salida (50 min)</Text>
+        {estadoPush ? <Text style={s.pie}>{estadoPush}</Text> : null}
+        <View style={s.fila}>
+          <Text style={s.etiqueta}>Recordatorio de salida (50 min)</Text>
           <Switch
             value={recordatorio}
             onValueChange={(v) => {
               setRecordatorio(v);
               void guardar({ recordatorioSalida: v });
             }}
-            trackColor={{ true: colores.primarioClaro, false: colores.borde }}
+            trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
             thumbColor="#fff"
           />
         </View>
-        <View style={estilos.fila}>
-          <Text style={estilos.etiqueta}>Resumen del viaje (mañana del día)</Text>
+        <View style={s.fila}>
+          <Text style={s.etiqueta}>Resumen del viaje (mañana del día)</Text>
           <Switch
             value={resumen}
             onValueChange={(v) => {
               setResumen(v);
               void guardar({ resumenViaje: v });
             }}
-            trackColor={{ true: colores.primarioClaro, false: colores.borde }}
+            trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
             thumbColor="#fff"
           />
         </View>
-        {guardando ? <Text style={estilos.pie}>Guardando...</Text> : null}
+        {guardando ? <Text style={s.pie}>Guardando...</Text> : null}
       </Tarjeta>
 
       <Boton
@@ -131,48 +153,70 @@ export default function Ajustes() {
   );
 }
 
-const estilos = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: colores.fondoSecundario,
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  titulo: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colores.texto,
-    marginBottom: espaciado.xs,
-  },
-  seccion: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colores.primario,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  valor: {
-    fontSize: 15,
-    color: colores.texto,
-  },
-  aviso: {
-    fontSize: 13,
-    color: colores.aviso,
-  },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: espaciado.sm,
-    paddingVertical: 4,
-  },
-  etiqueta: {
-    fontSize: 15,
-    color: colores.texto,
-    flex: 1,
-  },
-  pie: {
-    fontSize: 12,
-    color: colores.textoSecundario,
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    pantalla: {
+      flex: 1,
+      backgroundColor: c.fondoSecundario,
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    titulo: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: c.texto,
+      marginBottom: espaciado.xs,
+    },
+    seccion: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.primario,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    valor: {
+      fontSize: 15,
+      color: c.texto,
+    },
+    aviso: {
+      fontSize: 13,
+      color: c.aviso,
+    },
+    modos: {
+      flexDirection: 'row',
+      gap: espaciado.sm,
+      paddingTop: espaciado.xs,
+    },
+    modo: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textoSecundario,
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.completo,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      overflow: 'hidden',
+    },
+    modoActivo: {
+      color: c.primarioOscuro,
+      borderColor: c.primario,
+      backgroundColor: c.acento,
+    },
+    fila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+      paddingVertical: 4,
+    },
+    etiqueta: {
+      fontSize: 15,
+      color: c.texto,
+      flex: 1,
+    },
+    pie: {
+      fontSize: 12,
+      color: c.textoSecundario,
+    },
+  });

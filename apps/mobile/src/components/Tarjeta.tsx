@@ -1,6 +1,7 @@
-import { type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { colores, espaciado, radio } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 interface TarjetaProps {
   children: ReactNode;
@@ -8,7 +9,9 @@ interface TarjetaProps {
 }
 
 export function Tarjeta({ children, style }: TarjetaProps) {
-  return <View style={[estilos.tarjeta, style]}>{children}</View>;
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  return <View style={[s.tarjeta, style]}>{children}</View>;
 }
 
 interface EtiquetaProps {
@@ -18,42 +21,46 @@ interface EtiquetaProps {
 }
 
 export function Etiqueta({ children, tono = 'neutro', style }: EtiquetaProps) {
+  const { paleta, oscuro } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
   const fondos = {
-    exito: '#dcfce7',
-    aviso: '#fef3c7',
-    neutro: colores.fondoSecundario,
-    primario: colores.acento,
+    exito: oscuro ? 'rgba(34, 197, 94, 0.18)' : '#dcfce7',
+    aviso: oscuro ? 'rgba(245, 158, 11, 0.18)' : '#fef3c7',
+    neutro: paleta.fondoSecundario,
+    primario: paleta.acento,
   };
   const textos = {
-    exito: '#166534',
-    aviso: '#92400e',
-    neutro: colores.textoSecundario,
-    primario: colores.primarioOscuro,
+    exito: oscuro ? '#4ade80' : '#166534',
+    aviso: oscuro ? '#fbbf24' : '#92400e',
+    neutro: paleta.textoSecundario,
+    primario: paleta.primarioOscuro,
   };
   return (
-    <View style={[estilos.etiqueta, { backgroundColor: fondos[tono] }, style]}>
-      <Text style={[estilos.etiquetaTexto, { color: textos[tono] }]}>{children}</Text>
+    <View style={[s.etiqueta, { backgroundColor: fondos[tono] }, style]}>
+      <Text style={[s.etiquetaTexto, { color: textos[tono] }]}>{children}</Text>
     </View>
   );
 }
 
-const estilos = StyleSheet.create({
-  tarjeta: {
-    backgroundColor: colores.fondo,
-    borderRadius: radio.lg,
-    borderWidth: 1,
-    borderColor: colores.borde,
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  etiqueta: {
-    alignSelf: 'flex-start',
-    borderRadius: radio.completo,
-    paddingHorizontal: espaciado.sm + 2,
-    paddingVertical: 4,
-  },
-  etiquetaTexto: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    tarjeta: {
+      backgroundColor: c.fondo,
+      borderRadius: radio.lg,
+      borderWidth: 1,
+      borderColor: c.borde,
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    etiqueta: {
+      alignSelf: 'flex-start',
+      borderRadius: radio.completo,
+      paddingHorizontal: espaciado.sm + 2,
+      paddingVertical: 4,
+    },
+    etiquetaTexto: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+  });

@@ -11,7 +11,8 @@ import {
 import { Boton } from '@/components/Boton';
 import { api } from '@/lib/api';
 import { etiquetaBono, validarAlerta } from '@/lib/alertas';
-import { colores, espaciado, radio } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
@@ -24,6 +25,8 @@ export default function NuevaAlerta() {
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   const params = useLocalSearchParams<{
     origen?: string;
@@ -164,19 +167,19 @@ export default function NuevaAlerta() {
   };
 
   return (
-    <ScrollView style={estilos.pantalla} contentContainerStyle={estilos.contenido}>
-      <Text style={estilos.titulo}>{editandoId ? 'Editar alerta' : 'Nueva alerta'}</Text>
-      <Text style={estilos.subtitulo}>
+    <ScrollView style={s.pantalla} contentContainerStyle={s.contenido}>
+      <Text style={s.titulo}>{editandoId ? 'Editar alerta' : 'Nueva alerta'}</Text>
+      <Text style={s.subtitulo}>
         {editandoId
           ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta'
           : 'Te avisaremos cuando cambie la disponibilidad de este trayecto'}
       </Text>
 
-      <Text style={estilos.etiqueta}>Origen</Text>
+      <Text style={s.etiqueta}>Origen</Text>
       <TextInput
-        style={estilos.campo}
+        style={s.campo}
         placeholder="Estación de origen"
-        placeholderTextColor={colores.textoSecundario}
+        placeholderTextColor={paleta.textoSecundario}
         value={origen}
         onChangeText={(v) => {
           setOrigen(v);
@@ -186,16 +189,16 @@ export default function NuevaAlerta() {
       />
       {origen.trim().length >= 2 &&
         sugerencias().map((e) => (
-          <Text key={e.id} style={estilos.sugerencia} onPress={() => setOrigen(e.nombre)}>
+          <Text key={e.id} style={s.sugerencia} onPress={() => setOrigen(e.nombre)}>
             {e.nombre}
           </Text>
         ))}
 
-      <Text style={estilos.etiqueta}>Destino</Text>
+      <Text style={s.etiqueta}>Destino</Text>
       <TextInput
-        style={estilos.campo}
+        style={s.campo}
         placeholder="Estación de destino"
-        placeholderTextColor={colores.textoSecundario}
+        placeholderTextColor={paleta.textoSecundario}
         value={destino}
         onChangeText={(v) => {
           setDestino(v);
@@ -205,16 +208,16 @@ export default function NuevaAlerta() {
       />
       {destino.trim().length >= 2 &&
         sugerencias().map((e) => (
-          <Text key={e.id} style={estilos.sugerencia} onPress={() => setDestino(e.nombre)}>
+          <Text key={e.id} style={s.sugerencia} onPress={() => setDestino(e.nombre)}>
             {e.nombre}
           </Text>
         ))}
 
-      <Text style={estilos.etiqueta}>Fecha del viaje</Text>
+      <Text style={s.etiqueta}>Fecha del viaje</Text>
       <TextInput
-        style={estilos.campo}
+        style={s.campo}
         placeholder="YYYY-MM-DD"
-        placeholderTextColor={colores.textoSecundario}
+        placeholderTextColor={paleta.textoSecundario}
         keyboardType="numbers-and-punctuation"
         value={fecha}
         onChangeText={(v) => {
@@ -222,25 +225,25 @@ export default function NuevaAlerta() {
           setNumeroTren(''); // el tren elegido es de otra fecha
         }}
       />
-      <Text style={estilos.pista}>Mínimo: {fechaMin}</Text>
+      <Text style={s.pista}>Mínimo: {fechaMin}</Text>
 
-      <Text style={estilos.etiqueta}>Tren concreto (opcional)</Text>
+      <Text style={s.etiqueta}>Tren concreto (opcional)</Text>
       <TextInput
-        style={estilos.campo}
+        style={s.campo}
         placeholder="Ej.: 03311 — vacío = todos los trenes"
-        placeholderTextColor={colores.textoSecundario}
+        placeholderTextColor={paleta.textoSecundario}
         value={numeroTren}
         onChangeText={setNumeroTren}
         autoCapitalize="characters"
       />
       {trenesSugeridos.length > 0 && !numeroTren.trim() && (
         <>
-          <Text style={estilos.pista}>Próximos trenes (toca para elegir):</Text>
-          <View style={estilos.chips}>
+          <Text style={s.pista}>Próximos trenes (toca para elegir):</Text>
+          <View style={s.chips}>
             {trenesSugeridos.map((t) => (
               <Text
                 key={`${t.numeroTren}-${t.salida}`}
-                style={[estilos.chip, numeroTren === t.numeroTren && estilos.chipActivo]}
+                style={[s.chip, numeroTren === t.numeroTren && s.chipActivo]}
                 onPress={() => setNumeroTren(t.numeroTren)}
               >
                 {horaGtfs(t.salida)} · {t.numeroTren}
@@ -250,12 +253,12 @@ export default function NuevaAlerta() {
         </>
       )}
 
-      <Text style={estilos.etiqueta}>Intervalo de sondeo</Text>
-      <View style={estilos.chips}>
+      <Text style={s.etiqueta}>Intervalo de sondeo</Text>
+      <View style={s.chips}>
         {INTERVALOS_SONDEO_MIN.map((min) => (
           <Text
             key={min}
-            style={[estilos.chip, intervalo === min && estilos.chipActivo]}
+            style={[s.chip, intervalo === min && s.chipActivo]}
             onPress={() => setIntervalo(min)}
           >
             {min} min
@@ -263,28 +266,24 @@ export default function NuevaAlerta() {
         ))}
       </View>
 
-      <Text style={estilos.etiqueta}>Bono</Text>
-      <View style={estilos.chips}>
+      <Text style={s.etiqueta}>Bono</Text>
+      <View style={s.chips}>
         {BONOS.map((b) => (
-          <Text
-            key={b}
-            style={[estilos.chip, bono === b && estilos.chipActivo]}
-            onPress={() => setBono(b)}
-          >
+          <Text key={b} style={[s.chip, bono === b && s.chipActivo]} onPress={() => setBono(b)}>
             {etiquetaBono(b)}
           </Text>
         ))}
       </View>
-      <Text style={{ fontSize: 12, color: colores.textoSecundario }}>
+      <Text style={{ fontSize: 12, color: paleta.textoSecundario }}>
         Guardamos tu perfil para personalizar los avisos. Renfe no publica las plazas por cupo de
         bono/abono: los avisos de disponibilidad se calculan sobre las tarifas generales.
       </Text>
 
-      <Text style={estilos.etiqueta}>Notas (opcional)</Text>
+      <Text style={s.etiqueta}>Notas (opcional)</Text>
       <TextInput
-        style={[estilos.campo, estilos.notas]}
+        style={[s.campo, s.notas]}
         placeholder="Ej. asiento junto a ventanilla..."
-        placeholderTextColor={colores.textoSecundario}
+        placeholderTextColor={paleta.textoSecundario}
         multiline
         value={notas}
         onChangeText={setNotas}
@@ -300,76 +299,77 @@ export default function NuevaAlerta() {
   );
 }
 
-const estilos = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: colores.fondo,
-  },
-  contenido: {
-    padding: espaciado.lg,
-    gap: espaciado.sm,
-    paddingBottom: espaciado.xl * 2,
-  },
-  titulo: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colores.texto,
-  },
-  subtitulo: {
-    fontSize: 14,
-    color: colores.textoSecundario,
-    marginBottom: espaciado.sm,
-  },
-  etiqueta: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colores.texto,
-    marginTop: espaciado.sm,
-  },
-  campo: {
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: radio.md,
-    paddingHorizontal: espaciado.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colores.texto,
-    backgroundColor: colores.fondo,
-  },
-  notas: {
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
-  pista: {
-    fontSize: 12,
-    color: colores.textoSecundario,
-  },
-  sugerencia: {
-    fontSize: 14,
-    color: colores.primario,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: espaciado.sm,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: radio.completo,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: colores.textoSecundario,
-    backgroundColor: colores.fondoSecundario,
-    overflow: 'hidden',
-  },
-  chipActivo: {
-    borderColor: colores.primario,
-    backgroundColor: colores.acento,
-    color: colores.primarioOscuro,
-    fontWeight: '700',
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    pantalla: {
+      flex: 1,
+      backgroundColor: c.fondo,
+    },
+    contenido: {
+      padding: espaciado.lg,
+      gap: espaciado.sm,
+      paddingBottom: espaciado.xl * 2,
+    },
+    titulo: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    subtitulo: {
+      fontSize: 14,
+      color: c.textoSecundario,
+      marginBottom: espaciado.sm,
+    },
+    etiqueta: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.texto,
+      marginTop: espaciado.sm,
+    },
+    campo: {
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.md,
+      paddingHorizontal: espaciado.md,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: c.texto,
+      backgroundColor: c.fondo,
+    },
+    notas: {
+      minHeight: 88,
+      textAlignVertical: 'top',
+    },
+    pista: {
+      fontSize: 12,
+      color: c.textoSecundario,
+    },
+    sugerencia: {
+      fontSize: 14,
+      color: c.primario,
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+    },
+    chips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: espaciado.sm,
+    },
+    chip: {
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.completo,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 13,
+      color: c.textoSecundario,
+      backgroundColor: c.fondoSecundario,
+      overflow: 'hidden',
+    },
+    chipActivo: {
+      borderColor: c.primario,
+      backgroundColor: c.acento,
+      color: c.primarioOscuro,
+      fontWeight: '700',
+    },
+  });

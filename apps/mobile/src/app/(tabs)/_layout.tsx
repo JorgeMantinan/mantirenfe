@@ -1,10 +1,11 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
-import { colores } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
 
 export default function TabsLayout() {
   const { user, cargando } = useAuth();
+  const { paleta } = useTema();
 
   if (cargando) return null;
   if (!user) return <Redirect href="/login" />;
@@ -12,12 +13,12 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colores.primario,
-        tabBarInactiveTintColor: colores.textoSecundario,
-        headerStyle: { backgroundColor: colores.fondo },
-        headerTintColor: colores.texto,
+        tabBarActiveTintColor: paleta.primario,
+        tabBarInactiveTintColor: paleta.textoSecundario,
+        headerStyle: { backgroundColor: paleta.fondo },
+        headerTintColor: paleta.texto,
         headerTitleStyle: { fontWeight: '700' },
-        tabBarStyle: { backgroundColor: colores.fondo, borderTopColor: colores.borde },
+        tabBarStyle: { backgroundColor: paleta.fondo, borderTopColor: paleta.borde },
       }}
     >
       <Tabs.Screen

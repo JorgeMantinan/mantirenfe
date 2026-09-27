@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
-import { colores, espaciado } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, type Paleta } from '@/lib/tema';
 
 export default function DetalleAlerta() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,6 +14,8 @@ export default function DetalleAlerta() {
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
     if (!id) return;
@@ -47,16 +50,16 @@ export default function DetalleAlerta() {
   const cabecera = (
     <View style={{ gap: espaciado.sm }}>
       {error ? (
-        <Tarjeta style={{ borderColor: colores.error }}>
-          <Text style={{ color: colores.error }}>{error}</Text>
+        <Tarjeta style={{ borderColor: paleta.error }}>
+          <Text style={{ color: paleta.error }}>{error}</Text>
         </Tarjeta>
       ) : null}
 
       {alerta ? (
         <Tarjeta>
-          <View style={estilos.fila}>
-            <Text style={estilos.ruta}>
-              {alerta.origenNombre} <Text style={{ color: colores.primario }}>→</Text>{' '}
+          <View style={s.fila}>
+            <Text style={s.ruta}>
+              {alerta.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
               {alerta.destinoNombre}
             </Text>
             <Etiqueta
@@ -71,19 +74,19 @@ export default function DetalleAlerta() {
               {etiquetaEstado(alerta.estado)}
             </Etiqueta>
           </View>
-          <Text style={estilos.detalle}>
+          <Text style={s.detalle}>
             {alerta.fechaViaje} · {alerta.criterio} · cada {alerta.intervaloSondeoMin} min ·{' '}
             {alerta.bono}
           </Text>
           {alerta.horaDesde || alerta.horaHasta ? (
-            <Text style={estilos.detalle}>
+            <Text style={s.detalle}>
               Franja: {alerta.horaDesde ?? '00:00'} – {alerta.horaHasta ?? '23:59'}
               {alerta.numeroTren ? ` · tren ${alerta.numeroTren}` : ''}
             </Text>
           ) : alerta.numeroTren ? (
-            <Text style={estilos.detalle}>Tren {alerta.numeroTren}</Text>
+            <Text style={s.detalle}>Tren {alerta.numeroTren}</Text>
           ) : null}
-          <Text style={estilos.detalle}>
+          <Text style={s.detalle}>
             Último sondeo:{' '}
             {alerta.ultimoSondeoEn
               ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
@@ -92,80 +95,79 @@ export default function DetalleAlerta() {
         </Tarjeta>
       ) : null}
 
-      <Text style={estilos.subtitulo}>Avisos de esta alerta</Text>
+      <Text style={s.subtitulo}>Avisos de esta alerta</Text>
     </View>
   );
 
   return (
     <FlatList
-      style={{ backgroundColor: colores.fondoSecundario }}
+      style={{ backgroundColor: paleta.fondoSecundario }}
       data={notificaciones}
       keyExtractor={(item) => item.id}
       refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
-      contentContainerStyle={estilos.lista}
+      contentContainerStyle={s.lista}
       ListHeaderComponent={cabecera}
       ListEmptyComponent={
-        cargando || error ? null : (
-          <Text style={estilos.vacio}>Sin avisos todavía para esta alerta.</Text>
-        )
+        cargando || error ? null : <Text style={s.vacio}>Sin avisos todavía para esta alerta.</Text>
       }
       renderItem={({ item }) => (
         <Tarjeta>
-          <View style={estilos.fila}>
-            <Text style={estilos.notiTitulo}>{item.titulo}</Text>
+          <View style={s.fila}>
+            <Text style={s.notiTitulo}>{item.titulo}</Text>
             {!item.leida ? <Etiqueta tono="primario">Nuevo</Etiqueta> : null}
           </View>
-          <Text style={estilos.detalle}>{item.cuerpo}</Text>
-          <Text style={estilos.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
+          <Text style={s.detalle}>{item.cuerpo}</Text>
+          <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
         </Tarjeta>
       )}
     />
   );
 }
 
-const estilos = StyleSheet.create({
-  lista: {
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: espaciado.sm,
-  },
-  ruta: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colores.texto,
-    flex: 1,
-  },
-  detalle: {
-    fontSize: 13,
-    color: colores.textoSecundario,
-  },
-  subtitulo: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colores.primario,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: espaciado.xs,
-  },
-  notiTitulo: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colores.texto,
-    flex: 1,
-  },
-  fecha: {
-    fontSize: 12,
-    color: colores.textoSecundario,
-  },
-  vacio: {
-    fontSize: 14,
-    color: colores.textoSecundario,
-    textAlign: 'center',
-    paddingVertical: espaciado.lg,
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    lista: {
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    fila: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    ruta: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.texto,
+      flex: 1,
+    },
+    detalle: {
+      fontSize: 13,
+      color: c.textoSecundario,
+    },
+    subtitulo: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.primario,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop: espaciado.xs,
+    },
+    notiTitulo: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.texto,
+      flex: 1,
+    },
+    fecha: {
+      fontSize: 12,
+      color: c.textoSecundario,
+    },
+    vacio: {
+      fontSize: 14,
+      color: c.textoSecundario,
+      textAlign: 'center',
+      paddingVertical: espaciado.lg,
+    },
+  });

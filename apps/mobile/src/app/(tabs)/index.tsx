@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,12 +7,15 @@ import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
-import { colores, espaciado } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, type Paleta } from '@/lib/tema';
 
 export default function Alertas() {
   const [alertas, setAlertas] = useState<AlertaResponse[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -57,19 +60,19 @@ export default function Alertas() {
   };
 
   return (
-    <View style={estilos.pantalla}>
-      <View style={estilos.encabezado}>
-        <Text style={estilos.titulo}>Mis alertas</Text>
+    <View style={s.pantalla}>
+      <View style={s.encabezado}>
+        <Text style={s.titulo}>Mis alertas</Text>
         <Boton
           titulo="+ Nueva"
           onPress={() => router.push('/alertas/nueva')}
-          style={estilos.botonNueva}
+          style={s.botonNueva}
         />
       </View>
 
       {error ? (
-        <Tarjeta style={{ borderColor: colores.error }}>
-          <Text style={{ color: colores.error }}>{error}</Text>
+        <Tarjeta style={{ borderColor: paleta.error }}>
+          <Text style={{ color: paleta.error }}>{error}</Text>
         </Tarjeta>
       ) : null}
 
@@ -77,13 +80,13 @@ export default function Alertas() {
         data={alertas}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
-        contentContainerStyle={estilos.lista}
+        contentContainerStyle={s.lista}
         ListEmptyComponent={
           cargando ? null : (
-            <View style={estilos.vacio}>
-              <Ionicons name="notifications-off-outline" size={40} color={colores.primario} />
-              <Text style={estilos.vacioTitulo}>Aún no tienes alertas</Text>
-              <Text style={estilos.vacioTexto}>
+            <View style={s.vacio}>
+              <Ionicons name="notifications-off-outline" size={40} color={paleta.primario} />
+              <Text style={s.vacioTitulo}>Aún no tienes alertas</Text>
+              <Text style={s.vacioTexto}>
                 Crea una para tu próximo viaje y te avisaremos si se libera plaza.
               </Text>
               <Boton titulo="Crear la primera" onPress={() => router.push('/alertas/nueva')} />
@@ -92,13 +95,13 @@ export default function Alertas() {
         }
         renderItem={({ item }) => (
           <Tarjeta>
-            <View style={estilos.filaAlerta}>
+            <View style={s.filaAlerta}>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={estilos.ruta}>
-                  {item.origenNombre} <Text style={{ color: colores.primario }}>→</Text>{' '}
+                <Text style={s.ruta}>
+                  {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
                   {item.destinoNombre}
                 </Text>
-                <Text style={estilos.detalle}>
+                <Text style={s.detalle}>
                   {item.fechaViaje} · cada {item.intervaloSondeoMin} min · {item.bono}
                 </Text>
               </View>
@@ -110,12 +113,12 @@ export default function Alertas() {
                 {etiquetaEstado(item.estado)}
               </Etiqueta>
             </View>
-            <View style={estilos.acciones}>
+            <View style={s.acciones}>
               <Boton
                 titulo={item.estado === 'ACTIVA' ? 'Pausar' : 'Reanudar'}
                 variante="contorno"
                 onPress={() => void alternar(item)}
-                style={estilos.botonAccion}
+                style={s.botonAccion}
               />
               <Boton
                 titulo="Editar"
@@ -123,13 +126,13 @@ export default function Alertas() {
                 onPress={() =>
                   router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
                 }
-                style={estilos.botonAccion}
+                style={s.botonAccion}
               />
               <Boton
                 titulo="Eliminar"
                 variante="fantasma"
                 onPress={() => eliminar(item)}
-                style={estilos.botonAccion}
+                style={s.botonAccion}
               />
             </View>
           </Tarjeta>
@@ -139,74 +142,75 @@ export default function Alertas() {
   );
 }
 
-const estilos = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: colores.fondoSecundario,
-  },
-  encabezado: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: espaciado.md,
-    paddingVertical: espaciado.sm,
-    backgroundColor: colores.fondo,
-    borderBottomWidth: 1,
-    borderBottomColor: colores.borde,
-  },
-  titulo: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colores.texto,
-  },
-  botonNueva: {
-    minHeight: 40,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  lista: {
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  filaAlerta: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: espaciado.sm,
-  },
-  ruta: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colores.texto,
-  },
-  detalle: {
-    fontSize: 13,
-    color: colores.textoSecundario,
-  },
-  acciones: {
-    flexDirection: 'row',
-    gap: espaciado.sm,
-  },
-  botonAccion: {
-    minHeight: 40,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    flex: 1,
-  },
-  vacio: {
-    alignItems: 'center',
-    gap: espaciado.sm,
-    paddingVertical: espaciado.xl,
-  },
-  vacioTitulo: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colores.texto,
-  },
-  vacioTexto: {
-    fontSize: 14,
-    color: colores.textoSecundario,
-    textAlign: 'center',
-    maxWidth: 280,
-    marginBottom: espaciado.sm,
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    pantalla: {
+      flex: 1,
+      backgroundColor: c.fondoSecundario,
+    },
+    encabezado: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: espaciado.md,
+      paddingVertical: espaciado.sm,
+      backgroundColor: c.fondo,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borde,
+    },
+    titulo: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    botonNueva: {
+      minHeight: 40,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+    },
+    lista: {
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    filaAlerta: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: espaciado.sm,
+    },
+    ruta: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    detalle: {
+      fontSize: 13,
+      color: c.textoSecundario,
+    },
+    acciones: {
+      flexDirection: 'row',
+      gap: espaciado.sm,
+    },
+    botonAccion: {
+      minHeight: 40,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      flex: 1,
+    },
+    vacio: {
+      alignItems: 'center',
+      gap: espaciado.sm,
+      paddingVertical: espaciado.xl,
+    },
+    vacioTitulo: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    vacioTexto: {
+      fontSize: 14,
+      color: c.textoSecundario,
+      textAlign: 'center',
+      maxWidth: 280,
+      marginBottom: espaciado.sm,
+    },
+  });

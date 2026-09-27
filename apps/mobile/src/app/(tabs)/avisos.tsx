@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,12 +6,15 @@ import type { NotificacionResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
-import { colores, espaciado } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, type Paleta } from '@/lib/tema';
 
 export default function Avisos() {
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -44,13 +47,11 @@ export default function Avisos() {
   const noLeidas = notificaciones.filter((n) => !n.leida).length;
 
   return (
-    <View style={estilos.pantalla}>
-      <View style={estilos.encabezado}>
+    <View style={s.pantalla}>
+      <View style={s.encabezado}>
         <View style={{ flex: 1 }}>
-          <Text style={estilos.titulo}>Avisos</Text>
-          <Text style={estilos.subtitulo}>
-            {noLeidas > 0 ? `${noLeidas} sin leer` : 'Todo al día'}
-          </Text>
+          <Text style={s.titulo}>Avisos</Text>
+          <Text style={s.subtitulo}>{noLeidas > 0 ? `${noLeidas} sin leer` : 'Todo al día'}</Text>
         </View>
         <Boton
           titulo="Marcar leídas"
@@ -61,8 +62,8 @@ export default function Avisos() {
       </View>
 
       {error ? (
-        <Tarjeta style={{ borderColor: colores.error, margin: espaciado.md }}>
-          <Text style={{ color: colores.error }}>{error}</Text>
+        <Tarjeta style={{ borderColor: paleta.error, margin: espaciado.md }}>
+          <Text style={{ color: paleta.error }}>{error}</Text>
         </Tarjeta>
       ) : null}
 
@@ -70,13 +71,13 @@ export default function Avisos() {
         data={notificaciones}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
-        contentContainerStyle={estilos.lista}
+        contentContainerStyle={s.lista}
         ListEmptyComponent={
           cargando ? null : (
-            <View style={estilos.vacio}>
-              <Ionicons name="mail-open-outline" size={40} color={colores.primario} />
-              <Text style={estilos.vacioTitulo}>Sin avisos todavía</Text>
-              <Text style={estilos.vacioTexto}>
+            <View style={s.vacio}>
+              <Ionicons name="mail-open-outline" size={40} color={paleta.primario} />
+              <Text style={s.vacioTitulo}>Sin avisos todavía</Text>
+              <Text style={s.vacioTexto}>
                 Cuando una alerta detecte cambios, el aviso aparecerá aquí.
               </Text>
             </View>
@@ -84,12 +85,12 @@ export default function Avisos() {
         }
         renderItem={({ item }) => (
           <Tarjeta style={item.leida ? { opacity: 0.75 } : undefined}>
-            <View style={estilos.fila}>
-              <Text style={estilos.tituloAviso}>{item.titulo}</Text>
+            <View style={s.fila}>
+              <Text style={s.tituloAviso}>{item.titulo}</Text>
               {!item.leida ? <Etiqueta tono="primario">Nuevo</Etiqueta> : null}
             </View>
-            <Text style={estilos.cuerpo}>{item.cuerpo}</Text>
-            <Text style={estilos.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
+            <Text style={s.cuerpo}>{item.cuerpo}</Text>
+            <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
           </Tarjeta>
         )}
       />
@@ -97,69 +98,70 @@ export default function Avisos() {
   );
 }
 
-const estilos = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: colores.fondoSecundario,
-  },
-  encabezado: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: espaciado.sm,
-    paddingHorizontal: espaciado.md,
-    paddingVertical: espaciado.sm,
-    backgroundColor: colores.fondo,
-    borderBottomWidth: 1,
-    borderBottomColor: colores.borde,
-  },
-  titulo: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colores.texto,
-  },
-  subtitulo: {
-    fontSize: 13,
-    color: colores.textoSecundario,
-  },
-  lista: {
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: espaciado.sm,
-  },
-  tituloAviso: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colores.texto,
-  },
-  cuerpo: {
-    fontSize: 14,
-    color: colores.textoSecundario,
-    lineHeight: 20,
-  },
-  fecha: {
-    fontSize: 12,
-    color: colores.textoSecundario,
-  },
-  vacio: {
-    alignItems: 'center',
-    gap: espaciado.sm,
-    paddingVertical: espaciado.xl,
-  },
-  vacioTitulo: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colores.texto,
-  },
-  vacioTexto: {
-    fontSize: 14,
-    color: colores.textoSecundario,
-    textAlign: 'center',
-    maxWidth: 280,
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    pantalla: {
+      flex: 1,
+      backgroundColor: c.fondoSecundario,
+    },
+    encabezado: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: espaciado.sm,
+      paddingHorizontal: espaciado.md,
+      paddingVertical: espaciado.sm,
+      backgroundColor: c.fondo,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borde,
+    },
+    titulo: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    subtitulo: {
+      fontSize: 13,
+      color: c.textoSecundario,
+    },
+    lista: {
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    fila: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    tituloAviso: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    cuerpo: {
+      fontSize: 14,
+      color: c.textoSecundario,
+      lineHeight: 20,
+    },
+    fecha: {
+      fontSize: 12,
+      color: c.textoSecundario,
+    },
+    vacio: {
+      alignItems: 'center',
+      gap: espaciado.sm,
+      paddingVertical: espaciado.xl,
+    },
+    vacioTitulo: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    vacioTexto: {
+      fontSize: 14,
+      color: c.textoSecundario,
+      textAlign: 'center',
+      maxWidth: 280,
+    },
+  });

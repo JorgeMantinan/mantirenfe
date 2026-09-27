@@ -18,7 +18,8 @@ import {
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
-import { colores, espaciado, radio } from '@/lib/tema';
+import { useTema } from '@/lib/tema-contexto';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 type Modo = 'estaciones' | 'horarios' | 'posiciones';
 
@@ -37,6 +38,9 @@ export default function Trenes() {
   const [posiciones, setPosiciones] = useState<PosicionTrenResponse[]>([]);
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
   const [filtroPos, setFiltroPos] = useState('');
+
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
 
   const posicionesVisibles = useMemo(() => {
     const q = filtroPos.trim().toLowerCase();
@@ -166,10 +170,10 @@ export default function Trenes() {
   };
 
   return (
-    <View style={estilos.pantalla}>
-      <View style={estilos.encabezado}>
-        <Text style={estilos.titulo}>Trenes</Text>
-        <View style={estilos.modos}>
+    <View style={s.pantalla}>
+      <View style={s.encabezado}>
+        <Text style={s.titulo}>Trenes</Text>
+        <View style={s.modos}>
           {(
             [
               ['estaciones', 'Estaciones'],
@@ -179,7 +183,7 @@ export default function Trenes() {
           ).map(([valor, etiqueta]) => (
             <Text
               key={valor}
-              style={[estilos.modo, modo === valor && estilos.modoActivo]}
+              style={[s.modo, modo === valor && s.modoActivo]}
               onPress={() => setModo(valor)}
             >
               {etiqueta}
@@ -189,9 +193,9 @@ export default function Trenes() {
 
         {modo === 'estaciones' && (
           <TextInput
-            style={estilos.campo}
+            style={s.campo}
             placeholder="Buscar estación..."
-            placeholderTextColor={colores.textoSecundario}
+            placeholderTextColor={paleta.textoSecundario}
             value={buscar}
             onChangeText={(v) => {
               setBuscar(v);
@@ -202,20 +206,20 @@ export default function Trenes() {
 
         {modo === 'posiciones' && (
           <TextInput
-            style={estilos.campo}
+            style={s.campo}
             placeholder="Filtrar trenes (nº, origen, destino)..."
-            placeholderTextColor={colores.textoSecundario}
+            placeholderTextColor={paleta.textoSecundario}
             value={filtroPos}
             onChangeText={setFiltroPos}
           />
         )}
 
         {modo === 'horarios' && (
-          <View style={estilos.formulario}>
+          <View style={s.formulario}>
             <TextInput
-              style={estilos.campo}
+              style={s.campo}
               placeholder="Origen (ej. Madrid)"
-              placeholderTextColor={colores.textoSecundario}
+              placeholderTextColor={paleta.textoSecundario}
               value={origen}
               onChangeText={(v) => {
                 setOrigen(v);
@@ -225,7 +229,7 @@ export default function Trenes() {
             {sugerencias().map((e) => (
               <Text
                 key={e.id}
-                style={estilos.sugerencia}
+                style={s.sugerencia}
                 onPress={() => {
                   setOrigen(e.nombre);
                   setSugerenciasForm([]);
@@ -235,9 +239,9 @@ export default function Trenes() {
               </Text>
             ))}
             <TextInput
-              style={estilos.campo}
+              style={s.campo}
               placeholder="Destino (ej. Sevilla)"
-              placeholderTextColor={colores.textoSecundario}
+              placeholderTextColor={paleta.textoSecundario}
               value={destino}
               onChangeText={(v) => {
                 setDestino(v);
@@ -247,7 +251,7 @@ export default function Trenes() {
             {sugerencias().map((e) => (
               <Text
                 key={e.id}
-                style={estilos.sugerencia}
+                style={s.sugerencia}
                 onPress={() => {
                   setDestino(e.nombre);
                   setSugerenciasForm([]);
@@ -257,9 +261,9 @@ export default function Trenes() {
               </Text>
             ))}
             <TextInput
-              style={estilos.campo}
+              style={s.campo}
               placeholder="YYYY-MM-DD"
-              placeholderTextColor={colores.textoSecundario}
+              placeholderTextColor={paleta.textoSecundario}
               keyboardType="numbers-and-punctuation"
               value={fecha}
               onChangeText={setFecha}
@@ -274,13 +278,13 @@ export default function Trenes() {
       </View>
 
       {modo === 'estaciones' && (cargandoSalidas || salidas !== null) && (
-        <Tarjeta style={{ borderColor: colores.primario, marginHorizontal: espaciado.md }}>
-          <View style={estilos.fila}>
-            <Text style={estilos.nombre}>
+        <Tarjeta style={{ borderColor: paleta.primario, marginHorizontal: espaciado.md }}>
+          <View style={s.fila}>
+            <Text style={s.nombre}>
               {cargandoSalidas ? 'Cargando salidas...' : `Salidas de ${estacionSel} hoy`}
             </Text>
             <Text
-              style={{ color: colores.primario, fontWeight: '600' }}
+              style={{ color: paleta.primario, fontWeight: '600' }}
               onPress={() => {
                 setSalidas(null);
                 setEstacionSel('');
@@ -290,16 +294,16 @@ export default function Trenes() {
             </Text>
           </View>
           {!cargandoSalidas && (salidas ?? []).length === 0 ? (
-            <Text style={estilos.meta}>Sin salidas registradas hoy</Text>
+            <Text style={s.meta}>Sin salidas registradas hoy</Text>
           ) : (
-            (salidas ?? []).map((s, i) => (
-              <View key={`${s.numeroTren}-${s.salida}-${i}`} style={{ marginTop: 6 }}>
-                <Text style={estilos.nombre}>
-                  {horaGtfs(s.salida)} · {s.numeroTren}
+            (salidas ?? []).map((salida, i) => (
+              <View key={`${salida.numeroTren}-${salida.salida}-${i}`} style={{ marginTop: 6 }}>
+                <Text style={s.nombre}>
+                  {horaGtfs(salida.salida)} · {salida.numeroTren}
                 </Text>
-                <Text style={estilos.meta}>
-                  {s.origenNombre} → {s.destinoNombre}
-                  {s.operador ? ` · ${s.operador}` : ''}
+                <Text style={s.meta}>
+                  {salida.origenNombre} → {salida.destinoNombre}
+                  {salida.operador ? ` · ${salida.operador}` : ''}
                 </Text>
               </View>
             ))
@@ -312,21 +316,21 @@ export default function Trenes() {
           data={estaciones}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
-          contentContainerStyle={estilos.lista}
+          contentContainerStyle={s.lista}
           renderItem={({ item }) => (
             <Tarjeta
-              style={{ borderColor: estacionSel === item.nombre ? colores.primario : undefined }}
+              style={{ borderColor: estacionSel === item.nombre ? paleta.primario : undefined }}
             >
               <Pressable onPress={() => cargarSalidas(item.nombre)}>
-                <Text style={estilos.nombre}>{item.nombre}</Text>
-                <Text style={estilos.meta}>
+                <Text style={s.nombre}>{item.nombre}</Text>
+                <Text style={s.meta}>
                   {item.codigo}
                   {item.ciudad ? ` · ${item.ciudad}` : ''} — toca para ver salidas
                 </Text>
               </Pressable>
             </Tarjeta>
           )}
-          ListEmptyComponent={<Text style={estilos.vacio}>No se encontraron estaciones</Text>}
+          ListEmptyComponent={<Text style={s.vacio}>No se encontraron estaciones</Text>}
         />
       )}
 
@@ -335,36 +339,36 @@ export default function Trenes() {
           data={horarios ?? []}
           keyExtractor={(item, index) => `${item.numeroTren}-${item.salida}-${index}`}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
-          contentContainerStyle={estilos.lista}
+          contentContainerStyle={s.lista}
           ListHeaderComponent={
             errorHorarios ? (
-              <Tarjeta style={{ borderColor: colores.error }}>
-                <Text style={{ color: colores.error }}>{errorHorarios}</Text>
+              <Tarjeta style={{ borderColor: paleta.error }}>
+                <Text style={{ color: paleta.error }}>{errorHorarios}</Text>
               </Tarjeta>
             ) : horarios && horarios.length === 0 ? (
-              <Text style={estilos.vacio}>
+              <Text style={s.vacio}>
                 Sin trenes para esa ruta y fecha (ni directos ni con transbordo). Prueba otro día.
               </Text>
             ) : null
           }
           renderItem={({ item }) => (
             <Tarjeta>
-              <View style={estilos.fila}>
-                <Text style={estilos.nombre}>{item.numeroTren}</Text>
+              <View style={s.fila}>
+                <Text style={s.nombre}>{item.numeroTren}</Text>
                 <Etiqueta tono="primario">{item.duracionMin} min</Etiqueta>
               </View>
-              <Text style={estilos.meta}>
+              <Text style={s.meta}>
                 {horaGtfs(item.salida)}
                 {' → '}
                 {horaGtfs(item.llegada)}
                 {' · '}
                 {item.origenNombre} → {item.destinoNombre}
               </Text>
-              {item.operador ? <Text style={estilos.meta}>{item.operador}</Text> : null}
+              {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
               {item.transbordo ? (
                 <View style={{ marginTop: 4, gap: 2 }}>
                   <Etiqueta tono="primario">Transbordo en {item.transbordo.estacion}</Etiqueta>
-                  <Text style={estilos.meta}>
+                  <Text style={s.meta}>
                     {item.transbordo.trenPrimera} llega a las{' '}
                     {horaGtfs(item.transbordo.llegadaPrimera)}
                     {' · espera '}
@@ -401,22 +405,22 @@ export default function Trenes() {
           data={posicionesVisibles}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
-          contentContainerStyle={estilos.lista}
+          contentContainerStyle={s.lista}
           ListHeaderComponent={
             errorPosiciones ? (
-              <Tarjeta style={{ borderColor: colores.error }}>
-                <Text style={{ color: colores.error }}>{errorPosiciones}</Text>
+              <Tarjeta style={{ borderColor: paleta.error }}>
+                <Text style={{ color: paleta.error }}>{errorPosiciones}</Text>
               </Tarjeta>
             ) : posiciones.length === 0 ? (
-              <Text style={estilos.vacio}>Sin posiciones GTFS-RT ahora mismo</Text>
+              <Text style={s.vacio}>Sin posiciones GTFS-RT ahora mismo</Text>
             ) : posicionesVisibles.length === 0 ? (
-              <Text style={estilos.vacio}>Sin trenes que coincidan con «{filtroPos}»</Text>
+              <Text style={s.vacio}>Sin trenes que coincidan con «{filtroPos}»</Text>
             ) : null
           }
           renderItem={({ item }) => (
             <Tarjeta>
-              <View style={estilos.fila}>
-                <Text style={estilos.nombre}>{item.numeroTren ?? item.id}</Text>
+              <View style={s.fila}>
+                <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
                 {item.velocidadKmh != null ? (
                   <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
                 ) : null}
@@ -427,20 +431,20 @@ export default function Trenes() {
                 ) : null}
               </View>
               {item.origenNombre && item.destinoNombre ? (
-                <Text style={estilos.meta}>
+                <Text style={s.meta}>
                   {item.origenNombre} → {item.destinoNombre}
                 </Text>
               ) : null}
               {item.salida || item.llegada ? (
-                <Text style={estilos.meta}>
+                <Text style={s.meta}>
                   {item.salida ? `Salida ${horaGtfs(item.salida)}` : ''}
                   {item.salida && item.llegada ? ' · ' : ''}
                   {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
                 </Text>
               ) : null}
-              {item.operador ? <Text style={estilos.meta}>{item.operador}</Text> : null}
+              {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
               {!item.origenNombre ? (
-                <Text style={estilos.meta}>
+                <Text style={s.meta}>
                   {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
                 </Text>
               ) : null}
@@ -452,84 +456,85 @@ export default function Trenes() {
   );
 }
 
-const estilos = StyleSheet.create({
-  pantalla: {
-    flex: 1,
-    backgroundColor: colores.fondoSecundario,
-  },
-  encabezado: {
-    backgroundColor: colores.fondo,
-    padding: espaciado.md,
-    gap: espaciado.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colores.borde,
-  },
-  titulo: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colores.texto,
-  },
-  modos: {
-    flexDirection: 'row',
-    gap: espaciado.sm,
-  },
-  modo: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colores.textoSecundario,
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: radio.completo,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    overflow: 'hidden',
-  },
-  modoActivo: {
-    color: colores.primarioOscuro,
-    borderColor: colores.primario,
-    backgroundColor: colores.acento,
-  },
-  formulario: {
-    gap: 6,
-  },
-  campo: {
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: radio.md,
-    paddingHorizontal: espaciado.md,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: colores.texto,
-    backgroundColor: colores.fondoSecundario,
-  },
-  sugerencia: {
-    fontSize: 14,
-    color: colores.primario,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-  },
-  lista: {
-    padding: espaciado.md,
-    gap: espaciado.sm,
-  },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: espaciado.sm,
-  },
-  nombre: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colores.texto,
-  },
-  meta: {
-    fontSize: 13,
-    color: colores.textoSecundario,
-  },
-  vacio: {
-    textAlign: 'center',
-    color: colores.textoSecundario,
-    marginTop: espaciado.xl,
-  },
-});
+const estilos = (c: Paleta) =>
+  StyleSheet.create({
+    pantalla: {
+      flex: 1,
+      backgroundColor: c.fondoSecundario,
+    },
+    encabezado: {
+      backgroundColor: c.fondo,
+      padding: espaciado.md,
+      gap: espaciado.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borde,
+    },
+    titulo: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    modos: {
+      flexDirection: 'row',
+      gap: espaciado.sm,
+    },
+    modo: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textoSecundario,
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.completo,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      overflow: 'hidden',
+    },
+    modoActivo: {
+      color: c.primarioOscuro,
+      borderColor: c.primario,
+      backgroundColor: c.acento,
+    },
+    formulario: {
+      gap: 6,
+    },
+    campo: {
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.md,
+      paddingHorizontal: espaciado.md,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: c.texto,
+      backgroundColor: c.fondoSecundario,
+    },
+    sugerencia: {
+      fontSize: 14,
+      color: c.primario,
+      paddingVertical: 4,
+      paddingHorizontal: 4,
+    },
+    lista: {
+      padding: espaciado.md,
+      gap: espaciado.sm,
+    },
+    fila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    nombre: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    meta: {
+      fontSize: 13,
+      color: c.textoSecundario,
+    },
+    vacio: {
+      textAlign: 'center',
+      color: c.textoSecundario,
+      marginTop: espaciado.xl,
+    },
+  });

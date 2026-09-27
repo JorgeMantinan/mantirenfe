@@ -32,32 +32,36 @@ export interface ElegidoRecordatorio {
 }
 
 /**
- * Elige el tren para el recordatorio de salida: la salida más próxima que aún no
- * ha salido, dentro de la ventana de aviso (0 < restantes <= minutosAviso) y de
- * la franja horaria de la alerta (horaDesde/horaHasta, comparadas en HH:MM).
+ * Elige los trenes para el recordatorio de salida: TODAS las salidas que aún no
+ * han salido y están dentro de la ventana de aviso (0 < restantes <= minutosAviso)
+ * y de la franja horaria de la alerta, ordenadas por salida. Así cada tren del
+ * día recibe su recordatorio cuando le toca (no solo el más próximo).
  */
-export function elegirTrenRecordatorio(
+export function elegirTrenesRecordatorio(
   trenes: TrenRecordatorio[],
   ahora: Date,
   minutosAviso: number,
   franja: { horaDesde?: string | null; horaHasta?: string | null },
-): ElegidoRecordatorio | null {
+): ElegidoRecordatorio[] {
   const limite = new Date(ahora.getTime() + minutosAviso * 60_000);
-  let mejor: ElegidoRecordatorio | null = null;
+  const elegidos: ElegidoRecordatorio[] = [];
 
   for (const tren of trenes) {
     if (tren.salida <= ahora || tren.salida > limite) continue;
     const hora = tren.salida.toISOString().slice(11, 16);
     if (franja.horaDesde && hora < franja.horaDesde) continue;
     if (franja.horaHasta && hora > franja.horaHasta) continue;
-    if (!mejor || tren.salida < mejor.tren.salida) {
-      mejor = {
-        tren,
-        minutosRestantes: Math.ceil((tren.salida.getTime() - ahora.getTime()) / 60_000),
-      };
-    }
+    elegidos.push({
+      tren,
+      minutosRestantes: Math.ceil((tren.salida.getTime() - ahora.getTime()) / 60_000),
+    });
   }
-  return mejor;
+  return elegidos.sort((a, b) => a.tren.salida.getTime() - b.tren.salida.getTime());
+}
+
+/** Clave única de un servicio para no repetir su recordatorio (numeroTren-HH:MM) */
+export function claveServicioRecordatorio(tren: TrenRecordatorio): string {
+  return `${tren.numeroTren}-${tren.salida.toISOString().slice(11, 16)}`;
 }
 
 function minutosDePreferencias(preferencias: unknown): number {
@@ -252,7 +256,6 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
     where: {
       estado: 'ACTIVA',
       fechaViaje: new Date(`${hoyIso}T00:00:00Z`),
-      recordatorioEnviadoEn: null,
     },
     include: {
       usuario: {
@@ -294,47 +297,64 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
       });
       if (horarios.length === 0) continue;
 
-      const elegido = elegirTrenRecordatorio(
+      const candidatos = elegirTrenesRecordatorio(
         horarios,
         ahora,
         minutosDePreferencias(alerta.usuario.preferencias),
         { horaDesde: alerta.horaDesde, horaHasta: alerta.horaHasta },
+      ).filter(
+        (c) => !alerta.recordatorioTrenesEnviados.includes(claveServicioRecordatorio(c.tren)),
       );
-      if (!elegido) continue;
 
-      // Marca primero (condicionada) para que dos barridos simultáneos no dupliquen
-      const marcado = await prisma.alerta.updateMany({
-        where: { id: alerta.id, recordatorioEnviadoEn: null },
-        data: { recordatorioEnviadoEn: new Date() },
-      });
-      if (marcado.count === 0) continue;
+      // Copia local: el set es idempotente (el barrido es secuencial, sin carreras)
+      let serviciosRecordados = [...alerta.recordatorioTrenesEnviados];
 
-      try {
-        await notificar(
-          alerta,
-          `Tu tren sale en ${elegido.minutosRestantes} min`,
-          `${alerta.origenNombre} → ${alerta.destinoNombre}, salida a las ${elegido.tren.salida
-            .toISOString()
-            .slice(11, 16)} (tren ${elegido.tren.numeroTren})`,
-          {
-            tipo: 'recordatorio-salida',
-            numeroTren: elegido.tren.numeroTren,
-            minutos: elegido.minutosRestantes,
-          },
-          logger,
-        );
-        enviados += 1;
-        logger.info(
-          { alertaId: alerta.id, tren: elegido.tren.numeroTren, minutos: elegido.minutosRestantes },
-          'Recordatorio de salida enviado',
-        );
-      } catch (error) {
-        // Reintenta en el próximo barrido
-        await prisma.alerta.updateMany({
+      for (const candidato of candidatos) {
+        const clave = claveServicioRecordatorio(candidato.tren);
+        if (serviciosRecordados.includes(clave)) continue;
+        serviciosRecordados = [...serviciosRecordados, clave];
+        // Marca primero para que un segundo barrido no duplique el envío
+        const marcado = await prisma.alerta.updateMany({
           where: { id: alerta.id },
-          data: { recordatorioEnviadoEn: null },
+          data: {
+            recordatorioTrenesEnviados: { set: serviciosRecordados },
+            recordatorioEnviadoEn: new Date(),
+          },
         });
-        throw error;
+        if (marcado.count === 0) continue;
+
+        try {
+          await notificar(
+            alerta,
+            `Tu tren sale en ${candidato.minutosRestantes} min`,
+            `${alerta.origenNombre} → ${alerta.destinoNombre}, salida a las ${candidato.tren.salida
+              .toISOString()
+              .slice(11, 16)} (tren ${candidato.tren.numeroTren})`,
+            {
+              tipo: 'recordatorio-salida',
+              numeroTren: candidato.tren.numeroTren,
+              minutos: candidato.minutosRestantes,
+            },
+            logger,
+          );
+          enviados += 1;
+          logger.info(
+            {
+              alertaId: alerta.id,
+              tren: candidato.tren.numeroTren,
+              minutos: candidato.minutosRestantes,
+            },
+            'Recordatorio de salida enviado',
+          );
+        } catch (error) {
+          // Reintenta en el próximo barrido: deshace la marca de este servicio
+          serviciosRecordados = serviciosRecordados.filter((c) => c !== clave);
+          await prisma.alerta.updateMany({
+            where: { id: alerta.id },
+            data: { recordatorioTrenesEnviados: { set: serviciosRecordados } },
+          });
+          throw error;
+        }
       }
     } catch (error) {
       logger.error({ alertaId: alerta.id, err: error }, 'Fallo enviando recordatorio');

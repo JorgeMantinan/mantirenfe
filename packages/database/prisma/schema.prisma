@@ -84,6 +84,7 @@ model Alerta {
   ultimoEstado      Json?
   ultimoSondeoEn    DateTime?
   recordatorioEnviadoEn DateTime?
+  recordatorioTrenesEnviados String[] @default([])
   resumenEnviadoEn  DateTime?
   creadaEn          DateTime       @default(now())
   actualizadoEn     DateTime       @updatedAt
