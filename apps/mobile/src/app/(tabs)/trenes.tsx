@@ -9,6 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import MapView, { Marker, UrlTile } from 'react-native-maps';
+import { Ionicons } from '@expo/vector-icons';
 import {
   horaGtfs,
   type EstacionResponse,
@@ -38,6 +40,7 @@ export default function Trenes() {
   const [posiciones, setPosiciones] = useState<PosicionTrenResponse[]>([]);
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
   const [filtroPos, setFiltroPos] = useState('');
+  const [vistaPos, setVistaPos] = useState<'lista' | 'mapa'>('lista');
 
   const { paleta } = useTema();
   const s = useMemo(() => estilos(paleta), [paleta]);
@@ -212,6 +215,46 @@ export default function Trenes() {
             value={filtroPos}
             onChangeText={setFiltroPos}
           />
+        )}
+
+        {modo === 'posiciones' && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            {(
+              [
+                ['lista', 'list', 'Lista'],
+                ['mapa', 'map', 'Mapa'],
+              ] as const
+            ).map(([valor, icono, etiqueta]) => (
+              <Pressable
+                key={valor}
+                onPress={() => setVistaPos(valor)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  backgroundColor: vistaPos === valor ? paleta.primario : paleta.fondoSecundario,
+                }}
+              >
+                <Ionicons
+                  name={icono}
+                  size={16}
+                  color={vistaPos === valor ? '#ffffff' : paleta.textoSecundario}
+                />
+                <Text
+                  style={{
+                    color: vistaPos === valor ? '#ffffff' : paleta.textoSecundario,
+                    fontWeight: '600',
+                    fontSize: 13,
+                  }}
+                >
+                  {etiqueta}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         )}
 
         {modo === 'horarios' && (
@@ -400,7 +443,42 @@ export default function Trenes() {
         />
       )}
 
-      {modo === 'posiciones' && (
+      {modo === 'posiciones' && vistaPos === 'mapa' && (
+        <View style={{ flex: 1 }}>
+          {errorPosiciones ? (
+            <Text style={[s.vacio, { color: paleta.error }]}>{errorPosiciones}</Text>
+          ) : null}
+          <MapView
+            style={{ flex: 1 }}
+            initialRegion={{ latitude: 40.2, longitude: -3.7, latitudeDelta: 6, longitudeDelta: 6 }}
+          >
+            <UrlTile urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
+            {posicionesVisibles.map((p) => (
+              <Marker
+                key={p.id}
+                coordinate={{ latitude: p.latitud, longitude: p.longitud }}
+                title={p.numeroTren ?? p.id}
+                description={[
+                  p.origenNombre && p.destinoNombre
+                    ? `${p.origenNombre} → ${p.destinoNombre}`
+                    : null,
+                  p.velocidadKmh != null ? `${Math.round(p.velocidadKmh)} km/h` : null,
+                  p.retrasoSeg != null
+                    ? p.retrasoSeg > 0
+                      ? `+${Math.round(p.retrasoSeg / 60)} min`
+                      : 'A tiempo'
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                pinColor="#75258c"
+              />
+            ))}
+          </MapView>
+        </View>
+      )}
+
+      {modo === 'posiciones' && vistaPos === 'lista' && (
         <FlatList
           data={posicionesVisibles}
           keyExtractor={(item) => item.id}
