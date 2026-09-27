@@ -1,11 +1,14 @@
 import type { Logger } from 'pino';
 import { getPrisma, normalizarTexto } from '@mantirenfe/database';
+import { incidenciaAfectaA, type IncidenciaComparable } from '@mantirenfe/shared-types';
 import {
   descargarAlertasGtfsRt,
   parsearAlertasGtfsRt,
   resumirTitulo,
   type AlertaGtfsRt,
 } from '../fuentes/gtfs-rt-alertas';
+import { hoyGtfs } from './reloj';
+import { notificar } from './sondeo';
 
 const URL_ALERTAS_DEFECTO = 'https://gtfsrt.renfe.com/alerts.pb';
 
@@ -14,13 +17,80 @@ const LIMITE_ESTACIONES = 20;
 /** Nombres de estación tan cortos que harían falsos positivos en el texto. */
 const LONGITUD_MINIMA_CLAVE = 4;
 
-interface Candidata {
-  nombre: string;
-  patron: RegExp;
+/** Tope de incidencias avisadas en un mismo barrido (el feed corre cada 60 s). */
+export const LIMITE_INCIDENCIAS_POR_BARRIDO = 5;
+export const TITULO_AVISO_INCIDENCIA = 'Incidencia en tu ruta';
+
+/** Incidencia guardada en BD, mínima para poder cruzarla con una alerta. */
+export interface IncidenciaNotificable extends IncidenciaComparable {
+  id: string;
+}
+
+/** Alerta candidata a recibir el aviso (el worker añade después el `usuario`). */
+export interface AlertaCandidata {
+  id: string;
+  origenNombre: string;
+  destinoNombre: string;
+  incidenciasNotificadas: string[];
+}
+
+/** ¿Ya se avisó esta incidencia a esta alerta? (dedupe: 1 aviso por par) */
+export function incidenciaYaAvisada(
+  incidencia: IncidenciaNotificable,
+  alerta: AlertaCandidata,
+): boolean {
+  return alerta.incidenciasNotificadas.includes(incidencia.id);
+}
+
+/**
+ * Toca avisar: la incidencia afecta al origen O al destino de la alerta y todavía
+ * no está registrada en `incidenciasNotificadas`.
+ */
+export function debeAvisarIncidencia(
+  incidencia: IncidenciaNotificable,
+  alerta: AlertaCandidata,
+): boolean {
+  if (incidenciaYaAvisada(incidencia, alerta)) return false;
+  return incidenciaAfectaA(incidencia, [alerta.origenNombre, alerta.destinoNombre]);
+}
+
+export function cuerpoAvisoIncidencia(
+  incidencia: IncidenciaNotificable,
+  alerta: AlertaCandidata,
+): string {
+  const detalle =
+    incidencia.mensaje?.trim() || incidencia.titulo?.trim() || 'Incidencia de servicio';
+  return `${detalle} Afecta a tu ruta ${alerta.origenNombre} → ${alerta.destinoNombre}.`;
+}
+
+/**
+ * Qué se envía en este barrido: incidencias con al menos una alerta pendiente de
+ * avisar, sin repetir las ya notificadas y sin superar `limite` incidencias.
+ */
+export function planificarAvisosDeIncidencias<
+  I extends IncidenciaNotificable,
+  A extends AlertaCandidata,
+>(
+  incidencias: readonly I[],
+  alertas: readonly A[],
+  limite: number = LIMITE_INCIDENCIAS_POR_BARRIDO,
+): Array<{ incidencia: I; alertas: A[] }> {
+  const avisos: Array<{ incidencia: I; alertas: A[] }> = [];
+  for (const incidencia of incidencias) {
+    if (avisos.length >= limite) break;
+    const afectadas = alertas.filter((alerta) => debeAvisarIncidencia(incidencia, alerta));
+    if (afectadas.length > 0) avisos.push({ incidencia, alertas: afectadas });
+  }
+  return avisos;
 }
 
 function urlAlertas(): string {
   return process.env.GTFS_RT_ALERTS_URL?.trim() || URL_ALERTAS_DEFECTO;
+}
+
+interface Candidata {
+  nombre: string;
+  patron: RegExp;
 }
 
 function escapar(texto: string): string {
@@ -142,5 +212,83 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
     );
   } catch (error) {
     logger.warn({ url, err: error }, 'Incidencias GTFS-RT: no se pudo actualizar el feed');
+  }
+
+  // Se avisa aunque el feed falle: la tabla sigue teniendo las incidencias activas
+  await notificarIncidencias(logger);
+}
+
+/**
+ * Cruza las incidencias activas con las alertas del usuario y envía el push de
+ * cada par (incidencia, alerta) que aún no esté registrado en
+ * `alerta.incidenciasNotificadas`: 1 aviso por incidencia + alerta, para siempre
+ * (las ids no se borran ni al desactivarse la incidencia, así que una
+ * reactivación no vuelve a avisar). Corta en `LIMITE_INCIDENCIAS_POR_BARRIDO`
+ * incidencias por barrido para no disparar spam; lo que sobre, al siguiente.
+ */
+export async function notificarIncidencias(logger: Logger): Promise<void> {
+  const prisma = getPrisma();
+  try {
+    const incidencias = await prisma.incidencia.findMany({
+      where: { activa: true },
+      orderBy: { actualizadaEn: 'desc' },
+    });
+    if (incidencias.length === 0) return;
+
+    // Mismo filtro que el barrido: las no recurrentes solo cuentan si el viaje
+    // aún no ha pasado; las recurrentes trabajan cada día.
+    const hoy = new Date(`${hoyGtfs()}T00:00:00Z`);
+    const alertas = await prisma.alerta.findMany({
+      where: { estado: 'ACTIVA', OR: [{ recurrente: true }, { fechaViaje: { gte: hoy } }] },
+      include: {
+        usuario: {
+          include: {
+            suscripciones: { where: { activa: true } },
+            tokensMovil: { where: { activa: true }, select: { id: true, token: true } },
+          },
+        },
+      },
+    });
+    if (alertas.length === 0) return;
+
+    const avisos = planificarAvisosDeIncidencias(incidencias, alertas);
+    let enviados = 0;
+    for (const { incidencia, alertas: afectadas } of avisos) {
+      for (const alerta of afectadas) {
+        try {
+          await notificar(
+            alerta,
+            TITULO_AVISO_INCIDENCIA,
+            cuerpoAvisoIncidencia(incidencia, alerta),
+            { tipo: 'incidencia', incidenciaId: incidencia.id },
+            logger,
+          );
+          // Prisma no admite `push` en arrays de Postgres: se reescribe el array
+          // completo (el worker corre secuencial, sin carreras). La copia local
+          // evita repetir dentro del mismo barrido si dos incidencias tocan la
+          // misma alerta.
+          alerta.incidenciasNotificadas = [...alerta.incidenciasNotificadas, incidencia.id];
+          await prisma.alerta.updateMany({
+            where: { id: alerta.id },
+            data: { incidenciasNotificadas: { set: alerta.incidenciasNotificadas } },
+          });
+          enviados++;
+        } catch (error) {
+          logger.warn(
+            { alertaId: alerta.id, incidenciaId: incidencia.id, err: error },
+            'Aviso de incidencia no enviado',
+          );
+        }
+      }
+    }
+
+    if (enviados > 0) {
+      logger.info(
+        { incidencias: avisos.length, avisosEnviados: enviados },
+        'Avisos de incidencia enviados',
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'Avisos de incidencia: barrido no completado');
   }
 }

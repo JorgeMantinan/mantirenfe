@@ -3,6 +3,7 @@ export * from './conexiones';
 export * from './errores-auth';
 export * from './gtfs-rt';
 export * from './indemnizacion';
+export * from './incidencias';
 export * from './dto/auth';
 export * from './dto/alertas';
 export * from './dto/estaciones';

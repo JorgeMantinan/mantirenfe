@@ -24,6 +24,7 @@ export async function api<T>(
     '/estaciones',
     '/incidencias',
     '/trenes/horarios',
+    '/trenes/estacion',
     '/trenes/posiciones',
     '/health',
   ];

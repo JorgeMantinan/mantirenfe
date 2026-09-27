@@ -89,6 +89,9 @@ model Alerta {
   ultimoSondeoEn    DateTime?
   recordatorioEnviadoEn DateTime?
   recordatorioTrenesEnviados String[] @default([])
+  // Incidencias GTFS-RT ya avisadas a esta alerta (ids). Nunca se limpian: si
+  // una incidencia se desactiva y más tarde vuelve a activarse, no se reavisa
+  incidenciasNotificadas String[] @default([])
   resumenEnviadoEn  DateTime?
   creadaEn          DateTime       @default(now())
   actualizadoEn     DateTime       @updatedAt
