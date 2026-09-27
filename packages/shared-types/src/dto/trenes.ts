@@ -62,6 +62,7 @@ export interface PuntoTraza {
   latitud: number;
   longitud: number;
   retrasoSeg: number | null;
+  tripId?: string | null;
 }
 
 export const criterioDisponibilidadSchema = z.object({

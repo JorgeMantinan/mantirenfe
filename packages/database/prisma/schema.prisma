@@ -168,6 +168,7 @@ model PosicionTren {
 model PosicionHistorial {
   id         String   @id @default(cuid())
   vehiculoId String
+  tripId     String?
   numeroTren String?
   latitud    Float
   longitud   Float
@@ -175,6 +176,7 @@ model PosicionHistorial {
   en         DateTime @default(now())
 
   @@index([vehiculoId, en])
+  @@index([vehiculoId, tripId, en])
   @@index([en])
 }
 

@@ -29,11 +29,15 @@ export class TrenesController {
   @Get('posiciones/traza')
   @EsPublico()
   @Throttle({ default: { ttl: 10_000, limit: 30 } })
-  traza(@Query('vehiculo') vehiculo?: string, @Query('horas') horas?: string) {
+  traza(
+    @Query('vehiculo') vehiculo?: string,
+    @Query('horas') horas?: string,
+    @Query('tripId') tripId?: string,
+  ) {
     if (!vehiculo) {
       throw new BadRequestException('Falta el parámetro vehiculo');
     }
-    return this.trenesService.traza(vehiculo, horas ? Number(horas) : 24);
+    return this.trenesService.traza(vehiculo, horas ? Number(horas) : 24, tripId ?? null);
   }
 
   @Get('puntualidad')

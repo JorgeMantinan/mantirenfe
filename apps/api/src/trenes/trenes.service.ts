@@ -302,6 +302,7 @@ export class TrenesService {
         await prisma.posicionHistorial.createMany({
           data: datos.map((p) => ({
             vehiculoId: p.id,
+            tripId: p.tripId ?? null,
             numeroTren: p.numeroTren,
             latitud: p.latitud,
             longitud: p.longitud,
@@ -390,14 +391,30 @@ export class TrenesService {
   async traza(
     vehiculo: string,
     horas: number,
+    tripId?: string | null,
   ): Promise<{ vehiculo: string; puntos: PuntoTraza[] }> {
     const limite = Math.min(Math.max(Number.isFinite(horas) ? horas : 24, 1), 48);
     const desde = new Date(Date.now() - limite * 60 * 60 * 1000);
+    // Si no llega el trip, usar el del último punto registrado: sin esto, la
+    // traza mezclaría servicios distintos del mismo vehículo (líneas rectas fantasma)
+    let filtroTrip = tripId;
+    if (!filtroTrip) {
+      const ultimo = await getPrisma().posicionHistorial.findFirst({
+        where: { vehiculoId: vehiculo, tripId: { not: null }, en: { gte: desde } },
+        orderBy: { en: 'desc' },
+        select: { tripId: true },
+      });
+      filtroTrip = ultimo?.tripId ?? null;
+    }
     const filas = await getPrisma().posicionHistorial.findMany({
-      where: { vehiculoId: vehiculo, en: { gte: desde } },
+      where: {
+        vehiculoId: vehiculo,
+        en: { gte: desde },
+        ...(filtroTrip ? { tripId: filtroTrip } : {}),
+      },
       orderBy: { en: 'asc' },
       take: 2000,
-      select: { en: true, latitud: true, longitud: true, retrasoSeg: true },
+      select: { en: true, latitud: true, longitud: true, retrasoSeg: true, tripId: true },
     });
     return {
       vehiculo,
@@ -406,6 +423,7 @@ export class TrenesService {
         latitud: f.latitud,
         longitud: f.longitud,
         retrasoSeg: f.retrasoSeg,
+        tripId: f.tripId,
       })),
     };
   }

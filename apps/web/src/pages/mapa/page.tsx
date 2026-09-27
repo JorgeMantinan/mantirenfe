@@ -20,6 +20,23 @@ const TILES_ATTRIBUTION =
 
 const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 
+/** Parte la traza en segmentos si entre puntos hay más de maxMin de diferencia
+ * (evita rectas fantasma cuando el tren lleva parado/aparcado o cambió de servicio). */
+function segmentarPorHuecos(puntos: PuntoTraza[], maxMin = 30): PuntoTraza[][] {
+  const segmentos: PuntoTraza[][] = [];
+  let actual: PuntoTraza[] = [];
+  for (const p of puntos) {
+    const previo = actual[actual.length - 1];
+    if (previo && (new Date(p.en).getTime() - new Date(previo.en).getTime()) / 60_000 > maxMin) {
+      segmentos.push(actual);
+      actual = [];
+    }
+    actual.push(p);
+  }
+  if (actual.length > 0) segmentos.push(actual);
+  return segmentos;
+}
+
 function Actualizador({ posiciones }: { posiciones: PosicionTrenResponse[] }) {
   const map = useMap();
   useEffect(() => {
@@ -39,7 +56,7 @@ export function PaginaMapa() {
   const [filtro, setFiltro] = useState('');
 
   const alternarTraza = useCallback(
-    async (vehiculo: string) => {
+    async (vehiculo: string, tripId?: string | null) => {
       if (traza?.vehiculo === vehiculo) {
         setTraza(null);
         return;
@@ -47,7 +64,9 @@ export function PaginaMapa() {
       setCargandoTraza(true);
       try {
         const datos = await api<{ vehiculo: string; puntos: PuntoTraza[] }>(
-          `/trenes/posiciones/traza?vehiculo=${encodeURIComponent(vehiculo)}&horas=24`,
+          `/trenes/posiciones/traza?vehiculo=${encodeURIComponent(vehiculo)}&horas=24${
+            tripId ? `&tripId=${encodeURIComponent(tripId)}` : ''
+          }`,
         );
         setTraza(datos);
       } catch {
@@ -207,7 +226,7 @@ export function PaginaMapa() {
                         variant="outline"
                         size="sm"
                         disabled={cargandoTraza}
-                        onClick={() => void alternarTraza(tren.id)}
+                        onClick={() => void alternarTraza(tren.id, tren.tripId)}
                       >
                         {cargandoTraza && traza?.vehiculo !== tren.id
                           ? 'Cargando...'
@@ -215,22 +234,31 @@ export function PaginaMapa() {
                             ? 'Ocultar traza'
                             : 'Ver traza (24 h)'}
                       </Button>
+                      {traza?.vehiculo === tren.id && traza.puntos.length <= 1 && (
+                        <p className="text-xs text-amber-600">
+                          Solo 1 punto registrado (muestreo cada 10 min) — vuelve a pulsar en un
+                          rato.
+                        </p>
+                      )}
                     </div>
                   </Popup>
                 </CircleMarker>
               ))}
               {traza &&
-                traza.puntos.length > 1 &&
-                visibles.some((v) => v.id === traza.vehiculo) && (
-                  <Polyline
-                    positions={traza.puntos.map((p) => [p.latitud, p.longitud] as [number, number])}
-                    pathOptions={{
-                      color: '#0ea5e9',
-                      weight: 3,
-                      opacity: 0.8,
-                      dashArray: '6 8',
-                    }}
-                  />
+                visibles.some((v) => v.id === traza.vehiculo) &&
+                segmentarPorHuecos(traza.puntos).map((segmento, i) =>
+                  segmento.length > 1 ? (
+                    <Polyline
+                      key={i}
+                      positions={segmento.map((p) => [p.latitud, p.longitud] as [number, number])}
+                      pathOptions={{
+                        color: '#0ea5e9',
+                        weight: 3,
+                        opacity: 0.8,
+                        dashArray: '6 8',
+                      }}
+                    />
+                  ) : null,
                 )}
             </MapContainer>
           )}
