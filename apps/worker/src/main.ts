@@ -27,6 +27,26 @@ const conexion = {
   maxRetriesPerRequest: null as null,
 };
 
+// Base de la API para el snapshot periódico de posiciones (la persistencia de la
+// traza y la puntualidad vive en el GET /trenes/posiciones de la API)
+const API_BASE_URL =
+  process.env.API_BASE_URL ??
+  (process.env.NODE_ENV === 'production'
+    ? 'https://mantirenfe.vercel.app/api'
+    : 'http://localhost:3000/api');
+let minutosDesdeSnapshot = 0;
+
+async function snapshotPosiciones(logger: pino.Logger): Promise<void> {
+  try {
+    const respuesta = await fetch(`${API_BASE_URL}/trenes/posiciones`);
+    if (!respuesta.ok) {
+      logger.warn({ status: respuesta.status }, 'Snapshot de posiciones: la API respondió error');
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'Snapshot de posiciones: no se pudo consultar la API');
+  }
+}
+
 async function programarTareas() {
   const { Queue } = await import('bullmq');
   const colaSondeo = new Queue(COLA_SONDEO, { connection: conexion });
@@ -76,6 +96,13 @@ async function main() {
     COLA_SONDEO_MASIVO,
     async () => {
       const prisma = getPrisma();
+
+      // Snapshot de posiciones cada ~5 min: aunque nadie abra el mapa, la traza
+      // y la puntualidad siguen registrándose (dispara la persistencia de la API)
+      minutosDesdeSnapshot += 1;
+      if (minutosDesdeSnapshot % 5 === 0) {
+        await snapshotPosiciones(logger);
+      }
 
       // Las alertas cuyo viaje ya pasó se completan solas (no se vuelven a sondear)
       try {

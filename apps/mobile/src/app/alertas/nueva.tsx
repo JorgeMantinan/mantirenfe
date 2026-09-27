@@ -18,6 +18,8 @@ export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
+  const [horaDesde, setHoraDesde] = useState('');
+  const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState<Criterio>('DISPONIBILIDAD');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
@@ -64,6 +66,8 @@ export default function NuevaAlerta() {
         setOrigen(a.origenNombre);
         setDestino(a.destinoNombre);
         setFecha(a.fechaViaje);
+        setHoraDesde(a.horaDesde ?? '');
+        setHoraHasta(a.horaHasta ?? '');
         setIntervalo(a.intervaloSondeoMin);
         setBono(a.bono);
         setNotas(a.notas ?? '');
@@ -138,6 +142,8 @@ export default function NuevaAlerta() {
       origenNombre: origen.trim(),
       destinoNombre: destino.trim(),
       fechaViaje: fecha,
+      horaDesde: horaDesde.trim() || null,
+      horaHasta: horaHasta.trim() || null,
       numeroTren: numeroTren.trim() || null,
       criterio,
       intervaloSondeoMin: intervalo,
@@ -241,6 +247,29 @@ export default function NuevaAlerta() {
         }}
       />
       <Text style={s.pista}>Mínimo: {fechaMin}</Text>
+
+      <Text style={s.etiqueta}>Franja horaria (opcional)</Text>
+      <View style={{ flexDirection: 'row', gap: espaciado.sm }}>
+        <TextInput
+          style={[s.campo, { flex: 1 }]}
+          placeholder="Desde HH:MM"
+          placeholderTextColor={paleta.textoSecundario}
+          keyboardType="numbers-and-punctuation"
+          maxLength={5}
+          value={horaDesde}
+          onChangeText={setHoraDesde}
+        />
+        <TextInput
+          style={[s.campo, { flex: 1 }]}
+          placeholder="Hasta HH:MM"
+          placeholderTextColor={paleta.textoSecundario}
+          keyboardType="numbers-and-punctuation"
+          maxLength={5}
+          value={horaHasta}
+          onChangeText={setHoraHasta}
+        />
+      </View>
+      <Text style={s.pista}>Solo avisaremos de salidas dentro de esa franja</Text>
 
       <Text style={s.etiqueta}>Tren concreto (opcional)</Text>
       <TextInput
