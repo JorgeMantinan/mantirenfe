@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SeoShell } from '@/components/layout/SeoShell';
 import { TrayectosPopulares } from '@/components/TrayectosPopulares';
+import { AnuncioAdsense } from '@/components/AnuncioAdsense';
 import { aplicarMetaPagina } from '@/lib/seo';
 import {
   TRAYECTOS_POPULARES,
@@ -387,6 +388,8 @@ export function PaginaTrayecto() {
                 <li>Proyecto independiente, no afiliado ni patrocinado por Renfe.</li>
               </ul>
             </div>
+
+            <AnuncioAdsense />
 
             <section className="space-y-3">
               <h2 className="font-heading text-xl font-semibold">Otros trayectos populares</h2>

@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_AFF_OMIO_URL?: string;
   readonly VITE_AFF_TRAVELPAYOUTS_URL?: string;
   readonly VITE_DONACIONES_URL?: string;
+  readonly VITE_ADSENSE_CLIENT?: string;
+  readonly VITE_ADSENSE_SLOT?: string;
 }
 
 interface ImportMeta {
