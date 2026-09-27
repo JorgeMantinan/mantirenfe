@@ -24,7 +24,11 @@ export function PaginaAjustes() {
   useEffect(() => {
     if (!authConfigurada) return;
     api<PreferenciasUsuario>('/auth/preferencias')
-      .then(setPreferencias)
+      .then((p) => {
+        setPreferencias(p);
+        // Aplicar el tema guardado en la cuenta al entrar
+        if (p.tema) setTheme(p.tema);
+      })
       .catch(() =>
         setPreferencias({
           notificacionesPush: true,
@@ -84,6 +88,13 @@ export function PaginaAjustes() {
               onClick={() => setTheme('oscuro')}
             >
               <Moon aria-hidden="true" /> Oscuro
+            </Button>
+            <Button
+              variant={theme === 'sistema' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('sistema')}
+            >
+              Sistema
             </Button>
           </CardContent>
         </Card>
@@ -208,21 +219,30 @@ export function PaginaAjustes() {
           <Button
             variant={theme === 'claro' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setTheme('claro')}
+            onClick={() => {
+              setTheme('claro');
+              void guardar({ tema: 'claro' });
+            }}
           >
             <Sun aria-hidden="true" /> Claro
           </Button>
           <Button
             variant={theme === 'oscuro' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setTheme('oscuro')}
+            onClick={() => {
+              setTheme('oscuro');
+              void guardar({ tema: 'oscuro' });
+            }}
           >
             <Moon aria-hidden="true" /> Oscuro
           </Button>
           <Button
             variant={theme === 'sistema' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setTheme('sistema')}
+            onClick={() => {
+              setTheme('sistema');
+              void guardar({ tema: 'sistema' });
+            }}
           >
             Sistema
           </Button>
