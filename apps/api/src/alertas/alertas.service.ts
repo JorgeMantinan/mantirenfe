@@ -129,6 +129,7 @@ export class AlertasService {
       // Se re-arman los avisos del día de viaje
       nuevaRuta.recordatorioEnviadoEn = null;
       nuevaRuta.resumenEnviadoEn = null;
+      nuevaRuta.recordatorioTrenesEnviados = [];
     }
     if (datos.horaDesde !== undefined) {
       nuevaRuta.horaDesde = datos.horaDesde;
@@ -155,6 +156,8 @@ export class AlertasService {
     if (cambioRuta) {
       data.ultimoEstado = Prisma.JsonNull;
       data.ultimoSondeoEn = null;
+      // Cambió el alcance: los servicios ya recordados podrían no aplicar
+      data.recordatorioTrenesEnviados = [];
     }
 
     const alerta = await prisma.alerta.update({

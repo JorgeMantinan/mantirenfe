@@ -147,7 +147,12 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
       </nav>
 
       <div className="border-t p-3 text-[11px] leading-tight text-muted-foreground">
-        {!colapsado && <p>Proyecto independiente, no afiliado a Renfe. Datos: open data Renfe.</p>}
+        {!colapsado && (
+          <p>
+            Proyecto independiente, no afiliado ni patrocinado por Renfe. Origen de los datos: Renfe
+            Operadora (open data).
+          </p>
+        )}
       </div>
     </div>
   );
