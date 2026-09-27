@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bell, BellOff, CheckCheck } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -42,6 +42,18 @@ export function PaginaNotificaciones() {
       await api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids } });
       toast.success('Marcadas como leídas');
       cargar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error');
+    }
+  };
+
+  const limpiarLista = async () => {
+    if ((notificaciones ?? []).length === 0) return;
+    if (!window.confirm('¿Vaciar la lista de avisos? Se borrarán todos.')) return;
+    try {
+      await api('/notificaciones', { method: 'DELETE' });
+      setNotificaciones([]);
+      toast.success('Lista vaciada');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error');
     }
@@ -108,6 +120,9 @@ export function PaginaNotificaciones() {
           </Button>
           <Button variant="secondary" onClick={() => void marcarTodas()}>
             <CheckCheck aria-hidden="true" /> Marcar leídas
+          </Button>
+          <Button variant="ghost" onClick={() => void limpiarLista()}>
+            <Trash2 aria-hidden="true" /> Limpiar lista
           </Button>
         </div>
       </div>

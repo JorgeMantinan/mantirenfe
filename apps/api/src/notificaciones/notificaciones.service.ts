@@ -63,6 +63,13 @@ export class NotificacionesService {
     return { actualizadas: resultado.count };
   }
 
+  async limpiar(usuario: UsuarioRequest): Promise<{ eliminadas: number }> {
+    const resultado = await getPrisma().notificacion.deleteMany({
+      where: { usuarioId: usuario.sub },
+    });
+    return { eliminadas: resultado.count };
+  }
+
   async suscribirPush(usuario: UsuarioRequest, input: SuscripcionPushInput) {
     const prisma = getPrisma();
     await prisma.usuario.upsert({

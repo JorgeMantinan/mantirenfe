@@ -44,6 +44,25 @@ export default function Avisos() {
     }
   };
 
+  const limpiarLista = () => {
+    if (notificaciones.length === 0) return;
+    Alert.alert('Limpiar avisos', '¿Borrar todos los avisos de la lista?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api('/notificaciones', { method: 'DELETE' });
+            setNotificaciones([]);
+          } catch (e) {
+            Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo vaciar la lista');
+          }
+        },
+      },
+    ]);
+  };
+
   const noLeidas = notificaciones.filter((n) => !n.leida).length;
 
   return (
@@ -58,6 +77,12 @@ export default function Avisos() {
           variante="contorno"
           onPress={() => void marcarTodas()}
           style={{ minHeight: 40, paddingVertical: 8, paddingHorizontal: 12 }}
+        />
+        <Boton
+          titulo="Limpiar"
+          variante="fantasma"
+          onPress={limpiarLista}
+          style={{ minHeight: 40, paddingVertical: 8, paddingHorizontal: 8 }}
         />
       </View>
 

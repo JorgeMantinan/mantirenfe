@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -45,6 +46,12 @@ export class NotificacionesController {
       throw new BadRequestException('Se espera un array de ids');
     }
     return this.notificacionesService.marcarLeida(usuario, ids as string[]);
+  }
+
+  @Delete()
+  @HttpCode(200)
+  async limpiar(@UsuarioActual() usuario: UsuarioRequest) {
+    return this.notificacionesService.limpiar(usuario);
   }
 
   @Post('push-subscribe')

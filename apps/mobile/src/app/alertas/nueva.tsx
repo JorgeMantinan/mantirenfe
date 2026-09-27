@@ -18,6 +18,7 @@ export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
+  const [criterio, setCriterio] = useState<Criterio>('DISPONIBILIDAD');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
   const [notas, setNotas] = useState('');
@@ -54,6 +55,7 @@ export default function NuevaAlerta() {
       horaDesde: string | null;
       horaHasta: string | null;
       numeroTren: string | null;
+      criterio: Criterio;
       intervaloSondeoMin: number;
       bono: string;
       notas: string | null;
@@ -66,6 +68,7 @@ export default function NuevaAlerta() {
         setBono(a.bono);
         setNotas(a.notas ?? '');
         setNumeroTren(a.numeroTren ?? '');
+        setCriterio(a.criterio);
       })
       .catch(() => Alert.alert('Error', 'No se pudo cargar la alerta'));
   }, [params, editandoId]);
@@ -136,7 +139,7 @@ export default function NuevaAlerta() {
       destinoNombre: destino.trim(),
       fechaViaje: fecha,
       numeroTren: numeroTren.trim() || null,
-      criterio: 'DISPONIBILIDAD' as const,
+      criterio,
       intervaloSondeoMin: intervalo,
       bono,
       notas: notas.trim() || null,
@@ -170,10 +173,22 @@ export default function NuevaAlerta() {
     <ScrollView style={s.pantalla} contentContainerStyle={s.contenido}>
       <Text style={s.titulo}>{editandoId ? 'Editar alerta' : 'Nueva alerta'}</Text>
       <Text style={s.subtitulo}>
-        {editandoId
-          ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta'
-          : 'Te avisaremos cuando cambie la disponibilidad de este trayecto'}
+        {editandoId ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta' : ''}
       </Text>
+
+      <Text style={s.etiqueta}>Tipo de aviso</Text>
+      <View style={s.chips}>
+        {CRITERIOS.map(([valor, etiqueta]) => (
+          <Text
+            key={valor}
+            style={[s.chip, criterio === valor && s.chipActivo]}
+            onPress={() => setCriterio(valor)}
+          >
+            {etiqueta}
+          </Text>
+        ))}
+      </View>
+      <Text style={s.pista}>{DESCRIPCIONES[criterio]}</Text>
 
       <Text style={s.etiqueta}>Origen</Text>
       <TextInput
@@ -298,6 +313,22 @@ export default function NuevaAlerta() {
     </ScrollView>
   );
 }
+
+const CRITERIOS = [
+  ['DISPONIBILIDAD', 'Plazas libres'],
+  ['RETRASO', 'Retraso'],
+  ['HORARIO', 'Horario'],
+  ['APERTURA_VENTA', 'Apertura de venta'],
+] as const;
+
+type Criterio = (typeof CRITERIOS)[number][0];
+
+const DESCRIPCIONES: Record<Criterio, string> = {
+  DISPONIBILIDAD: 'Te avisaremos cuando haya plazas libres en este trayecto',
+  RETRASO: 'Te avisaremos cuando tus trenes vayan con retraso (5+ min)',
+  HORARIO: 'Te avisaremos si cambian los horarios programados',
+  APERTURA_VENTA: 'Te avisaremos cuando se abra la venta de billetes',
+};
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({
