@@ -53,6 +53,7 @@ export function PaginaNuevaAlerta() {
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState('DISPONIBILIDAD');
+  const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState('GENERAL');
   const [numeroTren, setNumeroTren] = useState('');
@@ -113,6 +114,7 @@ export function PaginaNuevaAlerta() {
           setHoraDesde(a.horaDesde ?? '');
           setHoraHasta(a.horaHasta ?? '');
           setCriterio(a.criterio);
+          setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
           setIntervalo(a.intervaloSondeoMin);
           setBono(a.bono);
           setNotas(a.notas ?? '');
@@ -166,6 +168,11 @@ export function PaginaNuevaAlerta() {
       toast.error('Selecciona la fecha del viaje');
       return;
     }
+    const objetivo = Number(precioObjetivo);
+    if (criterio === 'PRECIO' && !(Number.isFinite(objetivo) && objetivo > 0)) {
+      toast.error('Indica el precio objetivo (€) del aviso');
+      return;
+    }
 
     setEnviando(true);
     try {
@@ -184,6 +191,8 @@ export function PaginaNuevaAlerta() {
           horaHasta: horaHasta || null,
           numeroTren: numeroTren.trim() || null,
           criterio,
+          // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
+          precioObjetivo: criterio === 'PRECIO' ? objetivo : null,
           intervaloSondeoMin: intervalo,
           bono,
           notas: notas.trim() || null,
@@ -384,6 +393,7 @@ export function PaginaNuevaAlerta() {
                   <option value="HORARIO">Cambios de horario</option>
                   <option value="RETRASO">Retrasos del tren</option>
                   <option value="APERTURA_VENTA">Apertura de venta de billetes</option>
+                  <option value="PRECIO">Que baje el precio</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -402,6 +412,26 @@ export function PaginaNuevaAlerta() {
                 </select>
               </div>
             </div>
+
+            {criterio === 'PRECIO' && (
+              <div className="space-y-2">
+                <Label htmlFor="precioObjetivo">Avisarme si baja de X €</Label>
+                <Input
+                  id="precioObjetivo"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={precioObjetivo}
+                  onChange={(e) => setPrecioObjetivo(e.target.value)}
+                  placeholder="Ej.: 30"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Te avisaremos la primera vez que un tren baje a ese precio o por debajo.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="bono">Tu bono / perfil</Label>

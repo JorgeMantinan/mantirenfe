@@ -51,6 +51,7 @@ function formatearAlerta(alerta: {
   horaHasta: string | null;
   numeroTren: string | null;
   criterio: string;
+  precioObjetivo: number | null;
   estado: string;
   recurrente: boolean;
   soloLaborables: boolean;
@@ -70,6 +71,7 @@ function formatearAlerta(alerta: {
     horaHasta: alerta.horaHasta,
     numeroTren: alerta.numeroTren,
     criterio: alerta.criterio as AlertaResponse['criterio'],
+    precioObjetivo: alerta.precioObjetivo,
     estado: alerta.estado as AlertaResponse['estado'],
     recurrente: alerta.recurrente,
     soloLaborables: alerta.soloLaborables,
@@ -164,6 +166,8 @@ export class AlertasService {
         horaHasta: datos.horaHasta ?? null,
         numeroTren: datos.numeroTren ?? null,
         criterio: datos.criterio,
+        // El umbral solo aplica al criterio PRECIO: en el resto se ignora
+        precioObjetivo: datos.criterio === 'PRECIO' ? (datos.precioObjetivo ?? null) : null,
         intervaloSondeoMin: datos.intervaloSondeoMin,
         bono: datos.bono,
         notas: datos.notas ?? null,
@@ -227,7 +231,14 @@ export class AlertasService {
     if (datos.notas !== undefined) data.notas = datos.notas;
     if (datos.criterio !== undefined) {
       data.criterio = datos.criterio;
+      // Cambiar de criterio re-armaría el umbral: entrar en PRECIO exige objetivo
+      // (lo garantiza el zod) y salir de PRECIO lo borra.
+      data.precioObjetivo = datos.criterio === 'PRECIO' ? (datos.precioObjetivo ?? null) : null;
       cambioRuta = true;
+    } else if (datos.precioObjetivo !== undefined && existente.criterio === 'PRECIO') {
+      // Solo se toca el umbral si la alerta ya vigila precios; no resetea el
+      // estado: el próximo sondeo re-evalúa el diff con el objetivo nuevo.
+      data.precioObjetivo = datos.precioObjetivo;
     }
     if (datos.bono !== undefined) data.bono = datos.bono;
     if (datos.recurrente !== undefined || datos.soloLaborables !== undefined) {

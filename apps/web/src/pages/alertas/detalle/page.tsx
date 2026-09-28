@@ -49,7 +49,7 @@ export function PaginaDetalleAlerta() {
       api<NotificacionResponse[]>('/notificaciones'),
       // Si el feed de incidencias no responde, el detalle se muestra igual
       api<IncidenciaResponse[]>('/incidencias').catch(() => [] as IncidenciaResponse[]),
-      // Histórico de precios: solo existe para alertas de disponibilidad
+      // Histórico de precios: existe para disponibilidad y precio
       api<PuntoPrecio[]>(`/alertas/${id}/precios`).catch(() => [] as PuntoPrecio[]),
     ])
       .then(([a, todas, incidenciasActivas, historial]) => {
@@ -164,6 +164,9 @@ export function PaginaDetalleAlerta() {
                       : 'Completada'}
                 </Badge>
                 <Badge variant="outline">{alerta.criterio}</Badge>
+                {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null && (
+                  <Badge variant="aviso">≤ {formatearPrecio(alerta.precioObjetivo)}</Badge>
+                )}
                 {alerta.recurrente && (
                   <Badge variant="aviso">
                     {alerta.soloLaborables ? 'L-V: Cada día laborable' : 'Cada día'}
@@ -247,15 +250,19 @@ export function PaginaDetalleAlerta() {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA'
-                      ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
-                      : 'Solo para alertas de disponibilidad'}
+                    {alerta.criterio === 'PRECIO'
+                      ? `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`
+                      : alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA'
+                        ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
+                        : 'Solo para alertas de disponibilidad'}
                   </p>
                 )}
               </CardContent>
             </Card>
 
-            {(alerta.criterio === 'DISPONIBILIDAD' || seriesPrecios.length > 0) && (
+            {(alerta.criterio === 'DISPONIBILIDAD' ||
+              alerta.criterio === 'PRECIO' ||
+              seriesPrecios.length > 0) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">

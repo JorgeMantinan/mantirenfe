@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
+import { sincronizarWidget } from '@/widget/actualizarWidget';
 
 export default function Alertas() {
   const [alertas, setAlertas] = useState<AlertaResponse[]>([]);
@@ -23,6 +24,7 @@ export default function Alertas() {
       .then((datos) => {
         setAlertas(datos);
         setError(null);
+        void sincronizarWidget(datos);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setCargando(false));

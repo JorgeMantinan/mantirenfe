@@ -73,6 +73,34 @@ export function filtrarCancelados(actual: EstadoSerializado[]): EstadoSerializad
   return actual.filter((t) => t.cancelado === true);
 }
 
+/** El tren cumple el umbral: su precio mínimo es conocido y ≤ objetivo. */
+function cumplePrecioObjetivo(tren: EstadoSerializado, precioObjetivo: number): boolean {
+  return typeof tren.precioMin === 'number' && tren.precioMin <= precioObjetivo;
+}
+
+/** Trenes por debajo (o en) el precio objetivo de una alerta con criterio PRECIO. */
+export function filtrarBajoObjetivo(
+  actual: EstadoSerializado[],
+  precioObjetivo: number | null | undefined,
+): EstadoSerializado[] {
+  if (typeof precioObjetivo !== 'number' || !Number.isFinite(precioObjetivo)) return [];
+  return actual.filter((t) => cumplePrecioObjetivo(t, precioObjetivo));
+}
+
+/**
+ * Trenes que acaban de entrar en el umbral: estaban por encima (o sin precio)
+ * en el `ultimoEstado` guardado y ahora cumplen. Un tren que sigue barato no
+ * vuelve a avisar en cada sondeo (mismo patrón que `nuevosCancelados`).
+ */
+export function nuevosBajoObjetivo(
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+  precioObjetivo: number | null | undefined,
+): EstadoSerializado[] {
+  const previos = new Set(filtrarBajoObjetivo(anterior, precioObjetivo).map((t) => t.trenId));
+  return filtrarBajoObjetivo(actual, precioObjetivo).filter((t) => !previos.has(t.trenId));
+}
+
 export function nuevosCancelados(
   anterior: EstadoSerializado[],
   actual: EstadoSerializado[],
@@ -222,6 +250,17 @@ export function textoParadaSuprimida(tren: EstadoSerializado, estacion: string):
   return `Tu tren de las ${horaGtfs(tren.salida)} (${numero}) no para hoy en ${estacion}`;
 }
 
+/** Cifra en € sin símbolo: 42.5 → "42,5", 30 → "30". */
+function euros(valor: number): string {
+  return valor.toLocaleString('es-ES', { maximumFractionDigits: 2 });
+}
+
+export function textoPrecioBajo(tren: EstadoSerializado, precioObjetivo: number): string {
+  const numero = tren.numeroTren || tren.trenId;
+  const precio = typeof tren.precioMin === 'number' ? euros(tren.precioMin) : '—';
+  return `Precio: ${numero} ${horaGtfs(tren.salida)} a ${precio} € (objetivo ≤ ${euros(precioObjetivo)} €)`;
+}
+
 export async function notificar(
   alerta: {
     id: string;
@@ -345,10 +384,11 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     },
   });
 
-  // Histórico de precios solo para DISPONIBILIDAD: RETRASO/HORARIO/APERTURA_VENTA
-  // no tienen precio que seguir. Se registra antes de notificar (y también en el
+  // Histórico de precios para DISPONIBILIDAD y PRECIO: los dos se sondean con
+  // la fuente de venta (precio disponible). RETRASO/HORARIO/APERTURA_VENTA no
+  // tienen precio que seguir. Se registra antes de notificar (y también en el
   // primer sondeo, que luego sale sin comparar) para no perder el punto inicial.
-  if (alerta.criterio === 'DISPONIBILIDAD') {
+  if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'PRECIO') {
     const puntos = await registrarHistorialPrecios(alerta.id, anterior, actual, primeraVez, logger);
     if (puntos > 0) {
       logger.debug({ alertaId, puntos }, 'Histórico de precios actualizado');
@@ -378,6 +418,37 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     const cuerpo = `Queda disponibilidad en ${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${titulos}.`;
     await notificar(alerta, titulo, cuerpo, { trenes: aparecen.map((t) => t.trenId) }, logger);
     logger.info({ alertaId, trenes: aparecen.length }, 'Notificación de disponibilidad enviada');
+    return;
+  }
+
+  if (criterioCoincide(alerta, 'PRECIO')) {
+    const precioObjetivo = alerta.precioObjetivo;
+    if (typeof precioObjetivo !== 'number') {
+      logger.warn({ alertaId }, 'Alerta de precio sin precioObjetivo, se omite');
+      return;
+    }
+    const bajos = nuevosBajoObjetivo(anterior, actual, precioObjetivo);
+    if (bajos.length === 0) {
+      logger.debug({ alertaId }, 'Sin trenes bajo el precio objetivo');
+      return;
+    }
+    const cuerpo = bajos.map((t) => textoPrecioBajo(t, precioObjetivo)).join(' · ');
+    const titulo = 'Precio bajo tu objetivo';
+    await notificar(
+      alerta,
+      titulo,
+      cuerpo,
+      {
+        tipo: 'precio',
+        precioObjetivo,
+        trenes: bajos.map((t) => t.trenId),
+      },
+      logger,
+    );
+    logger.info(
+      { alertaId, trenes: bajos.length, precioObjetivo },
+      'Notificación de precio enviada',
+    );
     return;
   }
 

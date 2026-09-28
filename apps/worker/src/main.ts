@@ -16,6 +16,7 @@ import {
 } from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 import { sincronizarIncidencias } from './processors/incidencias';
+import { enviarResumenSemanal } from './processors/resumen-semanal';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -89,7 +90,23 @@ async function programarTareas() {
     },
   );
 
-  logger.info('Tareas repetibles programadas (barrido 1min, incidencias 1min, sync GTFS 04:00)');
+  // Resumen semanal por push. Los cron de BullMQ son UTC: '0 8 * * 1' es lunes
+  // 09:00 peninsular en invierno y 10:00 en verano — siempre lunes por la mañana
+  // peninsular sin tener que cambiar el patrón cada cambio de hora.
+  await colaMasiva.add(
+    'resumen-semanal',
+    {},
+    {
+      repeat: { pattern: '0 8 * * 1' },
+      jobId: 'resumen-semanal-lunes',
+      removeOnComplete: 10,
+      removeOnFail: 20,
+    },
+  );
+
+  logger.info(
+    'Tareas repetibles programadas (barrido 1min, incidencias 1min, sync GTFS 04:00, resumen semanal lunes)',
+  );
   return { colaSondeo, colaMasiva, colaSync };
 }
 
@@ -113,6 +130,13 @@ async function main() {
       // servicio se refrescan solas cada minuto sin tocar el resto
       if (job.name === 'incidencias') {
         await sincronizarIncidencias(logger);
+        return;
+      }
+
+      // Mismo queue que el barrido, otro job repetible: el resumen semanal se
+      // ejecuta una vez por semana (lunes por la mañana) sin tocar el resto
+      if (job.name === 'resumen-semanal') {
+        await enviarResumenSemanal(logger);
         return;
       }
 

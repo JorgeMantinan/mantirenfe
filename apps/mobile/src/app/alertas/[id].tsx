@@ -102,6 +102,11 @@ export default function DetalleAlerta() {
             {alerta.fechaViaje} · {alerta.criterio} · cada {alerta.intervaloSondeoMin} min ·{' '}
             {alerta.bono}
           </Text>
+          {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null ? (
+            <Text style={s.detalle}>
+              Objetivo: avisar si baja de {formatearPrecio(alerta.precioObjetivo)}
+            </Text>
+          ) : null}
           {alerta.horaDesde || alerta.horaHasta ? (
             <Text style={s.detalle}>
               Franja: {alerta.horaDesde ?? '00:00'} – {alerta.horaHasta ?? '23:59'}
@@ -149,9 +154,11 @@ export default function DetalleAlerta() {
             ) : (
               <>
                 <Text style={s.detalle}>
-                  {esDisponibilidad
-                    ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
-                    : 'Solo para alertas de disponibilidad'}
+                  {alerta.criterio === 'PRECIO'
+                    ? `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`
+                    : esDisponibilidad
+                      ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
+                      : 'Solo para alertas de disponibilidad'}
                 </Text>
                 {alerta.ultimoSondeoEn ? (
                   <Text style={s.fecha}>Último sondeo: {haceCuanto(alerta.ultimoSondeoEn)}</Text>

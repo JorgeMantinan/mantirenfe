@@ -28,6 +28,7 @@ enum CriterioAlerta {
   HORARIO
   RETRASO
   APERTURA_VENTA
+  PRECIO
 }
 
 enum PlataformaPush {
@@ -81,6 +82,9 @@ model Alerta {
   horaHasta         String?
   numeroTren        String?
   criterio          CriterioAlerta @default(DISPONIBILIDAD)
+  // Solo con criterio = PRECIO: umbral en € del aviso "avísame si baja de X".
+  // En el resto de criterios se guarda null y se ignora.
+  precioObjetivo    Float?
   estado            EstadoAlerta   @default(ACTIVA)
   intervaloSondeoMin Int           @default(10)
   bono              String         @default("GENERAL")

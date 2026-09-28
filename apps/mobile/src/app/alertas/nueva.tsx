@@ -22,6 +22,7 @@ export default function NuevaAlerta() {
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState<Criterio>('DISPONIBILIDAD');
+  const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
   const [notas, setNotas] = useState('');
@@ -63,6 +64,7 @@ export default function NuevaAlerta() {
       horaHasta: string | null;
       numeroTren: string | null;
       criterio: Criterio;
+      precioObjetivo: number | null;
       recurrente: boolean;
       soloLaborables: boolean;
       intervaloSondeoMin: number;
@@ -81,6 +83,7 @@ export default function NuevaAlerta() {
         setNotas(a.notas ?? '');
         setNumeroTren(a.numeroTren ?? '');
         setCriterio(a.criterio);
+        setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
       })
       .catch(() => Alert.alert('Error', 'No se pudo cargar la alerta'));
   }, [params, editandoId]);
@@ -156,6 +159,8 @@ export default function NuevaAlerta() {
       horaHasta: horaHasta.trim() || null,
       numeroTren: numeroTren.trim() || null,
       criterio,
+      // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
+      precioObjetivo: criterio === 'PRECIO' ? Number(precioObjetivo) : null,
       intervaloSondeoMin: intervalo,
       bono,
       notas: notas.trim() || null,
@@ -205,6 +210,20 @@ export default function NuevaAlerta() {
         ))}
       </View>
       <Text style={s.pista}>{DESCRIPCIONES[criterio]}</Text>
+
+      {criterio === 'PRECIO' ? (
+        <>
+          <Text style={s.etiqueta}>Avisarme si baja de X €</Text>
+          <TextInput
+            style={s.campo}
+            placeholder="Ej.: 30"
+            placeholderTextColor={paleta.textoSecundario}
+            keyboardType="decimal-pad"
+            value={precioObjetivo}
+            onChangeText={setPrecioObjetivo}
+          />
+        </>
+      ) : null}
 
       <Text style={s.etiqueta}>Origen</Text>
       <TextInput
@@ -381,6 +400,7 @@ const CRITERIOS = [
   ['RETRASO', 'Retraso'],
   ['HORARIO', 'Horario'],
   ['APERTURA_VENTA', 'Apertura de venta'],
+  ['PRECIO', 'Precio'],
 ] as const;
 
 type Criterio = (typeof CRITERIOS)[number][0];
@@ -403,6 +423,7 @@ const DESCRIPCIONES: Record<Criterio, string> = {
   RETRASO: 'Te avisaremos cuando tus trenes vayan con retraso (5+ min)',
   HORARIO: 'Te avisaremos si cambian los horarios programados',
   APERTURA_VENTA: 'Te avisaremos cuando se abra la venta de billetes',
+  PRECIO: 'Te avisaremos si el precio baja de tu objetivo',
 };
 
 const estilos = (c: Paleta) =>

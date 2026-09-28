@@ -25,6 +25,20 @@ describe('validarAlerta', () => {
     });
     expect(resultado.success).toBe(false);
   });
+
+  it('exige precioObjetivo con criterio PRECIO y lo ignora en el resto', () => {
+    const base = {
+      origenNombre: 'Madrid-Chamartín',
+      destinoNombre: 'Barcelona-Sants',
+      fechaViaje: '2026-10-01',
+      intervaloSondeoMin: 10,
+      bono: 'GENERAL',
+    };
+    expect(validarAlerta({ ...base, criterio: 'PRECIO' }).success).toBe(false);
+    expect(validarAlerta({ ...base, criterio: 'PRECIO', precioObjetivo: 25 }).success).toBe(true);
+    expect(validarAlerta({ ...base, criterio: 'PRECIO', precioObjetivo: 0 }).success).toBe(false);
+    expect(validarAlerta({ ...base, criterio: 'DISPONIBILIDAD' }).success).toBe(true);
+  });
 });
 
 describe('etiquetas', () => {

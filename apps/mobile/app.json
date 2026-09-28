@@ -49,6 +49,24 @@
           "resizeMode": "contain",
           "backgroundColor": "#75258c"
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "ProximoTren",
+              "label": "Próximo tren",
+              "description": "La próxima salida de tus alertas activas",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

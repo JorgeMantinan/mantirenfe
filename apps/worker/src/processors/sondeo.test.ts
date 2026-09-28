@@ -4,16 +4,19 @@ import {
   diffDisponibles,
   diffHorarios,
   enFranjaHoraria,
+  filtrarBajoObjetivo,
   filtrarCambiosPrecio,
   filtrarCancelados,
   filtrarRetrasados,
   nuevasParadasSuprimidas,
+  nuevosBajoObjetivo,
   nuevosCancelados,
   pushHabilitado,
   serializarEstado,
   textoCancelacion,
   textoIndemnizacion,
   textoParadaSuprimida,
+  textoPrecioBajo,
 } from './sondeo';
 
 function estado(trenes: EstadoDisponibilidad['trenes']): EstadoDisponibilidad {
@@ -503,5 +506,85 @@ describe('filtrarCambiosPrecio (registro del histórico)', () => {
     const anterior = serie([{ trenId: 't1', precioMin: 20 }]);
     const actual = serie([{ trenId: 't1', precioMin: null }]);
     expect(filtrarCambiosPrecio(anterior, actual, false)).toHaveLength(1);
+  });
+});
+
+describe('filtrarBajoObjetivo y nuevosBajoObjetivo (criterio PRECIO)', () => {
+  it('señala los trenes con precio conocido menor o igual que el objetivo', () => {
+    const actual = serie([
+      { trenId: 't1', precioMin: 25 },
+      { trenId: 't2', precioMin: 30 },
+      { trenId: 't3', precioMin: 45 },
+      { trenId: 't4', precioMin: null },
+    ]);
+    expect(filtrarBajoObjetivo(actual, 30).map((t) => t.trenId)).toEqual(['t1', 't2']);
+    expect(nuevosBajoObjetivo([], actual, 30).map((t) => t.trenId)).toEqual(['t1', 't2']);
+  });
+
+  it('no repite el aviso mientras el tren siga por debajo del objetivo', () => {
+    const barato = serie([{ trenId: 't1', precioMin: 25 }]);
+    expect(nuevosBajoObjetivo(barato, barato, 30)).toEqual([]);
+  });
+
+  it('vuelve a avisar si el precio sube y luego vuelve a entrar en el umbral', () => {
+    const baratoAntes = serie([{ trenId: 't1', precioMin: 25 }]);
+    const caro = serie([{ trenId: 't1', precioMin: 40 }]);
+    const baratoDespues = serie([{ trenId: 't1', precioMin: 30 }]);
+    expect(nuevosBajoObjetivo(baratoAntes, caro, 30)).toEqual([]);
+    const detectados = nuevosBajoObjetivo(caro, baratoDespues, 30);
+    expect(detectados.map((t) => t.trenId)).toEqual(['t1']);
+    expect(detectados[0]?.precioMin).toBe(30);
+  });
+
+  it('un tren nuevo que ya es barato entra en el primer diff', () => {
+    const anterior = serie([{ trenId: 'viejo', precioMin: 90 }]);
+    const actual = serie([
+      { trenId: 'viejo', precioMin: 90 },
+      { trenId: 'nuevo', precioMin: 12 },
+    ]);
+    expect(nuevosBajoObjetivo(anterior, actual, 30).map((t) => t.trenId)).toEqual(['nuevo']);
+  });
+
+  it('sin precio conocido, sin objetivo o con objetivo inválido no detecta nada', () => {
+    const conPrecio = serie([{ trenId: 't1', precioMin: 10 }]);
+    const sinPrecio = serie([{ trenId: 't1', precioMin: null }]);
+    expect(nuevosBajoObjetivo([], sinPrecio, 30)).toEqual([]);
+    expect(nuevosBajoObjetivo([], conPrecio, null)).toEqual([]);
+    expect(nuevosBajoObjetivo([], conPrecio, undefined)).toEqual([]);
+    expect(nuevosBajoObjetivo([], conPrecio, Number.NaN)).toEqual([]);
+    expect(filtrarBajoObjetivo(conPrecio, null)).toEqual([]);
+  });
+});
+
+describe('textoPrecioBajo', () => {
+  it('indica tren, hora de salida, precio y objetivo', () => {
+    expect(
+      textoPrecioBajo(
+        {
+          trenId: '15648',
+          numeroTren: '15648',
+          salida: '2026-09-27T06:35:00.000Z',
+          disponible: true,
+          precioMin: 24.5,
+          cancelado: false,
+        },
+        30,
+      ),
+    ).toBe('Precio: 15648 06:35 a 24,5 € (objetivo ≤ 30 €)');
+  });
+
+  it('usa el trenId si no hay número de tren y formatea decimales', () => {
+    expect(
+      textoPrecioBajo(
+        {
+          trenId: '3065J23574C1',
+          numeroTren: '',
+          salida: '08:10',
+          disponible: true,
+          precioMin: 42,
+        },
+        42.9,
+      ),
+    ).toBe('Precio: 3065J23574C1 08:10 a 42 € (objetivo ≤ 42,9 €)');
   });
 });
