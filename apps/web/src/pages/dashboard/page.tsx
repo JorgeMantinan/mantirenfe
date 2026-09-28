@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { TarjetaProximoViaje } from '@/pages/dashboard/TarjetaProximoViaje';
 import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
 
 export function PaginaDashboard() {
@@ -60,6 +61,8 @@ export function PaginaDashboard() {
           </Link>
         </Button>
       </div>
+
+      <TarjetaProximoViaje alertas={alertas} />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>

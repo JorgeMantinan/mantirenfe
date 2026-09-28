@@ -6,6 +6,7 @@ import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
+import { construirIcs } from '@/lib/ics';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 
@@ -77,6 +78,19 @@ export default function DetalleAlerta() {
     }
   };
 
+  /** Comparte el `.ics` generado: en Android suele abrirlo la app de calendario. */
+  const anadirAlCalendario = async () => {
+    if (!alerta) return;
+    try {
+      await Share.share({ message: construirIcs(alerta), title: 'Añadir al calendario' });
+    } catch {
+      Alert.alert(
+        'Añadir al calendario',
+        'No se ha podido compartir el evento. Vuelve a intentarlo o entra en MantiRenfe desde el navegador para descargar el archivo .ics.',
+      );
+    }
+  };
+
   const cabecera = (
     <View style={{ gap: espaciado.sm }}>
       {error ? (
@@ -134,7 +148,15 @@ export default function DetalleAlerta() {
               ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
               : 'todavía ninguno'}
           </Text>
-          <Boton titulo="Compartir" variante="contorno" onPress={compartir} style={s.compartir} />
+          <View style={s.acciones}>
+            <Boton titulo="Compartir" variante="contorno" onPress={compartir} style={s.compartir} />
+            <Boton
+              titulo="Añadir al calendario"
+              variante="contorno"
+              onPress={anadirAlCalendario}
+              style={s.compartir}
+            />
+          </View>
         </Tarjeta>
       ) : null}
 
@@ -278,6 +300,11 @@ const estilos = (c: Paleta) =>
     fecha: {
       fontSize: 12,
       color: c.textoSecundario,
+    },
+    acciones: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: espaciado.sm,
     },
     compartir: {
       alignSelf: 'flex-start',

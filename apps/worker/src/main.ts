@@ -17,6 +17,7 @@ import {
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 import { sincronizarIncidencias } from './processors/incidencias';
 import { enviarResumenSemanal } from './processors/resumen-semanal';
+import { enviarDigestDiario } from './processors/digest-email';
 import { persistirSuprimidos } from './processors/suprimidos';
 
 const logger = pino({
@@ -119,8 +120,23 @@ async function programarTareas() {
     },
   );
 
+  // Digest diario de salidas por email. Los cron de BullMQ son UTC: '0 6 * * *'
+  // es las 07:00 de la mañana peninsular en invierno (CET, UTC+1) y las 08:00
+  // en verano (CEST, UTC+2) — siempre entre las 7 y las 8, justo antes del
+  // resto de avisos del día y sin cambiar el patrón cada cambio de hora.
+  await colaMasiva.add(
+    'digest-email',
+    {},
+    {
+      repeat: { pattern: '0 6 * * *' },
+      jobId: 'digest-email-diario',
+      removeOnComplete: 10,
+      removeOnFail: 20,
+    },
+  );
+
   logger.info(
-    'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes)',
+    'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes, digest-email 07:00/08:00)',
   );
   return { colaSondeo, colaMasiva, colaSync };
 }
@@ -159,6 +175,13 @@ async function main() {
       // ejecuta una vez por semana (lunes por la mañana) sin tocar el resto
       if (job.name === 'resumen-semanal') {
         await enviarResumenSemanal(logger);
+        return;
+      }
+
+      // Mismo queue que el barrido, otro job repetible: el digest de la mañana
+      // se manda una sola vez al día (07:00/08:00 peninsular) sin tocar el resto
+      if (job.name === 'digest-email') {
+        await enviarDigestDiario(logger);
         return;
       }
 

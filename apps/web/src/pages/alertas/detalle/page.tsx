@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, BellRing, Coins, RefreshCw, Share2, Train, TriangleAlert } from 'lucide-react';
+import {
+  ArrowLeft,
+  BellRing,
+  CalendarPlus,
+  Coins,
+  RefreshCw,
+  Share2,
+  Train,
+  TriangleAlert,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { construirIcs, descargarIcs, nombreFicheroIcs } from '@/lib/ics';
 import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import {
   agruparPrecios,
@@ -90,6 +100,16 @@ export function PaginaDetalleAlerta() {
       toast.success('Enlace copiado');
     } catch {
       window.prompt('Copia el enlace para compartir este trayecto', url);
+    }
+  };
+
+  const anadirAlCalendario = () => {
+    if (!alerta) return;
+    try {
+      descargarIcs(nombreFicheroIcs(alerta), construirIcs(alerta));
+      toast.success('Evento descargado: ábrelo para añadirlo a tu calendario');
+    } catch {
+      toast.error('No se ha podido descargar el archivo de calendario');
     }
   };
 
@@ -195,9 +215,14 @@ export function PaginaDetalleAlerta() {
                     ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
                     : 'ninguno'}
                 </span>
-                <Button variant="outline" size="sm" onClick={compartir} className="ml-auto">
-                  <Share2 aria-hidden="true" /> Compartir
-                </Button>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={compartir}>
+                    <Share2 aria-hidden="true" /> Compartir
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={anadirAlCalendario}>
+                    <CalendarPlus aria-hidden="true" /> Añadir al calendario
+                  </Button>
+                </div>
               </CardContent>
               {alerta.notas && (
                 <CardContent className="pt-0 text-sm text-muted-foreground">
