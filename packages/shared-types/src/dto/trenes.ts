@@ -126,6 +126,17 @@ export const criterioDisponibilidadSchema = z.object({
 
 export type ConsultaDisponibilidad = z.infer<typeof criterioDisponibilidadSchema>;
 
+/**
+ * Duración en minutos en formato corto ("4h35", "55m"): lo usan la tabla de
+ * "Plazas de hoy" (web y móvil) para poder comparar trenes rápidos y lentos.
+ */
+export function duracionCorta(minutos: number): string {
+  if (!Number.isFinite(minutos) || minutos < 0) return '—';
+  const horas = Math.floor(minutos / 60);
+  const resto = Math.round(minutos % 60);
+  return horas > 0 ? `${horas}h${String(resto).padStart(2, '0')}` : `${resto}m`;
+}
+
 export interface EstadoTrenDisponible {
   trenId: string;
   numeroTren: string;
@@ -137,6 +148,22 @@ export interface EstadoTrenDisponible {
   cancelado?: boolean;
   /** Nombres de estación que el tren no hace hoy (GTFS-RT SKIPPED) */
   paradasSuprimidas?: string[];
+  /**
+   * 'directo' = un solo tren; 'conexion' = dos tramos con transbordo. La venta
+   * DWR mezcla ambos en la misma lista y antes no se podían distinguir (dos
+   * conexiones con el mismo primer tramo parecían el mismo tren repetido).
+   */
+  tramo?: 'directo' | 'conexion';
+  /** Estación donde se hace el transbordo (solo conexiones) */
+  conexionEn?: string;
+  /** Hora peninsular de llegada programada (HH:MM) */
+  horaLlegada?: string;
+  /** Duración total del viaje en minutos (para comparar rápido/lento) */
+  duracionMin?: number;
+  /** Tipo de servicio que trae la venta (AVE, AVLO, AVANT, MD...) */
+  tipoTren?: string;
+  /** Nombre de la tarifa más barata del listado (Básico, Elige...) */
+  tarifa?: string;
 }
 
 export interface EstadoDisponibilidad {
@@ -163,6 +190,18 @@ export interface EstadoSerializado {
    * si hay alguna, para no inflar `alerta.ultimoEstado`.
    */
   paradasSuprimidas?: string[];
+  /** 'directo' o 'conexion' (dos tramos con transbordo) */
+  tramo?: 'directo' | 'conexion';
+  /** Estación del transbordo: la UI lo pinta como "conexión en X" */
+  conexionEn?: string;
+  /** Hora peninsular de llegada (HH:MM) */
+  horaLlegada?: string;
+  /** Duración total del viaje en minutos */
+  duracionMin?: number;
+  /** Tipo de servicio (AVE, AVLO, AVANT, MD...) */
+  tipoTren?: string;
+  /** Tarifa más barata (Básico, Elige...) */
+  tarifa?: string;
 }
 
 /**

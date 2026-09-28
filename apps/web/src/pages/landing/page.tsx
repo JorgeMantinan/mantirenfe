@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { BloqueBilletes } from '@/components/BloqueBilletes';
 import { TrayectosPopulares } from '@/components/TrayectosPopulares';
+import { TRAYECTOS_POPULARES, etiquetaTrayecto, rutaTrayecto } from '@/lib/trayectos';
 import { useAuth } from '@/hooks/useAuth';
 import { hayAfiliacion, hayDonaciones, urlDonaciones } from '@/lib/monetizacion';
 
@@ -235,6 +236,47 @@ export function PaginaLanding() {
             </p>
           </div>
           <TrayectosPopulares cantidad={10} />
+          <p className="text-center">
+            <Link to="/trayectos" className="font-medium text-primary hover:underline">
+              Ver todos los trayectos →
+            </Link>
+          </p>
+        </div>
+      </section>
+
+      <section id="en" className="border-t py-16">
+        <div className="container space-y-6">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">
+              Trains in English / For visitors
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Visiting Spain and prefer English? These route timetables are published in English
+              with the same data: first departures, arrival time, duration, train number and
+              operator.
+            </p>
+          </div>
+          <ul className="flex flex-wrap justify-center gap-2">
+            {TRAYECTOS_POPULARES.slice(0, 5).map((trayecto) => {
+              const ruta = rutaTrayecto(trayecto, 'en');
+              return (
+                <li key={ruta}>
+                  <Link
+                    to={ruta}
+                    lang="en"
+                    className="inline-block rounded-full border bg-muted/40 px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary hover:text-primary"
+                  >
+                    {etiquetaTrayecto(trayecto, 'en')}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-center text-sm">
+            <Link to="/en/trayectos" lang="en" className="font-medium text-primary hover:underline">
+              All train schedules in English →
+            </Link>
+          </p>
         </div>
       </section>
 
@@ -269,6 +311,15 @@ export function PaginaLanding() {
           </p>
           <p>Origen de los datos: Renfe Operadora (open data, CC-BY 4.0) · © 2026 MantiRenfe</p>
           <nav className="flex flex-wrap justify-center gap-4 text-xs">
+            <Link to="/incidencias" className="hover:text-foreground">
+              Incidencias
+            </Link>
+            <Link to="/suprimidos" className="hover:text-foreground">
+              Suprimidos
+            </Link>
+            <Link to="/puntualidad" className="hover:text-foreground">
+              Trenes impuntuales
+            </Link>
             <Link to="/transparencia" className="hover:text-foreground">
               Transparencia
             </Link>

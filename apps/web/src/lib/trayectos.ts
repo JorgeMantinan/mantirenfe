@@ -1,4 +1,5 @@
 import type { EstacionResponse } from '@mantirenfe/shared-types';
+import type { Idioma } from './trayectos-i18n';
 
 const RE_ARTICULO_INICIAL = /^(la|el|los|las|os|as|una|un|a|o) /;
 const RE_PALABRA = /[\p{L}\p{N}]+/gu;
@@ -210,11 +211,15 @@ export const TRAYECTOS_POPULARES: TrayectoPopular[] = [
   },
 ];
 
-export function rutaTrayecto(trayecto: TrayectoPopular): string {
-  return `/trayectos/${trayecto.origenSlug}/${trayecto.destinoSlug}`;
+export function rutaTrayecto(trayecto: TrayectoPopular, lang: Idioma = 'es'): string {
+  const base = lang === 'en' ? '/en/trayectos' : '/trayectos';
+  return `${base}/${trayecto.origenSlug}/${trayecto.destinoSlug}`;
 }
 
-export function etiquetaTrayecto(trayecto: TrayectoPopular): string {
+export function etiquetaTrayecto(trayecto: TrayectoPopular, lang: Idioma = 'es'): string {
+  if (lang === 'en') {
+    return `Trains from ${trayecto.origenNombre} to ${trayecto.destinoNombre}`;
+  }
   return `Horarios de ${trayecto.origenNombre} a ${trayecto.destinoNombre}`;
 }
 
@@ -222,8 +227,9 @@ export function fechaHoy(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function fechaLarga(fecha: string): string {
-  return new Date(`${fecha}T12:00:00Z`).toLocaleDateString('es-ES', {
+/** Fecha larga en es-ES (por defecto) o en en-GB para la versión inglesa. */
+export function fechaLarga(fecha: string, lang: Idioma = 'es'): string {
+  return new Date(`${fecha}T12:00:00Z`).toLocaleDateString(lang === 'en' ? 'en-GB' : 'es-ES', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

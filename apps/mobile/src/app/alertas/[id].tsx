@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
-import { horaGtfs, type AlertaResponse, type AvisoAlertaResponse } from '@mantirenfe/shared-types';
+import {
+  duracionCorta,
+  horaGtfs,
+  type AlertaResponse,
+  type AvisoAlertaResponse,
+  type EstadoSerializado,
+} from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
@@ -21,6 +27,17 @@ function haceCuanto(iso: string): string {
 function formatearPrecio(precioMin: number | null): string {
   if (precioMin === null) return '—';
   return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+}
+
+/** "AVE · llega 09:48 · 3h48": lo que diferencia dos filas de la tabla. */
+function detalleFila(tren: EstadoSerializado): string {
+  return [
+    tren.tipoTren,
+    tren.horaLlegada ? `llega ${tren.horaLlegada}` : null,
+    typeof tren.duracionMin === 'number' ? duracionCorta(tren.duracionMin) : null,
+  ]
+    .filter((texto): texto is string => Boolean(texto))
+    .join(' · ');
 }
 
 export default function DetalleAlerta() {
@@ -165,28 +182,40 @@ export default function DetalleAlerta() {
           <Text style={s.subtitulo}>Plazas de hoy</Text>
           <Tarjeta>
             {trenes.length > 0 ? (
-              trenes.map((tren) => (
-                <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
-                  <View style={s.plazaInfo}>
-                    <Text style={s.plazaTren}>
-                      {horaGtfs(tren.salida)} · {tren.numeroTren || '—'}
-                    </Text>
-                    {tren.precioMin !== null ? (
-                      <Text style={s.precio}>Desde {formatearPrecio(tren.precioMin)}</Text>
-                    ) : null}
-                    {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
-                      <Text style={s.noPara}>No para en: {tren.paradasSuprimidas.join(', ')}</Text>
-                    ) : null}
+              trenes.map((tren) => {
+                const extras = detalleFila(tren);
+                return (
+                  <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
+                    <View style={s.plazaInfo}>
+                      <Text style={s.plazaTren}>
+                        {horaGtfs(tren.salida)} · {tren.numeroTren || '—'}
+                      </Text>
+                      {extras ? <Text style={s.detalle}>{extras}</Text> : null}
+                      {tren.tramo === 'conexion' ? (
+                        <Text style={s.detalle}>Conexión en {tren.conexionEn ?? '—'}</Text>
+                      ) : null}
+                      {tren.precioMin !== null ? (
+                        <Text style={s.precio}>
+                          Desde {formatearPrecio(tren.precioMin)}
+                          {tren.tarifa ? ` · ${tren.tarifa}` : ''}
+                        </Text>
+                      ) : null}
+                      {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
+                        <Text style={s.noPara}>
+                          No para en: {tren.paradasSuprimidas.join(', ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {tren.cancelado ? (
+                      <Etiqueta tono="error">Cancelado</Etiqueta>
+                    ) : (
+                      <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
+                        {tren.disponible ? 'Hay plazas' : 'Completo'}
+                      </Etiqueta>
+                    )}
                   </View>
-                  {tren.cancelado ? (
-                    <Etiqueta tono="error">Cancelado</Etiqueta>
-                  ) : (
-                    <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
-                      {tren.disponible ? 'Hay plazas' : 'Completo'}
-                    </Etiqueta>
-                  )}
-                </View>
-              ))
+                );
+              })
             ) : (
               <>
                 <Text style={s.detalle}>

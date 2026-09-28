@@ -8,12 +8,26 @@ import './styles/globals.css';
 
 registerSW({ immediate: true });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <Providers>
-        <App />
-      </Providers>
-    </BrowserRouter>
-  </StrictMode>,
-);
+async function iniciarSentry() {
+  // Sin VITE_SENTRY_DSN no se importa nada: el chunk de @sentry/react ni se descarga.
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
+  if (!dsn) return;
+  const Sentry = await import('@sentry/react');
+  Sentry.init({ dsn, tracesSampleRate: 0.1 });
+}
+
+async function arrancar() {
+  await iniciarSentry();
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <BrowserRouter>
+        <Providers>
+          <App />
+        </Providers>
+      </BrowserRouter>
+    </StrictMode>,
+  );
+}
+
+void arrancar();

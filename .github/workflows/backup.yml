@@ -1,0 +1,66 @@
+# Secrets requeridos (Settings > Secrets and variables > Actions) — los añade el dueño del repo:
+#   BACKUP_DATABASE_URL  (obligatorio) DATABASE_URL de producción (Supabase > Project Settings >
+#                        Database > Connection string > URI). Sin él el job falla con un error claro.
+#   TELEGRAM_BOT_TOKEN   (opcional)    Token de @BotFather para avisar del backup.
+#   TELEGRAM_CHAT_ID     (opcional)    Chat/grupo destino; si falta cualquiera de los dos se omite
+#                        el aviso de Telegram en silencio (el backup se sube igualmente).
+name: Backup semanal de BD
+
+on:
+  schedule:
+    # Domingos 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      horas:
+        description: 'Etiqueta horaria del backup extra (p. ej. 24). Solo cambia el nombre del artefacto y el aviso.'
+        required: false
+        default: ''
+
+env:
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar BACKUP_DATABASE_URL
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ]; then
+            echo "::error::Falta el secret BACKUP_DATABASE_URL (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Asegurar cliente PostgreSQL
+        run: command -v pg_dump >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client)
+
+      - name: pg_dump | gzip
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          sufijo="${{ github.event.inputs.horas }}"
+          nombre="mantirenfe-$(date -u +%Y%m%dT%H%M%SZ)${sufijo:+-${sufijo}h}.sql.gz"
+          pg_dump "$BACKUP_DATABASE_URL" --no-owner --no-privileges | gzip > "$nombre"
+          ls -lh "$nombre"
+          echo "NOMBRE=$nombre" >> "$GITHUB_ENV"
+
+      - name: Subir artefacto (retención 30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NOMBRE }}
+          path: ${{ env.NOMBRE }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Aviso por Telegram (opcional)
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        continue-on-error: true
+        run: |
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=Backup de MantiRenfe creado: ${NOMBRE} (retención 30 días en Actions) - ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null

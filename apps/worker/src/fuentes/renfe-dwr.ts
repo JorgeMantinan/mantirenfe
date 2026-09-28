@@ -126,7 +126,22 @@ function payloadTrainList(
   );
 }
 
-interface TrenVenta {
+export interface TramoVenta {
+  cdgoTren?: string;
+  fecha?: string;
+  tipoTren?: string;
+  horaSalida?: string;
+  horaLlegada?: string;
+  descripcionEstacionOrigen?: string;
+  descripcionEstacionDestino?: string;
+}
+
+export interface TarifaVenta {
+  titulo?: string;
+  precioTarifa?: string;
+}
+
+export interface TrenVenta {
   cdgoTren?: string;
   fecha?: string;
   tipoTren?: string;
@@ -143,7 +158,10 @@ interface TrenVenta {
   numTren?: string;
   codigoTren?: string;
   idTren?: string;
-  trayectos?: Array<{ cdgoTren?: string; fecha?: string }>;
+  /** true si Renfe lo lista como tren directo; false = combinación de 2 tramos */
+  directo?: boolean;
+  tarifasDisponibles?: TarifaVenta[];
+  trayectos?: TramoVenta[];
 }
 
 interface RespuestaLista {
@@ -157,6 +175,138 @@ export function disponibleSegunReglas(tren: TrenVenta): boolean {
     tren.tarifaMinima != null &&
     !(tren.soloPlazaH ?? true)
   );
+}
+
+/** Precio de una tarifa del listado ("43,5" → 43.5); NaN si no se puede leer. */
+function precioDeTarifa(tarifa: TarifaVenta): number {
+  return Number(String(tarifa.precioTarifa ?? '').replace(',', '.'));
+}
+
+/**
+ * "Tipo de billete" que corresponde al `tarifaMinima` que mostramos: si alguna
+ * tarifa del listado tiene ese precio, se usa su título; si no, el de menor
+ * precio. Es lo que permite distinguir dos filas del mismo tren y la misma
+ * hora que solo cambian en la tarifa (Básico / Elige / Adulto ida...).
+ */
+export function tarifaMasBarata(tren: TrenVenta): string | undefined {
+  const conTitulo = (tren.tarifasDisponibles ?? []).filter(
+    (t): t is TarifaVenta & { titulo: string } => typeof t.titulo === 'string' && t.titulo !== '',
+  );
+  if (conTitulo.length === 0) return undefined;
+  const minima =
+    tren.tarifaMinima != null ? Number(tren.tarifaMinima.replace(',', '.')) : Number.NaN;
+  if (Number.isFinite(minima)) {
+    const exacta = conTitulo.find((t) => precioDeTarifa(t) === minima);
+    if (exacta) return exacta.titulo;
+  }
+  const conPrecio = conTitulo.filter((t) => Number.isFinite(precioDeTarifa(t)));
+  if (conPrecio.length > 0) {
+    return conPrecio.reduce((a, b) => (precioDeTarifa(b) < precioDeTarifa(a) ? b : a)).titulo;
+  }
+  return conTitulo[0]?.titulo;
+}
+
+/**
+ * Convierte una fila del listado DWR en `EstadoTrenDisponible`.
+ *
+ * El listado mezcla trenes **directos** (`directo: true`) con **combinaciones
+ * de dos tramos** (`trayectos.length > 1`, p. ej. 09201 A Coruña→Santiago +
+ * 00622 Santiago→Vigo). Antes se tomaba `trayectos[0].cdgoTren` como número, así
+ * que dos conexiones que compartían el primer tramo salían como DOS filas
+ * idénticas ("09201 a las 21:00") con precios distintos, y nadie podía ver que
+ * la diferencia estaba en el segundo tren. Ahora:
+ *  - una conexión lista los dos tramos en `numeroTren` ("09201 + 00622"), con
+ *    lo que `trenId` deja de colisionar y cada fila es identificable;
+ *  - `tramo`/`conexionEn` marcan la conexión ("conexión en Santiago");
+ *  - se exponen `horaLlegada`, `duracionMin` (rápido/lento), `tipoTren` y
+ *    `tarifa` (tipo de billete).
+ */
+export function mapearTrenesVenta(
+  lista: TrenVenta[],
+  fechaIso: string,
+  codigos: { origen: string; destino: string },
+): EstadoTrenDisponible[] {
+  return lista.map((t) => {
+    const tramos = t.trayectos ?? [];
+    const numeros = tramos.map((x) => x.cdgoTren).filter((n): n is string => Boolean(n));
+    const esConexion = t.directo === false || tramos.length > 1;
+    const numero =
+      numeros[0] ?? t.cdgoTren ?? t.numeroTren ?? t.numTren ?? t.codigoTren ?? t.idTren;
+    const combinado = esConexion && numeros.length > 1 ? numeros.join(' + ') : undefined;
+    const numeroTren = combinado ?? numero ?? 'desconocido';
+    const identificador = combinado ?? numero ?? `${codigos.origen}-${codigos.destino}`;
+    const fechaTren = t.fecha ?? tramos[0]?.fecha ?? fechaIso;
+    const llegada = t.horaLlegada ?? tramos[tramos.length - 1]?.horaLlegada;
+    const tipos = [t.tipoTrenUno, t.tipoTrenDos].filter((x): x is string => Boolean(x));
+    const tipoTren = tipos.length > 0 ? tipos.join(' + ') : tramos[0]?.tipoTren;
+    const transbordo = esConexion ? tramos[0]?.descripcionEstacionDestino : undefined;
+
+    const fila: EstadoTrenDisponible = {
+      trenId: `${identificador}-${fechaTren}`,
+      numeroTren,
+      salida: t.horaSalida ? t.horaSalida.slice(0, 5) : '',
+      disponible: disponibleSegunReglas(t),
+      precioMin: t.tarifaMinima ? Number(t.tarifaMinima.replace(',', '.')) : null,
+      moneda: 'EUR' as const,
+      tramo: esConexion ? 'conexion' : 'directo',
+    };
+    if (transbordo) fila.conexionEn = transbordo;
+    if (llegada) fila.horaLlegada = llegada.slice(0, 5);
+    if (typeof t.duracionViajeTotalEnMinutos === 'number' && t.duracionViajeTotalEnMinutos > 0) {
+      fila.duracionMin = t.duracionViajeTotalEnMinutos;
+    }
+    if (tipoTren) fila.tipoTren = tipoTren;
+    const tarifa = tarifaMasBarata(t);
+    if (tarifa) fila.tarifa = tarifa;
+    return fila;
+  });
+}
+
+/**
+ * Comparación de dos filas del mismo tren+salida: gana la "mejor" con el
+ * criterio documentado **directo > conexión**, después **precio conocido > sin
+ * precio** y por último **precio más bajo**.
+ */
+function puntuacionFila(tren: EstadoTrenDisponible): number[] {
+  const precio =
+    typeof tren.precioMin === 'number' && Number.isFinite(tren.precioMin)
+      ? tren.precioMin
+      : Number.POSITIVE_INFINITY;
+  return [tren.tramo === 'conexion' ? 1 : 0, Number.isFinite(precio) ? 0 : 1, precio];
+}
+
+function mejorFila(a: EstadoTrenDisponible, b: EstadoTrenDisponible): EstadoTrenDisponible {
+  const pa = puntuacionFila(a);
+  const pb = puntuacionFila(b);
+  for (let i = 0; i < pa.length; i++) {
+    if (pa[i] !== pb[i]) return (pa[i] ?? 0) < (pb[i] ?? 0) ? a : b;
+  }
+  return a;
+}
+
+/**
+ * Elimina duplicados reales: dos filas con el mismo `trenId` Y la misma `salida`
+ * son indistinguibles para la UI y para los diffs (además la UI usaría la misma
+ * clave de React). Conserva la primera en orden de aparición salvo que haya una
+ * mejor según `mejorFila`. Las conexiones con distinto segundo tramo NO se
+ * eliminan: tienen `trenId` distinto y son opciones distintas.
+ */
+export function deduplicarTrenes(trenes: EstadoTrenDisponible[]): EstadoTrenDisponible[] {
+  const porClave = new Map<string, EstadoTrenDisponible>();
+  for (const tren of trenes) {
+    const clave = `${tren.trenId}|${tren.salida}`;
+    const previa = porClave.get(clave);
+    porClave.set(clave, previa ? mejorFila(previa, tren) : tren);
+  }
+  return [...porClave.values()];
+}
+
+/**
+ * El filtro `numeroTren` de una alerta debe seguir casando con una conexión:
+ * "09201 + 00622" contiene al tren 09201 que el usuario pidió vigilar.
+ */
+export function coincideNumeroTren(numeroTren: string, buscado: string): boolean {
+  return numeroTren === buscado || numeroTren.split(' + ').includes(buscado);
 }
 
 async function textoConTimeout(
@@ -280,7 +430,7 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
     }
 
     const filtrados = consulta.numeroTren
-      ? trenes.filter((t) => t.numeroTren === consulta.numeroTren)
+      ? trenes.filter((t) => coincideNumeroTren(t.numeroTren, consulta.numeroTren ?? ''))
       : trenes;
     return { consulta, trenes: filtrados, consultadoEn: new Date().toISOString() };
   }
@@ -379,9 +529,16 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
             ? Math.round((t1.precioMin + t2.precioMin) * 100) / 100
             : null,
         moneda: 'EUR' as const,
+        tramo: 'conexion',
+        conexionEn: x.nombre,
+        horaLlegada: c.segunda.llegada.toISOString().slice(11, 16),
+        duracionMin: Math.max(
+          1,
+          Math.round((c.segunda.llegada.getTime() - c.primera.salida.getTime()) / 60_000),
+        ),
       });
     }
-    return resultado.length > 0 ? resultado : null;
+    return resultado.length > 0 ? deduplicarTrenes(resultado) : null;
   }
 }
 
@@ -495,19 +652,10 @@ export async function consultarVentaDwr(
   const datos = extraerListaTrenes(await respuestaLista.text());
 
   const origenDireccion = datos.listadoTrenes?.[0]?.listviajeViewEnlaceBean ?? [];
-  return origenDireccion.map((t) => {
-    const tramo = t.trayectos?.[0];
-    const numero =
-      tramo?.cdgoTren ?? t.cdgoTren ?? t.numeroTren ?? t.numTren ?? t.codigoTren ?? t.idTren;
-    const fechaTren = t.fecha ?? tramo?.fecha ?? fechaIso;
-    const salida = t.horaSalida ? t.horaSalida.slice(0, 5) : '';
-    return {
-      trenId: `${numero ?? `${origen.codigo}-${destino.codigo}`}-${fechaTren}`,
-      numeroTren: numero ?? 'desconocido',
-      salida,
-      disponible: disponibleSegunReglas(t),
-      precioMin: t.tarifaMinima ? Number(t.tarifaMinima.replace(',', '.')) : null,
-      moneda: 'EUR' as const,
-    };
-  });
+  return deduplicarTrenes(
+    mapearTrenesVenta(origenDireccion, fechaIso, {
+      origen: origen.codigo,
+      destino: destino.codigo,
+    }),
+  );
 }

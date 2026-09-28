@@ -8,6 +8,7 @@ import {
   type EstadoSerializado,
 } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
+import { deduplicarTrenes } from '../fuentes/renfe-dwr';
 import { enviarEmail } from '../notificaciones/email';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
@@ -19,7 +20,10 @@ import { hoyGtfs } from './reloj';
 export type { EstadoSerializado };
 
 export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
-  return [...estado.trenes]
+  // `deduplicarTrenes` es una red de seguridad para TODAS las fuentes: dos filas
+  // con el mismo trenId y la misma salida son la misma fila vista dos veces (la
+  // UI usaría la misma clave de React y los diffs por trenId se perderían una).
+  return deduplicarTrenes(estado.trenes)
     .sort((a, b) => a.trenId.localeCompare(b.trenId))
     .map((t) => {
       const serializado: EstadoSerializado = {
@@ -34,6 +38,14 @@ export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializad
       if (t.paradasSuprimidas && t.paradasSuprimidas.length > 0) {
         serializado.paradasSuprimidas = [...t.paradasSuprimidas];
       }
+      // Campos "opcionales de detalle": solo se guardan si existen, para no
+      // inflar `alerta.ultimoEstado` en alertas de fuentes que no los traen.
+      if (t.tramo) serializado.tramo = t.tramo;
+      if (t.conexionEn) serializado.conexionEn = t.conexionEn;
+      if (t.horaLlegada) serializado.horaLlegada = t.horaLlegada;
+      if (typeof t.duracionMin === 'number') serializado.duracionMin = t.duracionMin;
+      if (t.tipoTren) serializado.tipoTren = t.tipoTren;
+      if (t.tarifa) serializado.tarifa = t.tarifa;
       return serializado;
     });
 }

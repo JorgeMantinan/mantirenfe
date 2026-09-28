@@ -26,6 +26,7 @@ import {
   MAX_PUNTOS_GRAFICA,
 } from '@/lib/precios';
 import {
+  duracionCorta,
   horaGtfs,
   type AlertaResponse,
   type AvisoAlertaResponse,
@@ -256,6 +257,7 @@ export function PaginaDetalleAlerta() {
                         <tr className="border-b text-left text-muted-foreground">
                           <th className="py-2 pr-3 font-medium">Hora</th>
                           <th className="py-2 pr-3 font-medium">Tren</th>
+                          <th className="py-2 pr-3 font-medium">Llegada</th>
                           <th className="py-2 pr-3 font-medium">Plazas</th>
                           <th className="py-2 font-medium text-right">Precio desde</th>
                         </tr>
@@ -267,7 +269,29 @@ export function PaginaDetalleAlerta() {
                             className="border-b last:border-b-0"
                           >
                             <td className="py-2 pr-3 font-medium">{horaGtfs(tren.salida)}</td>
-                            <td className="py-2 pr-3">{tren.numeroTren || '—'}</td>
+                            <td className="py-2 pr-3">
+                              <span>{tren.numeroTren || '—'}</span>
+                              {tren.tipoTren && (
+                                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                                  {tren.tipoTren}
+                                </span>
+                              )}
+                              {tren.tramo === 'conexion' && (
+                                <p className="text-xs text-muted-foreground">
+                                  Conexión en {tren.conexionEn ?? '—'}
+                                </p>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-muted-foreground">
+                              {[
+                                tren.horaLlegada,
+                                typeof tren.duracionMin === 'number'
+                                  ? duracionCorta(tren.duracionMin)
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ') || '—'}
+                            </td>
                             <td className="py-2 pr-3">
                               {tren.cancelado ? (
                                 <Badge variant="destructive">Cancelado</Badge>
@@ -284,6 +308,11 @@ export function PaginaDetalleAlerta() {
                             </td>
                             <td className="py-2 text-right text-amber-700 dark:text-amber-300">
                               {formatearPrecio(tren.precioMin)}
+                              {tren.tarifa && (
+                                <p className="text-xs font-normal text-muted-foreground">
+                                  {tren.tarifa}
+                                </p>
+                              )}
                             </td>
                           </tr>
                         ))}

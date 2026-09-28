@@ -95,6 +95,91 @@ describe('serializarEstado', () => {
     );
     expect(serie.map((t) => t.cancelado)).toEqual([true, false]);
   });
+
+  it('conserva los campos de detalle (conexión, duración, tarifa) y deduplica', () => {
+    const base = {
+      salida: '21:00',
+      disponible: true,
+      moneda: 'EUR' as const,
+      retrasoSeg: null,
+      cancelado: false,
+      tramo: 'conexion' as const,
+      conexionEn: 'SANTIAGO DE COMPOSTELA-DANIEL CASTELAO',
+      horaLlegada: '22:57',
+      duracionMin: 117,
+      tipoTren: 'AVANT + ALVIA',
+      tarifa: 'Básico',
+    };
+    const serie = serializarEstado(
+      estado([
+        {
+          trenId: '09201 + 00622-2026-10-05',
+          numeroTren: '09201 + 00622',
+          precioMin: 12.9,
+          ...base,
+        },
+        // Duplicado real (mismo trenId + salida): se queda el más barato
+        {
+          trenId: '09201 + 00622-2026-10-05',
+          numeroTren: '09201 + 00622',
+          precioMin: 17.15,
+          ...base,
+          tarifa: 'Adulto ida',
+        },
+        {
+          trenId: '04404-2026-10-05',
+          numeroTren: '04404',
+          salida: '19:33',
+          disponible: true,
+          precioMin: 40.7,
+          moneda: 'EUR',
+          tramo: 'directo',
+          horaLlegada: '23:07',
+          duracionMin: 214,
+          tipoTren: 'AVE',
+          tarifa: 'Básico',
+        },
+      ]),
+    );
+
+    expect(serie).toHaveLength(2);
+    expect(serie[0]).toMatchObject({
+      trenId: '04404-2026-10-05',
+      tramo: 'directo',
+      horaLlegada: '23:07',
+      duracionMin: 214,
+      tipoTren: 'AVE',
+      tarifa: 'Básico',
+    });
+    expect(serie[1]).toMatchObject({
+      trenId: '09201 + 00622-2026-10-05',
+      tramo: 'conexion',
+      conexionEn: 'SANTIAGO DE COMPOSTELA-DANIEL CASTELAO',
+      horaLlegada: '22:57',
+      duracionMin: 117,
+      tipoTren: 'AVANT + ALVIA',
+      tarifa: 'Básico',
+      precioMin: 12.9,
+    });
+  });
+
+  it('omite los campos de detalle cuando la fuente no los trae', () => {
+    const serie = serializarEstado(
+      estado([
+        {
+          trenId: 'a',
+          numeroTren: '1',
+          salida: '08:00',
+          disponible: true,
+          precioMin: null,
+          moneda: 'EUR',
+        },
+      ]),
+    );
+    expect(serie[0]).not.toHaveProperty('tramo');
+    expect(serie[0]).not.toHaveProperty('duracionMin');
+    expect(serie[0]).not.toHaveProperty('tarifa');
+  });
 });
 
 describe('filtrarCancelados y nuevosCancelados', () => {

@@ -21,6 +21,14 @@ import {
   textoASlug,
 } from '@/lib/trayectos';
 import {
+  TEXTOS_TRAYECTO,
+  TEXTOS_TRAYECTOS,
+  metaTrayecto,
+  metaTrayectos,
+  type Idioma,
+  type TextoConEstaciones,
+} from '@/lib/trayectos-i18n';
+import {
   horaGtfs,
   type EstacionResponse,
   type HorarioTrenResponse,
@@ -28,12 +36,17 @@ import {
 
 const MAX_SALIDAS = 10;
 
-function metaTrayecto(origen: string, destino: string, ruta: string) {
-  return {
-    titulo: `Horarios de ${origen} a ${destino} ${new Date().getFullYear()} | MantiRenfe`,
-    descripcion: `Horarios de ${origen} a ${destino} hoy: primeras salidas, llegada, duración, tren y operador con datos abiertos de Renfe. Crea una alerta para este trayecto.`,
-    canonical: ruta,
-  };
+/** Frase con los nombres de estación en negrita. */
+function conEstaciones(texto: TextoConEstaciones, origen: string, destino: string) {
+  return (
+    <>
+      {texto.antes}
+      <strong>{origen}</strong>
+      {texto.entre}
+      <strong>{destino}</strong>
+      {texto.despues}
+    </>
+  );
 }
 
 function BuscadorEstacion({
@@ -113,25 +126,27 @@ function TablaSalidas({
   trenes,
   origen,
   destino,
+  lang,
 }: {
   trenes: HorarioTrenResponse[];
   origen: string;
   destino: string;
+  lang: Idioma;
 }) {
+  const t = TEXTOS_TRAYECTO[lang];
+
   if (trenes.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-10 text-center">
         <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
         <p className="text-sm text-muted-foreground">
-          Sin resultados para hoy: no hay trenes programados de <strong>{origen}</strong> a{' '}
-          <strong>{destino}</strong> (ni directos ni con transbordo). Prueba con otro día o divide
-          el viaje en dos tramos.
+          {conEstaciones(t.sinResultados, origen, destino)}
         </p>
       </div>
     );
   }
 
-  const sinDirectos = trenes.every((t) => t.transbordo);
+  const sinDirectos = trenes.every((x) => x.transbordo);
   const primeras = [...trenes]
     .sort((a, b) => a.salida.localeCompare(b.salida))
     .slice(0, MAX_SALIDAS);
@@ -140,50 +155,49 @@ function TablaSalidas({
     <>
       {sinDirectos ? (
         <div className="mb-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
-          Hoy no hay trenes directos de {origen} a {destino}: todas las opciones con transbordo
-          aparecen marcadas.
+          {t.sinDirectos(origen, destino)}
         </div>
       ) : null}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
-              <th className="py-2 pr-3 font-medium">Salida</th>
-              <th className="py-2 pr-3 font-medium">Llegada</th>
-              <th className="py-2 pr-3 font-medium">Duración</th>
-              <th className="py-2 pr-3 font-medium">Tren</th>
-              <th className="py-2 font-medium">Operador</th>
+              <th className="py-2 pr-3 font-medium">{t.columnaSalida}</th>
+              <th className="py-2 pr-3 font-medium">{t.columnaLlegada}</th>
+              <th className="py-2 pr-3 font-medium">{t.columnaDuracion}</th>
+              <th className="py-2 pr-3 font-medium">{t.columnaTren}</th>
+              <th className="py-2 font-medium">{t.columnaOperador}</th>
             </tr>
           </thead>
           <tbody>
-            {primeras.map((t) => (
+            {primeras.map((x) => (
               <tr
-                key={`${t.numeroTren}-${t.salida}`}
+                key={`${x.numeroTren}-${x.salida}`}
                 className="border-b last:border-b-0 align-top"
               >
-                <td className="py-2 pr-3 font-medium">{horaGtfs(t.salida)}</td>
-                <td className="py-2 pr-3">{horaGtfs(t.llegada)}</td>
-                <td className="py-2 pr-3 whitespace-nowrap">{t.duracionMin} min</td>
+                <td className="py-2 pr-3 font-medium">{horaGtfs(x.salida)}</td>
+                <td className="py-2 pr-3">{horaGtfs(x.llegada)}</td>
+                <td className="py-2 pr-3 whitespace-nowrap">{x.duracionMin} min</td>
                 <td className="py-2 pr-3">
                   <Badge variant="outline" className="whitespace-nowrap">
-                    {t.numeroTren}
+                    {x.numeroTren}
                   </Badge>
-                  {t.transbordo && (
+                  {x.transbordo && (
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <Badge
                         variant="outline"
                         className="border-amber-500 text-amber-700 dark:text-amber-400"
                       >
-                        Transbordo en {t.transbordo.estacion}
+                        {t.transbordoEn(x.transbordo.estacion)}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        espera {t.transbordo.esperaMin} min
+                        {t.espera(x.transbordo.esperaMin)}
                       </span>
                     </div>
                   )}
                 </td>
                 <td className="py-2">
-                  {t.operador ?? <span className="text-muted-foreground">—</span>}
+                  {x.operador ?? <span className="text-muted-foreground">—</span>}
                 </td>
               </tr>
             ))}
@@ -194,10 +208,11 @@ function TablaSalidas({
   );
 }
 
-export function PaginaTrayecto() {
+export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
   const { origenSlug = '', destinoSlug = '' } = useParams();
   const navigate = useNavigate();
   const hoy = useMemo(() => fechaHoy(), []);
+  const t = TEXTOS_TRAYECTO[lang];
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'sin-estacion' | 'error'>('cargando');
   const [origenNombre, setOrigenNombre] = useState('');
   const [destinoNombre, setDestinoNombre] = useState('');
@@ -209,7 +224,7 @@ export function PaginaTrayecto() {
 
   const nombreOrigen = origenNombre || slugATexto(origenSlug);
   const nombreDestino = destinoNombre || slugATexto(destinoSlug);
-  const rutaActual = `/trayectos/${origenSlug}/${destinoSlug}`;
+  const rutaActual = `${t.rutaBase}/${origenSlug}/${destinoSlug}`;
 
   useEffect(() => {
     let cancelado = false;
@@ -255,47 +270,44 @@ export function PaginaTrayecto() {
 
     cargar().catch((e: unknown) => {
       if (cancelado) return;
-      setError(e instanceof Error ? e.message : 'No se pudieron cargar los horarios');
+      setError(e instanceof Error ? e.message : TEXTOS_TRAYECTO[lang].errorCarga);
       setEstado('error');
     });
 
     return () => {
       cancelado = true;
     };
-  }, [origenSlug, destinoSlug, hoy]);
+  }, [origenSlug, destinoSlug, hoy, lang]);
 
   useEffect(
-    () => aplicarMetaPagina(metaTrayecto(nombreOrigen, nombreDestino, rutaActual)),
-    [nombreOrigen, nombreDestino, rutaActual],
+    () => aplicarMetaPagina(metaTrayecto(lang, nombreOrigen, nombreDestino, rutaActual)),
+    [lang, nombreOrigen, nombreDestino, rutaActual],
   );
 
-  const directos = trenes?.filter((t) => !t.transbordo).length ?? 0;
+  const directos = trenes?.filter((x) => !x.transbordo).length ?? 0;
   const conTransbordo = (trenes?.length ?? 0) - directos;
   const faltantes = [
     faltaOrigen ? `«${slugATexto(origenSlug)}»` : null,
     faltaDestino ? `«${slugATexto(destinoSlug)}»` : null,
   ]
     .filter((texto): texto is string => texto !== null)
-    .join(' y ');
+    .join(t.faltanteUnion);
 
   return (
-    <SeoShell>
+    <SeoShell lang={lang}>
       <div className="container mx-auto max-w-4xl space-y-6 animate-fade-in">
-        <nav className="text-sm text-muted-foreground" aria-label="Migas de pan">
-          <Link to="/trayectos" className="hover:text-foreground">
-            Trayectos
+        <nav className="text-sm text-muted-foreground" aria-label={t.migasAria}>
+          <Link to={t.rutaBase} className="hover:text-foreground">
+            {t.migasTrayectos}
           </Link>{' '}
           · {nombreOrigen} → {nombreDestino}
         </nav>
 
         <div className="space-y-2">
           <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-            Horarios de {nombreOrigen} a {nombreDestino}
+            {t.h1(nombreOrigen, nombreDestino)}
           </h1>
-          <p className="text-muted-foreground">
-            Programa de {fechaLarga(hoy)}: primeras salidas con hora de llegada, duración, número de
-            tren y operador.
-          </p>
+          <p className="text-muted-foreground">{t.subtitulo(fechaLarga(hoy, lang))}</p>
         </div>
 
         {estado === 'cargando' ? (
@@ -309,26 +321,23 @@ export function PaginaTrayecto() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Search className="h-5 w-5 text-primary" aria-hidden="true" />
-                No encontramos esa estación
+                {t.sinEstacionTitulo}
               </CardTitle>
-              <CardDescription>
-                No encontramos ninguna estación que encaje con {faltantes}. Elige la que buscas y te
-                llevamos a su página de horarios.
-              </CardDescription>
+              <CardDescription>{t.sinEstacionDescripcion(faltantes)}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               {faltaOrigen ? (
                 <BuscadorEstacion
                   id="origen"
-                  etiqueta="Origen"
-                  onElegir={(e) => navigate(`/trayectos/${textoASlug(e.nombre)}/${destinoSlug}`)}
+                  etiqueta={t.etiquetaOrigen}
+                  onElegir={(e) => navigate(`${t.rutaBase}/${textoASlug(e.nombre)}/${destinoSlug}`)}
                 />
               ) : null}
               {faltaDestino ? (
                 <BuscadorEstacion
                   id="destino"
-                  etiqueta="Destino"
-                  onElegir={(e) => navigate(`/trayectos/${origenSlug}/${textoASlug(e.nombre)}`)}
+                  etiqueta={t.etiquetaDestino}
+                  onElegir={(e) => navigate(`${t.rutaBase}/${origenSlug}/${textoASlug(e.nombre)}`)}
                 />
               ) : null}
             </CardContent>
@@ -344,14 +353,18 @@ export function PaginaTrayecto() {
             {trenes ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Primeras salidas de hoy</CardTitle>
+                  <CardTitle className="text-lg">{t.tarjetaTitulo}</CardTitle>
                   <CardDescription>
-                    {directos} directas · {conTransbordo} con transbordo · fuente:{' '}
-                    {fuente ?? 'cache'} · primeras {MAX_SALIDAS} salidas del día
+                    {t.tarjetaDescripcion(directos, conTransbordo, fuente, MAX_SALIDAS)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <TablaSalidas trenes={trenes} origen={nombreOrigen} destino={nombreDestino} />
+                  <TablaSalidas
+                    trenes={trenes}
+                    origen={nombreOrigen}
+                    destino={nombreDestino}
+                    lang={lang}
+                  />
                 </CardContent>
               </Card>
             ) : null}
@@ -360,43 +373,35 @@ export function PaginaTrayecto() {
               <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
                 <div className="space-y-1">
                   <p className="font-heading text-lg font-semibold">
-                    ¿Viajas a menudo de {nombreOrigen} a {nombreDestino}?
+                    {t.ctaTitulo(nombreOrigen, nombreDestino)}
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    Te avisamos cuando se libere plaza, cambie el horario o el tren vaya con
-                    retraso.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t.ctaTexto}</p>
                 </div>
                 <Button size="lg" asChild>
                   <Link
                     to={`/alertas/nueva?origen=${encodeURIComponent(nombreOrigen)}&destino=${encodeURIComponent(nombreDestino)}&fecha=${hoy}`}
                   >
                     <BellRing className="h-4 w-4" aria-hidden="true" />
-                    Crea una alerta para este trayecto
+                    {t.ctaBoton}
                   </Link>
                 </Button>
               </CardContent>
             </Card>
 
             <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-              <p className="font-semibold">Datos</p>
+              <p className="font-semibold">{t.datosTitulo}</p>
               <ul className="mt-1 space-y-1 text-muted-foreground">
-                <li>
-                  Origen de los datos: Renfe Operadora (open data)
-                  {fuente ? ` · fuente de la respuesta: ${fuente}` : ''}.
-                </li>
-                <li>Proyecto independiente, no afiliado ni patrocinado por Renfe.</li>
+                <li>{t.datosOrigen(fuente)}</li>
+                <li>{t.datosIndependiente}</li>
               </ul>
             </div>
 
             <AnuncioAdsense />
 
             <section className="space-y-3">
-              <h2 className="font-heading text-xl font-semibold">Otros trayectos populares</h2>
-              <p className="text-sm text-muted-foreground">
-                Horarios de los trayectos más buscados en España, con las primeras salidas del día.
-              </p>
-              <TrayectosPopulares cantidad={10} rutaActual={rutaActual} />
+              <h2 className="font-heading text-xl font-semibold">{t.otrosTitulo}</h2>
+              <p className="text-sm text-muted-foreground">{t.otrosDescripcion}</p>
+              <TrayectosPopulares cantidad={10} rutaActual={rutaActual} lang={lang} />
             </section>
           </>
         )}
@@ -405,66 +410,52 @@ export function PaginaTrayecto() {
   );
 }
 
-export function PaginaTrayectos() {
+export function PaginaTrayectos({ lang = 'es' }: { lang?: Idioma }) {
   const navigate = useNavigate();
+  const t = TEXTOS_TRAYECTOS[lang];
   const [origen, setOrigen] = useState<EstacionResponse | null>(null);
   const [destino, setDestino] = useState<EstacionResponse | null>(null);
 
-  useEffect(
-    () =>
-      aplicarMetaPagina({
-        titulo: `Horarios de tren por trayectos de España | MantiRenfe`,
-        descripcion: `Busca horarios de tren entre dos estaciones: primeras salidas del día, duración, tren y operador con datos abiertos de Renfe. Trayectos populares y alertas personalizadas.`,
-        canonical: '/trayectos',
-      }),
-    [],
-  );
+  useEffect(() => aplicarMetaPagina(metaTrayectos(lang)), [lang]);
 
   const buscar = (event: FormEvent) => {
     event.preventDefault();
     if (!origen || !destino) return;
-    navigate(`/trayectos/${textoASlug(origen.nombre)}/${textoASlug(destino.nombre)}`);
+    navigate(`${t.rutaBase}/${textoASlug(origen.nombre)}/${textoASlug(destino.nombre)}`);
   };
 
   return (
-    <SeoShell>
+    <SeoShell lang={lang}>
       <div className="container mx-auto max-w-4xl space-y-8 animate-fade-in">
         <div className="space-y-2">
-          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-            Horarios de tren por trayectos
-          </h1>
-          <p className="text-muted-foreground">
-            Elige origen y destino para ver las primeras salidas del día con duración, número de
-            tren y operador. También puedes empezar por uno de los trayectos más buscados.
-          </p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">{t.h1}</h1>
+          <p className="text-muted-foreground">{t.subtitulo}</p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
-              <Search className="h-5 w-5 text-primary" aria-hidden="true" /> Tu trayecto
+              <Search className="h-5 w-5 text-primary" aria-hidden="true" /> {t.buscadorTitulo}
             </CardTitle>
-            <CardDescription>
-              Consulta sin cuenta. Las alertas de disponibilidad requieren registro.
-            </CardDescription>
+            <CardDescription>{t.buscadorDescripcion}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={buscar} className="grid gap-4 sm:grid-cols-3">
               <BuscadorEstacion
                 id="origen"
-                etiqueta="Origen"
+                etiqueta={t.etiquetaOrigen}
                 onElegir={setOrigen}
                 onTexto={() => setOrigen(null)}
               />
               <BuscadorEstacion
                 id="destino"
-                etiqueta="Destino"
+                etiqueta={t.etiquetaDestino}
                 onElegir={setDestino}
                 onTexto={() => setDestino(null)}
               />
               <div className="flex items-end">
                 <Button type="submit" className="w-full" disabled={!origen || !destino}>
-                  Ver horarios
+                  {t.botonBuscar}
                 </Button>
               </div>
             </form>
@@ -473,14 +464,12 @@ export function PaginaTrayectos() {
 
         <section className="space-y-4">
           <div className="space-y-2">
-            <h2 className="font-heading text-2xl font-semibold">Trayectos populares</h2>
+            <h2 className="font-heading text-2xl font-semibold">{t.popularesTitulo}</h2>
             <p className="text-sm text-muted-foreground">
-              Los {TRAYECTOS_POPULARES.length} trayectos más buscados de la red, con las primeras
-              salidas de hoy y el detalle de cada tren. Si el tuyo no está, búscalo en el formulario
-              de arriba.
+              {t.popularesDescripcion(TRAYECTOS_POPULARES.length)}
             </p>
           </div>
-          <TrayectosPopulares />
+          <TrayectosPopulares lang={lang} />
         </section>
       </div>
     </SeoShell>

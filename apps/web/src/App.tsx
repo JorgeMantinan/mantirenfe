@@ -52,6 +52,8 @@ export default function App() {
       <Route path="/" element={<PaginaLanding />} />
       <Route path="/trayectos" element={<PaginaTrayectos />} />
       <Route path="/trayectos/:origenSlug/:destinoSlug" element={<PaginaTrayecto />} />
+      <Route path="/en/trayectos" element={<PaginaTrayectos lang="en" />} />
+      <Route path="/en/trayectos/:origenSlug/:destinoSlug" element={<PaginaTrayecto lang="en" />} />
       <Route path="/login" element={<PaginaLogin />} />
       <Route path="/registro" element={<PaginaRegistro />} />
       <Route path="/reset-password" element={<PaginaRecuperarPassword />} />

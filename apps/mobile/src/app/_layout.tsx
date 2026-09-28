@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '@/hooks/useAuth';
+import { destinoDeNotificacion } from '@/lib/notificaciones';
 import { TemaProvider, useTema } from '@/lib/tema-contexto';
 
 // Muestra el aviso en primer plano (si no, el sistema lo descarta en foreground)
@@ -15,12 +16,19 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function irAUrlDeNotificacion(url: unknown) {
-  if (typeof url !== 'string' || !url.startsWith('/')) return;
-  if (url.startsWith('/alertas/')) {
-    router.push({ pathname: '/alertas/[id]', params: { id: url.slice('/alertas/'.length) } });
+/**
+ * El tap de una notificación aterriza DENTRO de la app: `destinoDeNotificacion`
+ * traduce `data` (`alertaId`, `url`, `tipo`) a una ruta interna y nunca devuelve
+ * una URL externa, así que el navegador no se abre desde un push. En concreto,
+ * `/notificaciones` es una ruta solo de `apps/web` y cae en la pestaña de avisos.
+ */
+function irAUrlDeNotificacion(datos: unknown) {
+  const destino = destinoDeNotificacion(datos);
+  if (!destino) return;
+  if (destino.clase === 'alerta') {
+    router.push({ pathname: '/alertas/[id]', params: { id: destino.alertaId } });
   } else {
-    router.push(url as never);
+    router.push(destino.ruta as never);
   }
 }
 
@@ -28,10 +36,10 @@ export default function RootLayout() {
   useEffect(() => {
     const respuestaInicial = Notifications.getLastNotificationResponse();
     if (respuestaInicial) {
-      irAUrlDeNotificacion(respuestaInicial.notification.request.content.data?.url);
+      irAUrlDeNotificacion(respuestaInicial.notification.request.content.data);
     }
     const suscripcion = Notifications.addNotificationResponseReceivedListener((respuesta) => {
-      irAUrlDeNotificacion(respuesta.notification.request.content.data?.url);
+      irAUrlDeNotificacion(respuesta.notification.request.content.data);
     });
     return () => suscripcion.remove();
   }, []);

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import {
+  Dimensions,
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -48,6 +50,9 @@ const FRANJAS_SALIDA: Array<{
   { id: 'tarde', etiqueta: 'Tarde (12-20)', desde: '12:00', hasta: '20:00' },
   { id: 'noche', etiqueta: 'Noche (20-24)', desde: '20:00', hasta: '24:00' },
 ];
+
+/** Tope del bloque «Salidas de X hoy»: así la lista de estaciones de debajo sigue viéndose. */
+const MAX_ALTO_SALIDAS = Dimensions.get('window').height * 0.4;
 
 function mesActual(): string {
   return new Date().toISOString().slice(0, 7);
@@ -509,17 +514,19 @@ export default function Trenes() {
           {!cargandoSalidas && (salidas ?? []).length === 0 ? (
             <Text style={s.meta}>Sin salidas registradas hoy</Text>
           ) : (
-            (salidas ?? []).map((salida, i) => (
-              <View key={`${salida.numeroTren}-${salida.salida}-${i}`} style={{ marginTop: 6 }}>
-                <Text style={s.nombre}>
-                  {horaGtfs(salida.salida)} · {salida.numeroTren}
-                </Text>
-                <Text style={s.meta}>
-                  {salida.origenNombre} → {salida.destinoNombre}
-                  {salida.operador ? ` · ${salida.operador}` : ''}
-                </Text>
-              </View>
-            ))
+            <ScrollView style={s.salidasScroll} nestedScrollEnabled>
+              {(salidas ?? []).map((salida, i) => (
+                <View key={`${salida.numeroTren}-${salida.salida}-${i}`} style={{ marginTop: 6 }}>
+                  <Text style={s.nombre}>
+                    {horaGtfs(salida.salida)} · {salida.numeroTren}
+                  </Text>
+                  <Text style={s.meta}>
+                    {salida.origenNombre} → {salida.destinoNombre}
+                    {salida.operador ? ` · ${salida.operador}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
           )}
         </Tarjeta>
       )}
@@ -889,6 +896,9 @@ const estilos = (c: Paleta) =>
     lista: {
       padding: espaciado.md,
       gap: espaciado.sm,
+    },
+    salidasScroll: {
+      maxHeight: MAX_ALTO_SALIDAS,
     },
     fila: {
       flexDirection: 'row',

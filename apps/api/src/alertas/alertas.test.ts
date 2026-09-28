@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actualizarAlertaSchema, crearAlertaSchema } from '@mantirenfe/shared-types';
+import { formatearUltimoEstado } from './alertas.service';
 
 describe('API (schemas compartidos)', () => {
   it('el esquema de alertas es el mismo que usa la web', () => {
@@ -74,5 +75,63 @@ describe('actualizarAlertaSchema (edición)', () => {
     expect(actualizarAlertaSchema.safeParse({ fechaViaje: 'mañana' }).success).toBe(false);
     expect(actualizarAlertaSchema.safeParse({ horaDesde: '25:99' }).success).toBe(false);
     expect(actualizarAlertaSchema.safeParse({ criterio: 'NINGUNO' }).success).toBe(false);
+  });
+});
+
+describe('formatearUltimoEstado (columnas de "Plazas de hoy")', () => {
+  it('devuelve los campos de detalle de conexión/llegada/tarifa', () => {
+    const filas = formatearUltimoEstado([
+      {
+        trenId: '09201 + 00622-2026-10-05',
+        numeroTren: '09201 + 00622',
+        salida: '21:00',
+        disponible: true,
+        precioMin: 12.9,
+        tramo: 'conexion',
+        conexionEn: 'SANTIAGO DE COMPOSTELA-DANIEL CASTELAO',
+        horaLlegada: '22:57',
+        duracionMin: 117,
+        tipoTren: 'AVANT + ALVIA',
+        tarifa: 'Básico',
+      },
+    ]);
+    expect(filas?.[0]).toMatchObject({
+      trenId: '09201 + 00622-2026-10-05',
+      tramo: 'conexion',
+      conexionEn: 'SANTIAGO DE COMPOSTELA-DANIEL CASTELAO',
+      horaLlegada: '22:57',
+      duracionMin: 117,
+      tipoTren: 'AVANT + ALVIA',
+      tarifa: 'Básico',
+    });
+  });
+
+  it('omite los opcionales mal tipados y descarta filas incompletas', () => {
+    const filas = formatearUltimoEstado([
+      {
+        trenId: 'a',
+        numeroTren: '04404',
+        salida: '19:33',
+        disponible: true,
+        tramo: 'inventado',
+        duracionMin: 'largo',
+        conexionEn: 42,
+        tarifa: '',
+      },
+      { trenId: 42, salida: '08:00', disponible: true },
+      { trenId: 'b' },
+    ]);
+    expect(filas).toHaveLength(1);
+    expect(filas?.[0]).toMatchObject({ trenId: 'a', cancelado: false, precioMin: null });
+    expect(filas?.[0]).not.toHaveProperty('tramo');
+    expect(filas?.[0]).not.toHaveProperty('duracionMin');
+    expect(filas?.[0]).not.toHaveProperty('conexionEn');
+    expect(filas?.[0]).not.toHaveProperty('tarifa');
+  });
+
+  it('devuelve null si el estado guardado no es una lista', () => {
+    expect(formatearUltimoEstado(null)).toBeNull();
+    expect(formatearUltimoEstado(undefined)).toBeNull();
+    expect(formatearUltimoEstado({})).toBeNull();
   });
 });

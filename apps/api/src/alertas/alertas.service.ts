@@ -18,8 +18,12 @@ import { formatearPuntosPrecio } from './precios';
 /**
  * `alerta.ultimoEstado` es un Json de Prisma: se normaliza para devolver solo
  * lo que la UI espera (y null si el worker aún no ha guardado nada).
+ *
+ * Los campos de detalle (`tramo`, `conexionEn`, `horaLlegada`, `duracionMin`,
+ * `tipoTren`, `tarifa`) son opcionales: se copian solo si traen el tipo
+ * esperado, para tolerar estados guardados por versiones anteriores.
  */
-function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
+export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
   if (!Array.isArray(valor)) return null;
   const trenes: EstadoSerializado[] = [];
   for (const item of valor) {
@@ -39,9 +43,22 @@ function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
       retrasoSeg: typeof t.retrasoSeg === 'number' ? t.retrasoSeg : null,
       cancelado: t.cancelado === true,
       ...(estaciones.length > 0 ? { paradasSuprimidas: estaciones } : {}),
+      ...(t.tramo === 'directo' || t.tramo === 'conexion' ? { tramo: t.tramo } : {}),
+      ...(textoPropio(t.conexionEn) ? { conexionEn: t.conexionEn } : {}),
+      ...(textoPropio(t.horaLlegada) ? { horaLlegada: t.horaLlegada } : {}),
+      ...(typeof t.duracionMin === 'number' && Number.isFinite(t.duracionMin)
+        ? { duracionMin: t.duracionMin }
+        : {}),
+      ...(textoPropio(t.tipoTren) ? { tipoTren: t.tipoTren } : {}),
+      ...(textoPropio(t.tarifa) ? { tarifa: t.tarifa } : {}),
     });
   }
   return trenes;
+}
+
+/** Texto no vacío del Json de Prisma (los opcionales así se omiten si vienen mal). */
+function textoPropio(valor: unknown): valor is string {
+  return typeof valor === 'string' && valor !== '';
 }
 
 function formatearAlerta(alerta: {
