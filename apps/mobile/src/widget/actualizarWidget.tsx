@@ -1,12 +1,20 @@
 import type { AlertaResponse } from '@mantirenfe/shared-types';
 import { Platform } from 'react-native';
 import { requestWidgetUpdate } from 'react-native-android-widget';
-import { calcularSalidasWidget, guardarDatosWidget, NOMBRE_WIDGET } from '@/lib/widget';
+import {
+  calcularSalidasWidget,
+  guardarDatosWidget,
+  NOMBRE_WIDGET,
+  NOMBRE_WIDGET_MINI,
+  type DatosWidget,
+} from '@/lib/widget';
+import { ProximoTrenMini } from './ProximoTrenMini';
 import { ProximoTrenWidget } from './ProximoTrenWidget';
 
 /**
- * Escribe las próximas salidas en el caché del dispositivo y pinta el widget
- * al momento. Solo Android: en iOS/web no hay widget de pantalla de inicio.
+ * Escribe las próximas salidas en el caché del dispositivo y pinta los widgets
+ * al momento (el grande y el mini comparten caché y cálculo). Solo Android:
+ * en iOS/web no hay widget de pantalla de inicio.
  */
 export async function sincronizarWidget(
   alertas: AlertaResponse[],
@@ -17,12 +25,22 @@ export async function sincronizarWidget(
   try {
     const datos = calcularSalidasWidget(alertas, ahora);
     await guardarDatosWidget(datos);
-    await requestWidgetUpdate({
-      widgetName: NOMBRE_WIDGET,
-      renderWidget: () => <ProximoTrenWidget datos={datos} />,
-    });
+    for (const widgetName of [NOMBRE_WIDGET, NOMBRE_WIDGET_MINI]) {
+      await requestWidgetUpdate({
+        widgetName,
+        renderWidget: () => pinta(widgetName, datos),
+      });
+    }
   } catch {
     // Sin widget en la pantalla de inicio (u error nativo): lo retoma el
     // refresco periódico del propio widget (updatePeriodMillis).
   }
+}
+
+function pinta(widgetName: string, datos: DatosWidget) {
+  return widgetName === NOMBRE_WIDGET_MINI ? (
+    <ProximoTrenMini datos={datos} />
+  ) : (
+    <ProximoTrenWidget datos={datos} />
+  );
 }

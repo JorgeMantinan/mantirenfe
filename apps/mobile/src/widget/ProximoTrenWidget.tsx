@@ -1,5 +1,5 @@
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
-import type { DatosWidget } from '@/lib/widget';
+import { etiquetaDia, fechaCorta, type DatosWidget } from '@/lib/widget';
 
 const FONDO = '#75258c';
 const BLANCO = '#ffffff';
@@ -7,6 +7,7 @@ const BLANCO_SUAVE = 'rgba(255, 255, 255, 0.75)';
 
 export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
   const salidas = datos?.salidas ?? [];
+  const hoy = new Date();
 
   return (
     <FlexWidget
@@ -28,20 +29,27 @@ export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
       />
       {salidas.length === 0 ? (
         <TextWidget
-          text="Sin salidas de hoy. Abre MantiRenfe para refrescar tus alertas."
+          text={
+            datos?.proximoViaje
+              ? `Próximo viaje: ${fechaCorta(datos.proximoViaje)}`
+              : 'Sin salidas de hoy. Abre MantiRenfe para refrescar tus alertas.'
+          }
           style={{ color: BLANCO_SUAVE, fontSize: 13 }}
           maxLines={3}
         />
       ) : (
-        salidas.map((salida) => (
-          <TextWidget
-            key={`${salida.salidaIso}-${salida.numeroTren}`}
-            text={`${salida.salida} · ${salida.numeroTren} · ${salida.origen} → ${salida.destino}`}
-            style={{ color: BLANCO, fontSize: 14, fontWeight: '600' }}
-            truncate="END"
-            maxLines={2}
-          />
-        ))
+        salidas.map((salida) => {
+          const dia = etiquetaDia(salida.fecha ?? datos?.fecha ?? '', hoy);
+          return (
+            <TextWidget
+              key={`${salida.salidaIso}-${salida.numeroTren}`}
+              text={`${dia ? `${dia} · ` : ''}${salida.salida} · ${salida.numeroTren} · ${salida.origen} → ${salida.destino}`}
+              style={{ color: BLANCO, fontSize: 14, fontWeight: '600' }}
+              truncate="END"
+              maxLines={2}
+            />
+          );
+        })
       )}
     </FlexWidget>
   );

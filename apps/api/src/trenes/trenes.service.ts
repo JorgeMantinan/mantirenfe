@@ -5,6 +5,7 @@ import {
   cruzarConexiones,
   horaGtfs,
   HorarioTrenResponse,
+  HorariosResponse,
   parsearCancelados,
   parsearRetrasos,
   PosicionTrenResponse,
@@ -34,7 +35,7 @@ export class TrenesService {
   private readonly intervaloPersistenciaMs =
     Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
 
-  async horarios(query: unknown): Promise<{ fuente: string; trenes: HorarioTrenResponse[] }> {
+  async horarios(query: unknown): Promise<HorariosResponse> {
     const parsed = busquedaHorariosQuerySchema.safeParse(query);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten().fieldErrors);
@@ -48,7 +49,19 @@ export class TrenesService {
     ]);
 
     if (estacionesOrigen.length === 0 || estacionesDestino.length === 0) {
-      return { fuente: 'cache', trenes: [] };
+      // ¿Cuál de las dos falló? Para que la UI diga "No encontramos la
+      // estación X" en vez de un genérico "sin resultados".
+      const estacionesNoEncontradas = [
+        ...(estacionesOrigen.length === 0 ? [origen] : []),
+        ...(estacionesDestino.length === 0 ? [destino] : []),
+      ];
+      return {
+        fuente: 'cache',
+        trenes: [],
+        estacionesEncontradas: false,
+        motivo: 'estaciones',
+        estacionesNoEncontradas,
+      };
     }
 
     const horarios = await prisma.horarioTren.findMany({
@@ -144,7 +157,14 @@ export class TrenesService {
       });
     }
 
-    return { fuente: 'cache', trenes };
+    // Ambas estaciones existen: si no hay trenes es porque no hay servicio
+    // directo ni con transbordo para esa fecha (no por un nombre mal escrito).
+    return {
+      fuente: 'cache',
+      trenes,
+      estacionesEncontradas: true,
+      ...(trenes.length === 0 ? { motivo: 'sin-trenes' as const } : {}),
+    };
   }
 
   async posiciones(): Promise<{ fuente: string; trenes: PosicionTrenResponse[]; total: number }> {

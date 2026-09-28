@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, BellRing, Coins, RefreshCw, Train, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BellRing, Coins, RefreshCw, Share2, Train, TriangleAlert } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,19 @@ export function PaginaDetalleAlerta() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  const compartir = async () => {
+    if (!alerta) return;
+    const url = `${window.location.origin}/alertas/nueva?origen=${encodeURIComponent(
+      alerta.origenNombre,
+    )}&destino=${encodeURIComponent(alerta.destinoNombre)}&fecha=${alerta.fechaViaje}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Enlace copiado');
+    } catch {
+      window.prompt('Copia el enlace para compartir este trayecto', url);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 animate-fade-in">
@@ -181,6 +195,9 @@ export function PaginaDetalleAlerta() {
                     ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
                     : 'ninguno'}
                 </span>
+                <Button variant="outline" size="sm" onClick={compartir} className="ml-auto">
+                  <Share2 aria-hidden="true" /> Compartir
+                </Button>
               </CardContent>
               {alerta.notas && (
                 <CardContent className="pt-0 text-sm text-muted-foreground">

@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   alertaAplicaHoy,
   calcularSalidasWidget,
+  etiquetaDia,
+  fechaCorta,
   filtrarSalidasVigentes,
   MAX_SALIDAS_WIDGET,
+  resumenWidget,
 } from './widget';
 
 const AHORA = new Date(2026, 8, 28, 9, 30); // lunes 28-09-2026, 09:30 (hora local)
@@ -173,6 +176,79 @@ describe('calcularSalidasWidget', () => {
     expect(datos.salidas.map((s) => s.salida)).toEqual(['10:15', '11:00', '12:30']);
     expect(datos.salidas).toHaveLength(MAX_SALIDAS_WIDGET);
   });
+
+  it('si la alerta es de mañana, muestra sus salidas etiquetadas como "mañana"', () => {
+    const deManana: EstadoSerializado[] = [
+      {
+        trenId: 'm1',
+        numeroTren: '09073',
+        salida: '2026-09-29T07:00:00',
+        disponible: true,
+        precioMin: 12.7,
+      },
+    ];
+    const datos = calcularSalidasWidget(
+      [alerta({ fechaViaje: '2026-09-29', ultimoEstado: deManana })],
+      AHORA,
+    );
+
+    expect(datos.fecha).toBe(HOY);
+    expect(datos.salidas).toHaveLength(1);
+    expect(datos.salidas[0]).toMatchObject({ salida: '07:00', fecha: '2026-09-29' });
+    expect(etiquetaDia(datos.salidas[0]?.fecha ?? '', AHORA)).toBe('mañana');
+  });
+
+  it('si hoy no queda nada, mira hasta7 días y se queda en la primera fecha con salidas', () => {
+    const delMiercoles: EstadoSerializado[] = [
+      {
+        trenId: 'w1',
+        numeroTren: '12411',
+        salida: '2026-09-30T05:30:00',
+        disponible: true,
+        precioMin: null,
+      },
+      {
+        trenId: 'w2',
+        numeroTren: '12421',
+        salida: '2026-09-30T09:35:00',
+        disponible: true,
+        precioMin: null,
+      },
+      {
+        trenId: 'w3',
+        numeroTren: '12431',
+        salida: '2026-09-30T15:39:00',
+        disponible: true,
+        precioMin: null,
+      },
+      {
+        trenId: 'w4',
+        numeroTren: '12441',
+        salida: '2026-10-01T19:08:00',
+        disponible: true,
+        precioMin: null,
+      },
+    ];
+    const datos = calcularSalidasWidget(
+      [alerta({ recurrente: true, fechaViaje: '2026-01-01', ultimoEstado: delMiercoles })],
+      AHORA,
+    );
+
+    expect(datos.salidas.map((s) => s.fecha)).toEqual(['2026-09-30', '2026-09-30', '2026-09-30']);
+    expect(datos.salidas.map((s) => s.salida)).toEqual(['05:30', '09:35', '15:39']);
+    expect(datos.salidas).toHaveLength(MAX_SALIDAS_WIDGET);
+  });
+
+  it('sin salidas en7 días guarda la próxima fecha de viaje', () => {
+    const datos = calcularSalidasWidget(
+      [alerta({ fechaViaje: '2026-10-03', ultimoEstado: null })],
+      AHORA,
+    );
+
+    expect(datos.salidas).toHaveLength(0);
+    expect(datos.proximoViaje).toBe('2026-10-03');
+    expect(resumenWidget(datos, AHORA).vacio).toBe('Próximo viaje: 3 oct');
+  });
 });
 
 describe('filtrarSalidasVigentes', () => {
@@ -189,5 +265,90 @@ describe('filtrarSalidasVigentes', () => {
 
     expect(manana.fecha).toBe('2026-09-29');
     expect(manana.salidas).toHaveLength(0);
+  });
+
+  it('conserva las salidas de días futuros al cruzar la medianoche', () => {
+    const deManana: EstadoSerializado[] = [
+      {
+        trenId: 'm1',
+        numeroTren: '09073',
+        salida: '2026-09-29T07:00:00',
+        disponible: true,
+        precioMin: 12.7,
+      },
+    ];
+    const datos = calcularSalidasWidget(
+      [alerta({ fechaViaje: '2026-09-29', ultimoEstado: deManana })],
+      AHORA,
+    );
+    const trasMedianoche = filtrarSalidasVigentes(datos, new Date(2026, 8, 29, 0, 5));
+
+    expect(trasMedianoche.fecha).toBe('2026-09-29');
+    expect(trasMedianoche.salidas.map((s) => s.salida)).toEqual(['07:00']);
+  });
+});
+
+describe('etiquetaDia / fechaCorta', () => {
+  it('hoy y fechas pasadas no llevan etiqueta', () => {
+    expect(etiquetaDia('2026-09-28', AHORA)).toBeNull();
+    expect(etiquetaDia('2026-09-27', AHORA)).toBeNull();
+  });
+
+  it('mañana y el resto con día de la semana', () => {
+    expect(etiquetaDia('2026-09-29', AHORA)).toBe('mañana');
+    expect(etiquetaDia('2026-09-30', AHORA)).toBe('miércoles 30');
+    expect(etiquetaDia('2026-10-05', AHORA)).toBe('lunes 5');
+  });
+
+  it('resume la fecha como "3 oct"', () => {
+    expect(fechaCorta('2026-10-03')).toBe('3 oct');
+    expect(fechaCorta('2026-09-29')).toBe('29 sep');
+  });
+});
+
+describe('resumenWidget (widget mini)', () => {
+  it('devuelve la próxima salida: hora, tren y ruta', () => {
+    const datos = calcularSalidasWidget([alerta()], AHORA);
+
+    expect(resumenWidget(datos, AHORA)).toEqual({
+      hora: '10:15',
+      numeroTren: '01256A',
+      ruta: 'Madrid-Chamartín → Valladolid-Campo Grande',
+      dia: null,
+      vacio: null,
+    });
+  });
+
+  it('marca el día cuando la salida no es hoy', () => {
+    const deManana: EstadoSerializado[] = [
+      {
+        trenId: 'm1',
+        numeroTren: '09073',
+        salida: '2026-09-29T07:00:00',
+        disponible: true,
+        precioMin: 12.7,
+      },
+    ];
+    const datos = calcularSalidasWidget(
+      [alerta({ fechaViaje: '2026-09-29', ultimoEstado: deManana })],
+      AHORA,
+    );
+
+    expect(resumenWidget(datos, AHORA)).toMatchObject({
+      hora: '07:00',
+      dia: 'mañana',
+      vacio: null,
+    });
+  });
+
+  it('estado vacío: "Sin salidas" o el próximo viaje conocido', () => {
+    expect(resumenWidget(null, AHORA).vacio).toBe('Sin salidas');
+    expect(resumenWidget(calcularSalidasWidget([], AHORA), AHORA).vacio).toBe('Sin salidas');
+
+    const conViaje = calcularSalidasWidget(
+      [alerta({ fechaViaje: '2026-10-12', ultimoEstado: null })],
+      AHORA,
+    );
+    expect(resumenWidget(conViaje, AHORA).vacio).toBe('Próximo viaje: 12 oct');
   });
 });

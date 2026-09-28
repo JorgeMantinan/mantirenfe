@@ -8,7 +8,9 @@ import {
   type EstadoSerializado,
 } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
+import { enviarEmail } from '../notificaciones/email';
 import { enviarPushMovil } from '../notificaciones/expo-push';
+import { preferenciaBooleana } from '../notificaciones/preferencias';
 import { enviarPush } from '../notificaciones/web-push';
 import { hoyGtfs } from './reloj';
 
@@ -270,6 +272,8 @@ export async function notificar(
     fechaViaje: Date;
     criterio: string;
     usuario: {
+      // El sondeo lo trae en el include; solo se usa si la ruta permite email
+      email?: string | null;
       preferencias: unknown;
       suscripciones: Array<{ endpoint: string; p256dh: string; auth: string }>;
       tokensMovil: Array<{ id: string; token: string }>;
@@ -279,6 +283,7 @@ export async function notificar(
   cuerpo: string,
   datosExtra: Record<string, unknown>,
   logger: Logger,
+  opciones?: { email?: boolean },
 ): Promise<void> {
   const prisma = getPrisma();
   await prisma.notificacion.create({
@@ -306,6 +311,19 @@ export async function notificar(
     };
     await enviarPush(alerta.usuario.suscripciones, payload, logger);
     await enviarPushMovil(alerta.usuario.tokensMovil, payload, logger);
+  }
+
+  // Email: mismo aviso que el push, solo si la ruta lo permite (sondeo) y el
+  // usuario activó notificacionesEmail. Es best-effort y no bloquea: los fallos
+  // (o la ausencia de SMTP) se quedan en un log y el resto sigue igual.
+  if (
+    opciones?.email &&
+    alerta.usuario.email &&
+    preferenciaBooleana(alerta.usuario.preferencias, 'notificacionesEmail', false)
+  ) {
+    void enviarEmail(alerta.usuario.email, titulo, cuerpo, logger).catch((err: unknown) => {
+      logger.warn({ alertaId: alerta.id, err }, 'No se pudo enviar el email de la alerta');
+    });
   }
 }
 
@@ -416,7 +434,9 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       .join(', ');
     const titulo = '¡Plaza disponible!';
     const cuerpo = `Queda disponibilidad en ${alerta.origenNombre} → ${alerta.destinoNombre} el ${fechaTexto}: ${titulos}.`;
-    await notificar(alerta, titulo, cuerpo, { trenes: aparecen.map((t) => t.trenId) }, logger);
+    await notificar(alerta, titulo, cuerpo, { trenes: aparecen.map((t) => t.trenId) }, logger, {
+      email: true,
+    });
     logger.info({ alertaId, trenes: aparecen.length }, 'Notificación de disponibilidad enviada');
     return;
   }
@@ -444,6 +464,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
         trenes: bajos.map((t) => t.trenId),
       },
       logger,
+      { email: true },
     );
     logger.info(
       { alertaId, trenes: bajos.length, precioObjetivo },
@@ -477,6 +498,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
         salidos: salidos.map((t) => t.trenId),
       },
       logger,
+      { email: true },
     );
     logger.info({ alertaId, detalle }, 'Notificación de horario enviada');
     return;
@@ -496,6 +518,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
           trenes: cancelaciones.map((t) => t.trenId),
         },
         logger,
+        { email: true },
       );
       logger.info(
         { alertaId, trenes: cancelaciones.length },
@@ -521,6 +544,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
           estaciones: [...new Set(suprimidas.flatMap((s) => s.estaciones))],
         },
         logger,
+        { email: true },
       );
       logger.info(
         { alertaId, trenes: suprimidas.length },
@@ -555,6 +579,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       cuerpo,
       { trenes: nuevosRetrasos.map((t) => t.trenId) },
       logger,
+      { email: true },
     );
     logger.info({ alertaId, trenes: nuevosRetrasos.length }, 'Notificación de retraso enviada');
     return;

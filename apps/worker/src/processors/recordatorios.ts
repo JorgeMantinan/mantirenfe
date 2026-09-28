@@ -1,10 +1,13 @@
 import type { Logger } from 'pino';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import { crearFuenteDatos } from '../fuentes';
+import { preferenciaBooleana } from '../notificaciones/preferencias';
 import { ahoraRelojGtfs, esDiaAplicable } from './reloj';
 import { notificar } from './sondeo';
 
 export { ahoraRelojGtfs, esDiaAplicable, esLaborable, hoyGtfs } from './reloj';
+// Re-exportado para no romper a nadie que lo importara de aquí
+export { preferenciaBooleana };
 
 export interface TrenRecordatorio {
   numeroTren: string;
@@ -63,26 +66,6 @@ function minutosDePreferencias(preferencias: unknown): number {
     if (typeof minutos === 'number' && minutos >= 5 && minutos <= 180) return minutos;
   }
   return 50;
-}
-
-export function preferenciaBooleana(
-  preferencias: unknown,
-  clave: string,
-  porDefecto: boolean,
-): boolean {
-  let valor: unknown = preferencias;
-  if (typeof valor === 'string') {
-    try {
-      valor = JSON.parse(valor);
-    } catch {
-      return porDefecto;
-    }
-  }
-  if (valor && typeof valor === 'object') {
-    const v = (valor as Record<string, unknown>)[clave];
-    if (typeof v === 'boolean') return v;
-  }
-  return porDefecto;
 }
 
 /** Primera salida de hoy todavía futura y dentro de la franja de la alerta. */

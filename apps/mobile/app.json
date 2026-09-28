@@ -64,6 +64,17 @@
               "targetCellHeight": 2,
               "resizeMode": "horizontal",
               "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "ProximoTrenMini",
+              "label": "Próximo tren (mini)",
+              "description": "La próxima salida de tus alertas, en formato compacto",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "resizeMode": "none",
+              "updatePeriodMillis": 1800000
             }
           ]
         }

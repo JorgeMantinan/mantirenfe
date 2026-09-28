@@ -39,6 +39,25 @@ export interface HorarioTrenResponse {
   transbordo?: TramoTransbordo;
 }
 
+/**
+ * Respuesta de `GET /trenes/horarios`. Los campos nuevos son opcionales para
+ * no romper a clientes que solo lean `fuente` y `trenes`: permiten distinguir
+ * "la estación no existe" de "existe pero no hay trenes" y pintar un mensaje
+ * (y una llamada a la acción) distintos en web y móvil.
+ */
+export interface HorariosResponse {
+  fuente: string;
+  trenes: HorarioTrenResponse[];
+  /** false → alguna estación de la consulta no está en la BD */
+  estacionesEncontradas?: boolean;
+  /** Por qué la lista está vacía (solo se envía cuando `trenes` está vacío) */
+  motivo?: MotivoHorarios;
+  /** Textos de búsqueda que no resolvieron (solo con motivo = 'estaciones') */
+  estacionesNoEncontradas?: string[];
+}
+
+export type MotivoHorarios = 'estaciones' | 'sin-trenes';
+
 export interface PosicionTrenResponse {
   id: string;
   numeroTren: string | null;

@@ -14,6 +14,8 @@ import {
   horaGtfs,
   type EstacionResponse,
   type HorarioTrenResponse,
+  type HorariosResponse,
+  type MotivoHorarios,
 } from '@mantirenfe/shared-types';
 
 /**
@@ -37,6 +39,9 @@ export function PaginaTrenes() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fuente, setFuente] = useState<string | null>(null);
+  // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
+  const [motivo, setMotivo] = useState<MotivoHorarios | null>(null);
+  const [sinEstacion, setSinEstacion] = useState<string[]>([]);
   const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
   const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
   const timerOrigen = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -59,6 +64,21 @@ export function PaginaTrenes() {
     [],
   );
 
+  // Cierra los dos desplegables y cancela sus peticiones pendientes: escribir
+  // en un campo (o elegir una opción) no debe dejar a la vista la lista del otro.
+  const limpiarSugerencias = (conservar?: 'origen' | 'destino') => {
+    if (conservar !== 'origen') {
+      petOrigen.current++;
+      clearTimeout(timerOrigen.current);
+      setSugOrigen([]);
+    }
+    if (conservar !== 'destino') {
+      petDestino.current++;
+      clearTimeout(timerDestino.current);
+      setSugDestino([]);
+    }
+  };
+
   // Búsqueda con debounce mientras se escribe (patrón del móvil)
   const sugerir = (campo: 'origen' | 'destino', texto: string) => {
     const timer = campo === 'origen' ? timerOrigen : timerDestino;
@@ -66,6 +86,7 @@ export function PaginaTrenes() {
     const set = campo === 'origen' ? setSugOrigen : setSugDestino;
     if (campo === 'origen') setOrigen(texto);
     else setDestino(texto);
+    limpiarSugerencias(campo);
     clearTimeout(timer.current);
     if (texto.trim().length < 2) {
       set([]);
@@ -84,32 +105,44 @@ export function PaginaTrenes() {
   };
 
   const elegir = (campo: 'origen' | 'destino', nombre: string) => {
-    if (campo === 'origen') {
-      setOrigen(nombre);
-      setSugOrigen([]);
-    } else {
-      setDestino(nombre);
-      setSugDestino([]);
-    }
+    if (campo === 'origen') setOrigen(nombre);
+    else setDestino(nombre);
+    limpiarSugerencias();
   };
 
   const buscar = async (event: FormEvent) => {
     event.preventDefault();
     if (!origen.trim() || !destino.trim() || !fecha) return;
+    limpiarSugerencias();
     setCargando(true);
     setError(null);
+    setMotivo(null);
+    setSinEstacion([]);
     try {
-      const datos = await api<{ trenes: HorarioTrenResponse[]; fuente: string }>(
+      const datos = await api<HorariosResponse>(
         `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
       );
       setResultados(datos.trenes);
       setFuente(datos.fuente);
+      setMotivo(datos.motivo ?? null);
+      setSinEstacion(datos.estacionesNoEncontradas ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error en la búsqueda');
       setResultados(null);
     } finally {
       setCargando(false);
     }
+  };
+
+  // CTA compartido: crear una alerta de disponibilidad con la ruta consultada
+  // (si se parte de un tren concreto, se le pasa su número para vigilarlo).
+  const navegarAlerta = (t?: HorarioTrenResponse) => {
+    navigate(
+      `/alertas/nueva?origen=${encodeURIComponent(t?.origenNombre ?? origen.trim())}` +
+        `&destino=${encodeURIComponent(t?.destinoNombre ?? destino.trim())}` +
+        `&fecha=${fecha}` +
+        (t && !t.transbordo ? `&numeroTren=${encodeURIComponent(t.numeroTren)}` : ''),
+    );
   };
 
   return (
@@ -228,9 +261,11 @@ export function PaginaTrenes() {
           <CardHeader>
             <CardTitle className="text-xl">Resultados</CardTitle>
             <CardDescription>
-              {resultados.length === 0
-                ? 'Sin trenes disponibles para esa consulta'
-                : `${resultados.length} trenes · fuente: ${fuente ?? 'cache'}`}
+              {resultados.length > 0
+                ? `${resultados.length} trenes · fuente: ${fuente ?? 'cache'}`
+                : motivo === 'estaciones'
+                  ? 'Estación no encontrada'
+                  : 'Sin trenes directos ni con conexión para esa fecha'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -264,11 +299,46 @@ export function PaginaTrenes() {
             {resultados.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">
-                  No hay trenes de <strong>{origen}</strong> a <strong>{destino}</strong> para el{' '}
-                  <strong>{fecha}</strong> (ni directos ni con transbordo). Prueba con otra fecha o
-                  divide el viaje en dos tramos.
-                </p>
+                {motivo === 'estaciones' ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      No encontramos la estación{' '}
+                      <strong>
+                        {sinEstacion.length > 0
+                          ? sinEstacion.map((s) => `«${s}»`).join(' y ')
+                          : 'indicada'}
+                      </strong>
+                      . Revisa el nombre (tildes, «La Coruña» = «A Coruña») o elige una sugerencia
+                      al escribir.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Si no aparece, prueba a buscarla en{' '}
+                      <button
+                        type="button"
+                        className="underline"
+                        onClick={() => navigate('/estaciones')}
+                      >
+                        estaciones
+                      </button>
+                      .
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Sin trenes directos ni con conexión de <strong>{origen}</strong> a{' '}
+                      <strong>{destino}</strong> para el <strong>{fecha}</strong>. Prueba con otra
+                      fecha o divide el viaje en dos tramos.
+                    </p>
+                    <Button type="button" onClick={() => navegarAlerta()}>
+                      <BellPlus className="h-4 w-4" aria-hidden="true" /> Crear alerta de
+                      disponibilidad
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Te avisamos cuando Renfe abra plazas para esa ruta y fecha.
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <ul className="divide-y">
@@ -308,20 +378,7 @@ export function PaginaTrenes() {
                           {t.operador}
                         </Badge>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          navigate(
-                            `/alertas/nueva?origen=${encodeURIComponent(t.origenNombre)}` +
-                              `&destino=${encodeURIComponent(t.destinoNombre)}` +
-                              `&fecha=${fecha}` +
-                              (t.transbordo
-                                ? ''
-                                : `&numeroTren=${encodeURIComponent(t.numeroTren)}`),
-                          )
-                        }
-                      >
+                      <Button variant="outline" size="sm" onClick={() => navegarAlerta(t)}>
                         <BellPlus className="h-4 w-4" aria-hidden="true" /> Alerta
                       </Button>
                     </div>

@@ -17,6 +17,8 @@ import {
   horaGtfs,
   type EstacionResponse,
   type HorarioTrenResponse,
+  type HorariosResponse,
+  type MotivoHorarios,
   type PosicionTrenResponse,
   type PuntualidadTrenResponse,
 } from '@mantirenfe/shared-types';
@@ -78,6 +80,9 @@ export default function Trenes() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [horarios, setHorarios] = useState<HorarioTrenResponse[] | null>(null);
   const [errorHorarios, setErrorHorarios] = useState<string | null>(null);
+  // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
+  const [motivoHorarios, setMotivoHorarios] = useState<MotivoHorarios | null>(null);
+  const [sinEstacion, setSinEstacion] = useState<string[]>([]);
 
   const [posiciones, setPosiciones] = useState<PosicionTrenResponse[]>([]);
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
@@ -156,22 +161,37 @@ export default function Trenes() {
 
   useEffect(() => () => clearTimeout(timerBusqueda.current), []);
 
-  // Sugerencias para el formulario de horarios (también con búsqueda en vivo)
-  const [sugerenciasForm, setSugerenciasForm] = useState<EstacionResponse[]>([]);
+  // Sugerencias para el formulario de horarios: una lista por campo, para que
+  // escribir en Destino no pinte también las sugerencias de Origen.
+  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
+  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
   const timerSugerencias = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const peticionSugerencias = useRef(0);
-  const buscarSugerencias = (texto: string) => {
+
+  /** Cierra las dos listas y cancela la petición pendiente (si la hay). */
+  const limpiarSugerencias = () => {
+    peticionSugerencias.current++;
     clearTimeout(timerSugerencias.current);
+    setSugOrigen([]);
+    setSugDestino([]);
+  };
+
+  const buscarSugerencias = (campo: 'origen' | 'destino', texto: string) => {
+    clearTimeout(timerSugerencias.current);
+    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
+    // Invalida cualquier respuesta pendiente y cierra la lista del otro campo
+    peticionSugerencias.current++;
+    (campo === 'origen' ? setSugDestino : setSugOrigen)([]);
     const q = texto.trim();
     if (q.length < 2) {
-      setSugerenciasForm([]);
+      set([]);
       return;
     }
     timerSugerencias.current = setTimeout(() => {
       const id = ++peticionSugerencias.current;
       api<EstacionResponse[]>(`/estaciones?limite=5&q=${encodeURIComponent(q)}`)
         .then((r) => {
-          if (peticionSugerencias.current === id) setSugerenciasForm(r);
+          if (peticionSugerencias.current === id) set(r);
         })
         .catch(() => undefined);
     }, 250);
@@ -222,17 +242,18 @@ export default function Trenes() {
     }, [modo, cargarEstaciones, cargarPosiciones, cargarImpuntuales]),
   );
 
-  const sugerencias = () => sugerenciasForm;
-
   const buscarHorarios = async () => {
     if (!origen.trim() || !destino.trim() || !fecha) return;
+    limpiarSugerencias();
     setCargando(true);
     setErrorHorarios(null);
     try {
-      const datos = await api<{ trenes: HorarioTrenResponse[] }>(
+      const datos = await api<HorariosResponse>(
         `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
       );
       setHorarios(datos.trenes);
+      setMotivoHorarios(datos.motivo ?? null);
+      setSinEstacion(datos.estacionesNoEncontradas ?? []);
     } catch (e) {
       setErrorHorarios(e instanceof Error ? e.message : 'Error en la búsqueda');
       setHorarios(null);
@@ -381,16 +402,16 @@ export default function Trenes() {
               value={origen}
               onChangeText={(v) => {
                 setOrigen(v);
-                buscarSugerencias(v);
+                buscarSugerencias('origen', v);
               }}
             />
-            {sugerencias().map((e) => (
+            {sugOrigen.map((e) => (
               <Text
                 key={e.id}
                 style={s.sugerencia}
                 onPress={() => {
                   setOrigen(e.nombre);
-                  setSugerenciasForm([]);
+                  limpiarSugerencias();
                 }}
               >
                 {e.nombre}
@@ -403,16 +424,16 @@ export default function Trenes() {
               value={destino}
               onChangeText={(v) => {
                 setDestino(v);
-                buscarSugerencias(v);
+                buscarSugerencias('destino', v);
               }}
             />
-            {sugerencias().map((e) => (
+            {sugDestino.map((e) => (
               <Text
                 key={e.id}
                 style={s.sugerencia}
                 onPress={() => {
                   setDestino(e.nombre);
-                  setSugerenciasForm([]);
+                  limpiarSugerencias();
                 }}
               >
                 {e.nombre}
@@ -504,9 +525,34 @@ export default function Trenes() {
                 <Text style={{ color: paleta.error }}>{errorHorarios}</Text>
               </Tarjeta>
             ) : horarios && horarios.length === 0 ? (
-              <Text style={s.vacio}>
-                Sin trenes para esa ruta y fecha (ni directos ni con transbordo). Prueba otro día.
-              </Text>
+              <Tarjeta>
+                <Text style={s.nombre}>
+                  {motivoHorarios === 'estaciones'
+                    ? 'Estación no encontrada'
+                    : 'Sin trenes con esa ruta'}
+                </Text>
+                <Text style={[s.meta, { marginTop: 4 }]}>
+                  {motivoHorarios === 'estaciones'
+                    ? `No encontramos la estación ${
+                        sinEstacion.length > 0
+                          ? sinEstacion.map((n) => `«${n}»`).join(' y ')
+                          : 'indicada'
+                      }. Revisa el nombre (tildes, «La Coruña» = «A Coruña»).`
+                    : `Sin trenes directos ni con conexión de ${origen} a ${destino} para el ${fecha}. Prueba otro día o divide el viaje en dos tramos.`}
+                </Text>
+                {motivoHorarios === 'estaciones' ? null : (
+                  <Boton
+                    titulo="Crear alerta de disponibilidad"
+                    onPress={() =>
+                      router.push({
+                        pathname: '/alertas/nueva',
+                        params: { origen, destino, fecha },
+                      })
+                    }
+                    style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                  />
+                )}
+              </Tarjeta>
             ) : null
           }
           renderItem={({ item }) => (

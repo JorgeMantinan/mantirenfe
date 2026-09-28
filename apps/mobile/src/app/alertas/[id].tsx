@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 import { horaGtfs, type AlertaResponse, type NotificacionResponse } from '@mantirenfe/shared-types';
+import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
@@ -64,6 +65,18 @@ export default function DetalleAlerta() {
   const esDisponibilidad =
     alerta?.criterio === 'DISPONIBILIDAD' || alerta?.criterio === 'APERTURA_VENTA';
 
+  const compartir = async () => {
+    if (!alerta) return;
+    const url = `https://mantirenfe.vercel.app/alertas/nueva?origen=${encodeURIComponent(
+      alerta.origenNombre,
+    )}&destino=${encodeURIComponent(alerta.destinoNombre)}&fecha=${alerta.fechaViaje}`;
+    try {
+      await Share.share({ message: url });
+    } catch {
+      Alert.alert('Compartir alerta', url);
+    }
+  };
+
   const cabecera = (
     <View style={{ gap: espaciado.sm }}>
       {error ? (
@@ -121,6 +134,7 @@ export default function DetalleAlerta() {
               ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
               : 'todavía ninguno'}
           </Text>
+          <Boton titulo="Compartir" variante="contorno" onPress={compartir} style={s.compartir} />
         </Tarjeta>
       ) : null}
 
@@ -264,6 +278,12 @@ const estilos = (c: Paleta) =>
     fecha: {
       fontSize: 12,
       color: c.textoSecundario,
+    },
+    compartir: {
+      alignSelf: 'flex-start',
+      minHeight: 40,
+      paddingVertical: espaciado.sm,
+      paddingHorizontal: espaciado.md - 4,
     },
     vacio: {
       fontSize: 14,
