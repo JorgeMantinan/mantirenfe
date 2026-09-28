@@ -150,6 +150,24 @@ export interface AlertaResponse {
   /** Último estado guardado por el worker (null si aún no hay sondeos). */
   ultimoEstado?: EstadoSerializado[] | null;
   creadaEn: string;
+  /**
+   * Total de avisos (notificaciones) que ha dado esta alerta. Solo lo calcula
+   * el listado (GET /alertas); el resto de endpoints lo omiten.
+   */
+  avisosRecibidos?: number;
+}
+
+/**
+ * Aviso (notificación) de una alerta concreta (GET /alertas/:id/avisos):
+ * sus últimas 50 notificaciones, de la más reciente a la más antigua.
+ */
+export interface AvisoAlertaResponse {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  datos: Record<string, unknown> | null;
+  leida: boolean;
+  creadaEn: string;
 }
 
 /**

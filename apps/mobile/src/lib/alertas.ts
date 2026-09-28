@@ -25,3 +25,8 @@ export function etiquetaEstado(estado: string): string {
   if (estado === 'COMPLETADA') return 'Completada';
   return estado;
 }
+
+/** Recuento histórico de la alerta: "3 avisos" (singular con 1). */
+export function etiquetaAvisos(total: number): string {
+  return `${total} ${total === 1 ? 'aviso' : 'avisos'}`;
+}

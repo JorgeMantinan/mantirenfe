@@ -6,7 +6,7 @@ import type { AlertaResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
-import { etiquetaEstado } from '@/lib/alertas';
+import { etiquetaAvisos, etiquetaEstado } from '@/lib/alertas';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 import { sincronizarWidget } from '@/widget/actualizarWidget';
@@ -106,6 +106,10 @@ export default function Alertas() {
                 <Text style={s.detalle}>
                   {item.fechaViaje} · cada {item.intervaloSondeoMin} min · {item.bono}
                 </Text>
+                <View style={s.filaAvisos}>
+                  <Ionicons name="notifications-outline" size={13} color={paleta.textoSecundario} />
+                  <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
+                </View>
               </View>
               <Etiqueta
                 tono={
@@ -186,6 +190,15 @@ const estilos = (c: Paleta) =>
     },
     detalle: {
       fontSize: 13,
+      color: c.textoSecundario,
+    },
+    filaAvisos: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    avisos: {
+      fontSize: 12,
       color: c.textoSecundario,
     },
     acciones: {

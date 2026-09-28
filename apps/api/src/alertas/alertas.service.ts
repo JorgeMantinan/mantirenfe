@@ -7,10 +7,12 @@ import {
   COLA_SONDEO,
   CrearAlertaInput,
   ActualizarAlertaInput,
+  type AvisoAlertaResponse,
   type EstadoSerializado,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 import { UsuarioRequest } from '../common/usuario-actual.decorator';
+import { juntarConteoAvisos, formatearAvisos } from './avisos';
 import { formatearPuntosPrecio } from './precios';
 
 /**
@@ -94,11 +96,53 @@ export class AlertasService {
   constructor(@InjectQueue(COLA_SONDEO) private readonly colaSondeo: Queue) {}
 
   async listar(usuario: UsuarioRequest): Promise<AlertaResponse[]> {
-    const alertas = await getPrisma().alerta.findMany({
+    const prisma = getPrisma();
+    const alertas = await prisma.alerta.findMany({
       where: { usuarioId: usuario.sub },
       orderBy: { creadaEn: 'desc' },
     });
-    return alertas.map(formatearAlerta);
+    if (alertas.length === 0) return [];
+
+    // Una única query agregada por alerta (sin N+1): cuántos avisos ha dado
+    // cada una. Solo se piden los ids del listado, ya filtrados por usuario.
+    const conteos = await prisma.notificacion.groupBy({
+      by: ['alertaId'],
+      where: { usuarioId: usuario.sub, alertaId: { in: alertas.map((a) => a.id) } },
+      _count: { _all: true },
+    });
+
+    return juntarConteoAvisos(
+      alertas.map(formatearAlerta),
+      conteos.map((fila) => ({ alertaId: fila.alertaId, total: fila._count._all })),
+    );
+  }
+
+  /**
+   * Histórico reciente de avisos de una alerta: solo su dueño puede verlo. Se
+   * devuelven sus últimas 50 notificaciones de la más reciente a la más antigua.
+   */
+  async avisos(usuario: UsuarioRequest, id: string): Promise<AvisoAlertaResponse[]> {
+    const prisma = getPrisma();
+    const alerta = await prisma.alerta.findFirst({
+      where: { id, usuarioId: usuario.sub },
+      select: { id: true },
+    });
+    if (!alerta) throw new NotFoundException('Alerta no encontrada');
+
+    const filas = await prisma.notificacion.findMany({
+      where: { alertaId: id, usuarioId: usuario.sub },
+      orderBy: { creadaEn: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        titulo: true,
+        cuerpo: true,
+        datos: true,
+        leida: true,
+        creadaEn: true,
+      },
+    });
+    return formatearAvisos(filas);
   }
 
   async obtener(usuario: UsuarioRequest, id: string): Promise<AlertaResponse> {

@@ -44,6 +44,10 @@ export function PaginaTrenes() {
   const [sinEstacion, setSinEstacion] = useState<string[]>([]);
   const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
   const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
+  // Franja de salida (HH:MM, vacío = sin límite): filtra solo lo que ya está
+  // cargado, sin volver a consultar la API.
+  const [franjaDesde, setFranjaDesde] = useState('');
+  const [franjaHasta, setFranjaHasta] = useState('');
   const timerOrigen = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const timerDestino = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const petOrigen = useRef(0);
@@ -55,6 +59,28 @@ export function PaginaTrenes() {
     return (['Renfe', 'Ouigo', 'Iryo'] as const).filter((grupo) => presentes.has(grupo));
   }, [resultados]);
   const hayOuigo = operadoresEncontrados.includes('Ouigo');
+
+  const hayFranja = franjaDesde !== '' || franjaHasta !== '';
+
+  // `horaGtfs` devuelve «HH:MM», así que comparar strings es comparar horas.
+  // El filtro se mantiene al repetir la búsqueda: es más cómodo ajustar la
+  // franja que volver a marcarla cada vez.
+  const resultadosVisibles = useMemo(() => {
+    const lista = resultados ?? [];
+    if (!hayFranja) return lista;
+    return lista.filter((t) => {
+      const salida = horaGtfs(t.salida);
+      if (!/^\d{2}:\d{2}$/.test(salida)) return false;
+      if (franjaDesde && salida < franjaDesde) return false;
+      if (franjaHasta && salida > franjaHasta) return false;
+      return true;
+    });
+  }, [resultados, franjaDesde, franjaHasta, hayFranja]);
+
+  const limpiarFranja = () => {
+    setFranjaDesde('');
+    setFranjaHasta('');
+  };
 
   useEffect(
     () => () => {
@@ -270,6 +296,46 @@ export function PaginaTrenes() {
           </CardHeader>
           <CardContent>
             {resultados.length > 0 && (
+              <div className="mb-4 space-y-2">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="franja-desde" className="text-xs text-muted-foreground">
+                      Desde
+                    </Label>
+                    <Input
+                      id="franja-desde"
+                      type="time"
+                      className="w-auto"
+                      value={franjaDesde}
+                      onChange={(e) => setFranjaDesde(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="franja-hasta" className="text-xs text-muted-foreground">
+                      Hasta
+                    </Label>
+                    <Input
+                      id="franja-hasta"
+                      type="time"
+                      className="w-auto"
+                      value={franjaHasta}
+                      onChange={(e) => setFranjaHasta(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {resultadosVisibles.length} de {resultados.length} salidas
+                  </p>
+                  {hayFranja && (
+                    <Button type="button" variant="ghost" size="sm" onClick={limpiarFranja}>
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {resultados.length > 0 && (
               <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-3 py-2">
                 <p className="text-sm font-medium">
                   Compara operadores: {operadoresEncontrados.join(' · ')}
@@ -341,50 +407,62 @@ export function PaginaTrenes() {
                 )}
               </div>
             ) : (
-              <ul className="divide-y">
-                {resultados.map((t) => (
-                  <li
-                    key={`${t.numeroTren}-${t.salida}`}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {horaGtfs(t.salida)} → {horaGtfs(t.llegada)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {t.origenNombre} · {t.destinoNombre} · {t.duracionMin} min
-                      </p>
-                      {t.transbordo && (
-                        <div className="mt-1 space-y-0.5">
-                          <Badge
-                            variant="outline"
-                            className="border-amber-500 text-amber-700 dark:text-amber-400"
-                          >
-                            Transbordo en {t.transbordo.estacion}
-                          </Badge>
-                          <p className="text-xs text-muted-foreground">
-                            {t.transbordo.trenPrimera} llega a las{' '}
-                            {horaGtfs(t.transbordo.llegadaPrimera)} · espera{' '}
-                            {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale a las{' '}
-                            {horaGtfs(t.transbordo.salidaSegunda)}
+              <>
+                {resultadosVisibles.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center">
+                    <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
+                    <p className="text-sm text-muted-foreground">Ninguna salida en esa franja</p>
+                    <Button type="button" variant="outline" size="sm" onClick={limpiarFranja}>
+                      Limpiar filtro
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="divide-y">
+                    {resultadosVisibles.map((t) => (
+                      <li
+                        key={`${t.numeroTren}-${t.salida}`}
+                        className="flex flex-wrap items-center justify-between gap-3 py-3"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {horaGtfs(t.salida)} → {horaGtfs(t.llegada)}
                           </p>
+                          <p className="text-sm text-muted-foreground">
+                            {t.origenNombre} · {t.destinoNombre} · {t.duracionMin} min
+                          </p>
+                          {t.transbordo && (
+                            <div className="mt-1 space-y-0.5">
+                              <Badge
+                                variant="outline"
+                                className="border-amber-500 text-amber-700 dark:text-amber-400"
+                              >
+                                Transbordo en {t.transbordo.estacion}
+                              </Badge>
+                              <p className="text-xs text-muted-foreground">
+                                {t.transbordo.trenPrimera} llega a las{' '}
+                                {horaGtfs(t.transbordo.llegadaPrimera)} · espera{' '}
+                                {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale a las{' '}
+                                {horaGtfs(t.transbordo.salidaSegunda)}
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{t.numeroTren}</Badge>
-                      {t.operador && (
-                        <Badge variant={esOuigo(t.operador) ? 'aviso' : 'secondary'}>
-                          {t.operador}
-                        </Badge>
-                      )}
-                      <Button variant="outline" size="sm" onClick={() => navegarAlerta(t)}>
-                        <BellPlus className="h-4 w-4" aria-hidden="true" /> Alerta
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{t.numeroTren}</Badge>
+                          {t.operador && (
+                            <Badge variant={esOuigo(t.operador) ? 'aviso' : 'secondary'}>
+                              {t.operador}
+                            </Badge>
+                          )}
+                          <Button variant="outline" size="sm" onClick={() => navegarAlerta(t)}>
+                            <BellPlus className="h-4 w-4" aria-hidden="true" /> Alerta
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

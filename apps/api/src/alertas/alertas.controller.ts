@@ -31,6 +31,11 @@ export class AlertasController {
     return this.alertasService.precios(usuario, id);
   }
 
+  @Get(':id/avisos')
+  avisos(@UsuarioActual() usuario: UsuarioRequest, @Param('id') id: string) {
+    return this.alertasService.avisos(usuario, id);
+  }
+
   @Get(':id')
   obtener(@UsuarioActual() usuario: UsuarioRequest, @Param('id') id: string) {
     return this.alertasService.obtener(usuario, id);

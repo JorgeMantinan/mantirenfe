@@ -28,8 +28,8 @@ import {
 import {
   horaGtfs,
   type AlertaResponse,
+  type AvisoAlertaResponse,
   type EstadoSerializado,
-  type NotificacionResponse,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 
@@ -44,7 +44,7 @@ function haceCuanto(iso: string): string {
 export function PaginaDetalleAlerta() {
   const { id } = useParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
-  const [avisos, setAvisos] = useState<NotificacionResponse[]>([]);
+  const [avisos, setAvisos] = useState<AvisoAlertaResponse[]>([]);
   const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
   const [precios, setPrecios] = useState<PuntoPrecio[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -57,13 +57,14 @@ export function PaginaDetalleAlerta() {
     setCargando(true);
     Promise.all([
       api<AlertaResponse>(`/alertas/${id}`),
-      api<NotificacionResponse[]>('/notificaciones'),
+      // Histórico de avisos de ESA alerta: ya viene filtrado por la API
+      api<AvisoAlertaResponse[]>(`/alertas/${id}/avisos`),
       // Si el feed de incidencias no responde, el detalle se muestra igual
       api<IncidenciaResponse[]>('/incidencias').catch(() => [] as IncidenciaResponse[]),
       // Histórico de precios: existe para disponibilidad y precio
       api<PuntoPrecio[]>(`/alertas/${id}/precios`).catch(() => [] as PuntoPrecio[]),
     ])
-      .then(([a, todas, incidenciasActivas, historial]) => {
+      .then(([a, avisosDeLaAlerta, incidenciasActivas, historial]) => {
         setAlerta(a);
         setPrecios(historial);
         setIncidencias(
@@ -71,13 +72,12 @@ export function PaginaDetalleAlerta() {
             incidenciaAfectaA(inc, [a.origenNombre, a.destinoNombre]),
           ),
         );
-        const deEstaAlerta = todas.filter((n) => n.alertaId === id);
-        setAvisos(deEstaAlerta);
+        setAvisos(avisosDeLaAlerta);
         // Al abrir el detalle se marcan como leídos los avisos de esta alerta
-        const sinLeer = deEstaAlerta.filter((n) => !n.leida).map((n) => n.id);
+        const sinLeer = avisosDeLaAlerta.filter((n) => !n.leida).map((n) => n.id);
         if (sinLeer.length > 0) {
           void api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids: sinLeer } })
-            .then(() => setAvisos(deEstaAlerta.map((n) => ({ ...n, leida: true }))))
+            .then(() => setAvisos(avisosDeLaAlerta.map((n) => ({ ...n, leida: true }))))
             .catch(() => undefined);
         }
         setError(null);

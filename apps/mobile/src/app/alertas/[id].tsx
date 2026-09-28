@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
-import { horaGtfs, type AlertaResponse, type NotificacionResponse } from '@mantirenfe/shared-types';
+import { horaGtfs, type AlertaResponse, type AvisoAlertaResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
@@ -26,7 +26,7 @@ function formatearPrecio(precioMin: number | null): string {
 export default function DetalleAlerta() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
-  const [notificaciones, setNotificaciones] = useState<NotificacionResponse[]>([]);
+  const [notificaciones, setNotificaciones] = useState<AvisoAlertaResponse[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
@@ -37,17 +37,17 @@ export default function DetalleAlerta() {
     setCargando(true);
     Promise.all([
       api<AlertaResponse>(`/alertas/${id}`),
-      api<NotificacionResponse[]>('/notificaciones'),
+      // Histórico de avisos de ESA alerta: ya viene filtrado por la API
+      api<AvisoAlertaResponse[]>(`/alertas/${id}/avisos`),
     ])
-      .then(([datos, todas]) => {
+      .then(([datos, avisosDeLaAlerta]) => {
         setAlerta(datos);
-        const deEstaAlerta = todas.filter((n) => n.alertaId === id);
-        setNotificaciones(deEstaAlerta);
+        setNotificaciones(avisosDeLaAlerta);
         // Al abrir el detalle se marcan como leídos los avisos de esta alerta
-        const sinLeer = deEstaAlerta.filter((n) => !n.leida).map((n) => n.id);
+        const sinLeer = avisosDeLaAlerta.filter((n) => !n.leida).map((n) => n.id);
         if (sinLeer.length > 0) {
           void api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids: sinLeer } })
-            .then(() => setNotificaciones(deEstaAlerta.map((n) => ({ ...n, leida: true }))))
+            .then(() => setNotificaciones(avisosDeLaAlerta.map((n) => ({ ...n, leida: true }))))
             .catch(() => undefined);
         }
         setError(null);

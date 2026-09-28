@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { etiquetaBono, etiquetaEstado, validarAlerta } from './alertas';
+import { etiquetaAvisos, etiquetaBono, etiquetaEstado, validarAlerta } from './alertas';
 
 describe('validarAlerta', () => {
   it('acepta una alerta válida', () => {
@@ -51,5 +51,11 @@ describe('etiquetas', () => {
     expect(etiquetaEstado('ACTIVA')).toBe('Activa');
     expect(etiquetaEstado('PAUSA')).toBe('En pausa');
     expect(etiquetaEstado('COMPLETADA')).toBe('Completada');
+  });
+
+  it('pluraliza el recuento de avisos', () => {
+    expect(etiquetaAvisos(0)).toBe('0 avisos');
+    expect(etiquetaAvisos(1)).toBe('1 aviso');
+    expect(etiquetaAvisos(12)).toBe('12 avisos');
   });
 });

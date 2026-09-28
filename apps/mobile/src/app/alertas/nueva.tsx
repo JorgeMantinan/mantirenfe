@@ -181,6 +181,22 @@ export default function NuevaAlerta() {
       Alert.alert(
         editandoId ? 'Alerta actualizada' : 'Alerta creada',
         editandoId ? 'Los cambios ya están aplicados.' : 'Empezamos a vigilar este trayecto.',
+        editandoId
+          ? undefined
+          : [
+              { text: 'Ahora no', style: 'cancel' },
+              {
+                text: 'Crear la vuelta',
+                onPress: () =>
+                  router.push(
+                    `/alertas/nueva?origen=${encodeURIComponent(
+                      destino.trim(),
+                    )}&destino=${encodeURIComponent(origen.trim())}&fecha=${encodeURIComponent(
+                      fechaEfectiva,
+                    )}`,
+                  ),
+              },
+            ],
       );
       router.back();
     } catch (e) {

@@ -204,7 +204,24 @@ export function PaginaNuevaAlerta() {
         return;
       }
 
-      toast.success(editandoId ? 'Alerta actualizada.' : 'Alerta creada. Empezamos a vigilarla.');
+      if (editandoId) {
+        toast.success('Alerta actualizada.');
+      } else {
+        toast.success('Alerta creada. Empezamos a vigilarla.', {
+          duration: 8000,
+          action: {
+            label: 'Crear la vuelta',
+            onClick: () =>
+              navigate(
+                `/alertas/nueva?origen=${encodeURIComponent(
+                  destino.trim(),
+                )}&destino=${encodeURIComponent(origen.trim())}&fecha=${encodeURIComponent(
+                  fechaEfectiva,
+                )}`,
+              ),
+          },
+        });
+      }
       navigate('/alertas');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo guardar la alerta');

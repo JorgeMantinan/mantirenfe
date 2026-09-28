@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BellRing, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import { Bell, BellRing, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { AlertaResponse } from '@mantirenfe/shared-types';
+
+/** "N avisos" (singular con 1): recuento histórico que muestra cada tarjeta. */
+function textoAvisos(total: number): string {
+  return `${total} ${total === 1 ? 'aviso' : 'avisos'}`;
+}
 
 export function PaginaAlertas() {
   const navigate = useNavigate();
@@ -173,6 +178,14 @@ export function PaginaAlertas() {
                       : alerta.estado === 'PAUSA'
                         ? 'En pausa'
                         : 'Completada'}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="gap-1"
+                    title="Avisos recibidos por esta alerta"
+                  >
+                    <Bell className="h-3.5 w-3.5" aria-hidden="true" />
+                    {textoAvisos(alerta.avisosRecibidos ?? 0)}
                   </Badge>
                   <Badge variant="outline">{alerta.criterio}</Badge>
                   <Button

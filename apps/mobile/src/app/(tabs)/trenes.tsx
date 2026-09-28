@@ -30,6 +30,24 @@ import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 type Modo = 'estaciones' | 'horarios' | 'posiciones' | 'impuntuales';
 type OrdenImpuntuales = 'veces' | 'impuntualidad';
+type FranjaSalida = 'todo' | 'manana' | 'tarde' | 'noche';
+
+/**
+ * Chips de franja de salida para el modo horarios: [desde, hasta) para que
+ * las horas de frontera (12:00, 20:00) no cuenten dos veces. «Noche» llega
+ * hasta 24:00, que en HH:MM incluye las 23:59.
+ */
+const FRANJAS_SALIDA: Array<{
+  id: FranjaSalida;
+  etiqueta: string;
+  desde: string | null;
+  hasta: string | null;
+}> = [
+  { id: 'todo', etiqueta: 'Todo', desde: null, hasta: null },
+  { id: 'manana', etiqueta: 'Mañana (06-12)', desde: '06:00', hasta: '12:00' },
+  { id: 'tarde', etiqueta: 'Tarde (12-20)', desde: '12:00', hasta: '20:00' },
+  { id: 'noche', etiqueta: 'Noche (20-24)', desde: '20:00', hasta: '24:00' },
+];
 
 function mesActual(): string {
   return new Date().toISOString().slice(0, 7);
@@ -83,6 +101,9 @@ export default function Trenes() {
   // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
   const [motivoHorarios, setMotivoHorarios] = useState<MotivoHorarios | null>(null);
   const [sinEstacion, setSinEstacion] = useState<string[]>([]);
+  // Franja de salida: filtra solo lo ya cargado (sin tocar la API) y se
+  // mantiene al repetir la búsqueda.
+  const [franjaSalida, setFranjaSalida] = useState<FranjaSalida>('todo');
 
   const [posiciones, setPosiciones] = useState<PosicionTrenResponse[]>([]);
   const [errorPosiciones, setErrorPosiciones] = useState<string | null>(null);
@@ -111,6 +132,19 @@ export default function Trenes() {
       return palabras.every((palabra) => campos.some((c) => c.includes(palabra)));
     });
   }, [posiciones, filtroPos]);
+
+  // `horaGtfs` devuelve «HH:MM», así que comparar strings es comparar horas.
+  const horariosVisibles = useMemo(() => {
+    const lista = horarios ?? [];
+    const franja = FRANJAS_SALIDA.find((f) => f.id === franjaSalida);
+    if (!franja) return lista;
+    const { desde, hasta } = franja;
+    if (!desde || !hasta) return lista;
+    return lista.filter((t) => {
+      const salida = horaGtfs(t.salida);
+      return /^\d{2}:\d{2}$/.test(salida) && salida >= desde && salida < hasta;
+    });
+  }, [horarios, franjaSalida]);
 
   const cargarEstaciones = useCallback((q?: string) => {
     setCargando(true);
@@ -515,7 +549,7 @@ export default function Trenes() {
 
       {modo === 'horarios' && (
         <FlatList
-          data={horarios ?? []}
+          data={horariosVisibles}
           keyExtractor={(item, index) => `${item.numeroTren}-${item.salida}-${index}`}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
           contentContainerStyle={s.lista}
@@ -553,6 +587,32 @@ export default function Trenes() {
                   />
                 )}
               </Tarjeta>
+            ) : horarios && horarios.length > 0 ? (
+              <View style={{ gap: espaciado.sm, marginBottom: espaciado.sm }}>
+                <View style={s.modos}>
+                  {FRANJAS_SALIDA.map((f) => (
+                    <Text
+                      key={f.id}
+                      style={[s.modo, franjaSalida === f.id && s.modoActivo]}
+                      onPress={() => setFranjaSalida(f.id)}
+                      suppressHighlighting
+                    >
+                      {f.etiqueta}
+                    </Text>
+                  ))}
+                </View>
+                <Text style={s.meta}>
+                  Mostrando {horariosVisibles.length} de {horarios.length} salidas
+                </Text>
+                {horariosVisibles.length === 0 ? (
+                  <Tarjeta>
+                    <Text style={s.nombre}>Ninguna salida en esa franja</Text>
+                    <Text style={[s.meta, { marginTop: 4 }]}>
+                      Prueba otra franja o vuelve a «Todo».
+                    </Text>
+                  </Tarjeta>
+                ) : null}
+              </View>
             ) : null
           }
           renderItem={({ item }) => (
