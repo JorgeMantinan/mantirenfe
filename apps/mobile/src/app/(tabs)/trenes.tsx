@@ -691,7 +691,7 @@ export default function Trenes() {
       {modo === 'impuntuales' && (
         <FlatList
           data={impuntuales ?? []}
-          keyExtractor={(item) => item.vehiculoId}
+          keyExtractor={(item) => item.clave ?? item.vehiculoId}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={refrescar} />}
           contentContainerStyle={s.lista}
           ListHeaderComponent={
@@ -727,6 +727,15 @@ export default function Trenes() {
                 <Text style={s.meta}>
                   Salida {horaGtfs(item.salida)}
                   {item.fecha ? ` · ${item.fecha}` : ''}
+                </Text>
+              ) : null}
+              {item.llegada || item.llegadaEstimada ? (
+                <Text style={s.meta}>
+                  {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
+                  {item.llegada && item.llegadaEstimada ? ' · ' : ''}
+                  {item.llegadaEstimada
+                    ? `estimada ${horaGtfs(item.llegadaEstimada)} (máx. retraso)`
+                    : ''}
                 </Text>
               ) : null}
             </Tarjeta>

@@ -18,15 +18,25 @@ interface EstacionGuardada {
   longitud: number | null;
 }
 
+interface ParadaGuardada {
+  tripId: string;
+  orden: number;
+  estacionId: string;
+  llegadaMin: number | null;
+  salidaMin: number | null;
+}
+
 const { prismaMock, store } = vi.hoisted(() => {
   const store = {
     estaciones: new Map<string, EstacionGuardada>(),
     horarios: [] as Array<{
       numeroTren: string;
       operador: string | null;
+      tripId?: string | null;
       origenEstacionId: string;
       destinoEstacionId: string;
     }>,
+    paradas: [] as ParadaGuardada[],
     estacionesUpsert: [] as string[],
     estacionesCreateMany: [] as string[],
   };
@@ -70,6 +80,36 @@ const { prismaMock, store } = vi.hoisted(() => {
       }) => {
         store.horarios.push(...args.data);
         return { count: args.data.length };
+      },
+      count: async () => 0,
+      deleteMany: async () => ({ count: 0 }),
+    },
+    paradaHorario: {
+      createMany: async (args: { data: ParadaGuardada[] }) => {
+        let count = 0;
+        for (const fila of args.data) {
+          const clave = `${fila.tripId}|${fila.orden}`;
+          if (store.paradas.some((p) => `${p.tripId}|${p.orden}` === clave)) continue;
+          store.paradas.push(fila);
+          count++;
+        }
+        return { count };
+      },
+      findMany: async (args?: { distinct?: string[] }) => {
+        if (!args?.distinct?.includes('tripId')) return store.paradas;
+        const vistos = new Set<string>();
+        const distintos: Array<{ tripId: string }> = [];
+        for (const parada of store.paradas) {
+          if (vistos.has(parada.tripId)) continue;
+          vistos.add(parada.tripId);
+          distintos.push({ tripId: parada.tripId });
+        }
+        return distintos;
+      },
+      deleteMany: async (args: { where: { tripId: { in: string[] } } }) => {
+        const antes = store.paradas.length;
+        store.paradas = store.paradas.filter((p) => !args.where.tripId.in.includes(p.tripId));
+        return { count: antes - store.paradas.length };
       },
     },
   };
@@ -159,6 +199,7 @@ beforeEach(() => {
   for (const clave of ENVS) envOriginal[clave] = process.env[clave];
   store.estaciones.clear();
   store.horarios.length = 0;
+  store.paradas.length = 0;
   store.estacionesUpsert.length = 0;
   store.estacionesCreateMany.length = 0;
   peticiones.length = 0;
@@ -237,10 +278,23 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
 
     const porTren = new Map(store.horarios.map((h) => [h.numeroTren, h]));
     expect(porTren.get('01234')?.operador).toBe('AVE');
+    expect(porTren.get('01234')?.tripId).toBe('T1');
     const ouigo = porTren.get('09876');
     expect(ouigo?.operador).toBe('OUIGO');
+    expect(ouigo?.tripId).toBe('OT1');
     expect(ouigo?.origenEstacionId).toBe('17000');
     expect(ouigo?.destinoEstacionId).toBe('66000');
+
+    // ParadaHorario guarda TODAS las paradas del trip (no solo los extremos),
+    // una fila por (trip, stop_sequence) y sin fecha
+    expect(store.paradas.map((p) => `${p.tripId}:${p.orden}:${p.estacionId}`)).toEqual([
+      'T1:1:17000',
+      'T1:2:28000',
+      'OT1:1:17000',
+      'OT1:2:66000',
+    ]);
+    expect(store.paradas[0]).toMatchObject({ salidaMin: 480, llegadaMin: 480 });
+    expect(store.paradas[3]).toMatchObject({ salidaMin: 660, llegadaMin: 660 });
 
     // La ApiKey del NAP no se filtra a otros hosts (2 feeds × 2 pasadas)
     expect(peticiones).toHaveLength(4);

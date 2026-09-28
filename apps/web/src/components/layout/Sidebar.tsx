@@ -4,6 +4,7 @@ import {
   Bell,
   BellRing,
   ChevronDown,
+  CircleSlash,
   Gauge,
   Map,
   MapPin,
@@ -43,6 +44,7 @@ const GRUPOS: ItemMenu[] = [
     items: [
       { href: '/mapa', etiqueta: 'Mapa en tiempo real', icono: Map },
       { href: '/incidencias', etiqueta: 'Incidencias', icono: TriangleAlert },
+      { href: '/suprimidos', etiqueta: 'Suprimidos', icono: CircleSlash },
       { href: '/trenes', etiqueta: 'Buscar trenes', icono: Ticket },
       { href: '/estaciones', etiqueta: 'Estaciones', icono: MapPin },
       { href: '/puntualidad', etiqueta: 'Trenes impuntuales', icono: TrendingDown },

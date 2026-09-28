@@ -15,6 +15,16 @@ import {
 } from '@mantirenfe/shared-types';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { enriquecerPosiciones } from './enriquecer';
+import { trayectosPorParadas } from './paradas';
+import {
+  agruparPorEje,
+  aplicarLlegadaEstimada,
+  claveDeServicio,
+  extremosPorTrip,
+  rangoMes,
+  type ExtremosTrip,
+  type ServicioImpuntual,
+} from './puntualidad';
 
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
@@ -24,6 +34,16 @@ interface CachePosiciones {
 interface TripUpdates {
   retrasos: Map<string, number>;
   cancelados: Set<string>;
+}
+
+/** Trayecto (y horario) más repetido de un grupo de impuntualidad. */
+interface TrayectoFrecuente {
+  cuenta: number;
+  origenNombre: string;
+  destinoNombre: string;
+  salida: string;
+  llegada: string;
+  fecha: string;
 }
 
 @Injectable()
@@ -155,6 +175,27 @@ export class TrenesService {
           trenSegunda: conexion.segunda.numeroTren,
         },
       });
+    }
+
+    // Sin tren directo ni transbordo: `HorarioTren` solo guarda los extremos
+    // de cada viaje, así que los trayectos con parada intermedia (p. ej.
+    // A Coruña → Vilagarcía) no aparecen por esas dos vías. Se recomponen con
+    // ParadaHorario restringido a los viajes que operan esa fecha.
+    if (trenes.length === 0) {
+      try {
+        const intermedios = await trayectosPorParadas(prisma, {
+          fecha,
+          origenes: estacionesOrigen,
+          destinos: estacionesDestino,
+        });
+        trenes.push(...intermedios);
+      } catch (error) {
+        // Si la tabla aún no existe (sync sin migrar) el comportamiento vuelve
+        // a ser el de antes: sin resultados y motivo "sin-trenes".
+        this.logger.warn(
+          `No se pudieron buscar trayectos con paradas intermedias: ${String(error)}`,
+        );
+      }
     }
 
     // Ambas estaciones existen: si no hay trenes es porque no hay servicio
@@ -485,111 +526,159 @@ export class TrenesService {
   }
 
   async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
-    let desde: Date;
-    let hasta: Date;
-    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
-      const anio = Number(mes.slice(0, 4));
-      const mesNum = Number(mes.slice(5, 7));
-      desde = new Date(Date.UTC(anio, mesNum - 1, 1));
-      hasta = new Date(Date.UTC(anio, mesNum, 1));
-    } else {
-      const ahora = new Date();
-      desde = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1));
-      hasta = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 1));
-    }
-    const filas = await getPrisma().impuntualidadTren.groupBy({
-      by: ['vehiculoId'],
-      where: { fecha: { gte: desde, lt: hasta } },
-      _count: { _all: true },
-      _avg: { retrasoMaxSeg: true },
-      _max: { retrasoMaxSeg: true },
-      _min: { numeroTren: true },
-    });
-    const resultado: PuntualidadTrenResponse[] = filas.map((f) => ({
-      vehiculoId: f.vehiculoId,
-      numeroTren: f._min.numeroTren,
-      vecesImpuntuales: f._count._all,
-      retrasoMedioSeg: Math.round(f._avg.retrasoMaxSeg ?? 0),
-      retrasoMaxSeg: f._max.retrasoMaxSeg ?? 0,
-    }));
+    const { desde, hasta } = rangoMes(mes);
+    const prisma = getPrisma();
 
-    // Enriquecer con el trayecto y horario habitual de sus servicios impuntuales
+    // Servicios impuntuales del mes (≈3k filas): se traen enteros para poder
+    // contarlos por (tripId, fecha) y agruparlos por eje en memoria.
+    const filas = await prisma.impuntualidadTren.findMany({
+      where: { fecha: { gte: desde, lt: hasta } },
+      select: {
+        tripId: true,
+        vehiculoId: true,
+        numeroTren: true,
+        fecha: true,
+        retrasoMaxSeg: true,
+      },
+    });
+    if (filas.length === 0) return [];
+
+    // Extremos de los trips del mes en UNA query (ParadaHorario: orden mín =
+    // origen del viaje, orden máx = destino). Sin paradas para un trip, ese
+    // servicio cae al agrupado por vehículo (fallback).
+    const tripIds = [...new Set(filas.map((f) => f.tripId))];
+    const paradas = await prisma.paradaHorario.findMany({
+      where: { tripId: { in: tripIds } },
+      select: { tripId: true, orden: true, estacionId: true, llegadaMin: true, salidaMin: true },
+    });
+    const extremos = extremosPorTrip(paradas);
+
+    // Nombres reales de las estaciones extremo: otra única query (sin N+1)
+    const estacionesIds = [
+      ...new Set([...extremos.values()].flatMap((e) => [e.origenEstacionId, e.destinoEstacionId])),
+    ];
+    const estaciones =
+      estacionesIds.length > 0
+        ? await prisma.estacion.findMany({
+            where: { id: { in: estacionesIds } },
+            select: { id: true, nombre: true },
+          })
+        : [];
+    const nombres = new Map(estaciones.map((e) => [e.id, e.nombre]));
+
+    const resultado = agruparPorEje(filas, extremos, nombres);
+
+    // Fallback: lo que el eje no cubre (trips sin paradas en el feed) se
+    // completa con los horarios del mes, como antes. Solo consulta si queda
+    // algo por rellenar: los grupos con eje ya llevan nombres, salida y llegada.
     try {
-      const servicios = await getPrisma().impuntualidadTren.findMany({
-        where: { fecha: { gte: desde, lt: hasta } },
-        select: { vehiculoId: true, numeroTren: true, tripId: true, fecha: true },
-      });
-      const numeros = new Set<string>();
-      for (const s of servicios) {
-        if (s.numeroTren) numeros.add(s.numeroTren);
-        numeros.add(prefijoTripId(s.tripId));
-      }
-      if (numeros.size > 0) {
-        const horarios = await getPrisma().horarioTren.findMany({
-          where: { numeroTren: { in: [...numeros] }, fecha: { gte: desde, lt: hasta } },
-          select: {
-            numeroTren: true,
-            fecha: true,
-            salida: true,
-            origen: { select: { nombre: true } },
-            destino: { select: { nombre: true } },
-          },
-        });
-        const porClave = new Map(
-          horarios.map((h) => [`${h.numeroTren}|${h.fecha.toISOString().slice(0, 10)}`, h]),
-        );
-        const trayectosPorVehiculo = new Map<
-          string,
-          Map<
-            string,
-            { cuenta: number; origen: string; destino: string; salida: string; fecha: string }
-          >
-        >();
-        for (const s of servicios) {
-          const dia = s.fecha.toISOString().slice(0, 10);
-          const horario =
-            porClave.get(`${s.numeroTren ?? ''}|${dia}`) ??
-            porClave.get(`${prefijoTripId(s.tripId)}|${dia}`);
-          if (!horario) continue;
-          const clave = `${horario.origen.nombre}→${horario.destino.nombre}|${horaGtfs(horario.salida.toISOString())}`;
-          const porVehiculo = trayectosPorVehiculo.get(s.vehiculoId) ?? new Map();
-          const previo = porVehiculo.get(clave);
-          porVehiculo.set(
-            clave,
-            previo
-              ? { ...previo, cuenta: previo.cuenta + 1 }
-              : {
-                  cuenta: 1,
-                  origen: horario.origen.nombre,
-                  destino: horario.destino.nombre,
-                  salida: horaGtfs(horario.salida.toISOString()),
-                  fecha: dia,
-                },
-          );
-          trayectosPorVehiculo.set(s.vehiculoId, porVehiculo);
-        }
-        for (const fila of resultado) {
-          const mejor = [...(trayectosPorVehiculo.get(fila.vehiculoId)?.values() ?? [])].sort(
-            (a, b) => b.cuenta - a.cuenta,
-          )[0];
-          if (mejor) {
-            fila.origenNombre = mejor.origen;
-            fila.destinoNombre = mejor.destino;
-            fila.salida = mejor.salida;
-            fila.fecha = mejor.fecha;
-          }
-        }
-      }
+      await this.enriquecerPuntualidad(resultado, filas, extremos, desde, hasta);
     } catch (error) {
       this.logger.warn(`No se pudo enriquecer la puntualidad: ${String(error)}`);
     }
 
+    aplicarLlegadaEstimada(resultado);
+
+    const alfabeticamente = (a: PuntualidadTrenResponse, b: PuntualidadTrenResponse) =>
+      (a.clave ?? a.vehiculoId).localeCompare(b.clave ?? b.vehiculoId);
     if (orden === 'impuntualidad') {
-      resultado.sort((a, b) => b.retrasoMedioSeg - a.retrasoMedioSeg);
+      resultado.sort(
+        (a, b) =>
+          b.retrasoMedioSeg - a.retrasoMedioSeg ||
+          b.vecesImpuntuales - a.vecesImpuntuales ||
+          alfabeticamente(a, b),
+      );
     } else {
-      resultado.sort((a, b) => b.vecesImpuntuales - a.vecesImpuntuales);
+      resultado.sort(
+        (a, b) =>
+          b.vecesImpuntuales - a.vecesImpuntuales ||
+          b.retrasoMedioSeg - a.retrasoMedioSeg ||
+          alfabeticamente(a, b),
+      );
     }
     return resultado.slice(0, 100);
+  }
+
+  /**
+   * Complementa los grupos a los que les faltan datos (trips sin paradas, y
+   * por tanto sin eje) con su trayecto y horario del mes desde `HorarioTren`,
+   * igual que el enriquecimiento original. Solo se rellena lo que falta: los
+   * datos resueltos por eje (nombres, salida, llegada) mandan.
+   */
+  private async enriquecerPuntualidad(
+    filas: PuntualidadTrenResponse[],
+    servicios: ServicioImpuntual[],
+    extremos: Map<string, ExtremosTrip>,
+    desde: Date,
+    hasta: Date,
+  ): Promise<void> {
+    const pendientes = new Set(filas.filter((f) => !f.origenNombre).map((f) => f.clave));
+    if (pendientes.size === 0) return;
+
+    const numeros = new Set<string>();
+    for (const servicio of servicios) {
+      if (!pendientes.has(claveDeServicio(servicio, extremos))) continue;
+      if (servicio.numeroTren) numeros.add(servicio.numeroTren);
+      numeros.add(prefijoTripId(servicio.tripId));
+    }
+    if (numeros.size === 0) return;
+
+    const horarios = await getPrisma().horarioTren.findMany({
+      where: { numeroTren: { in: [...numeros] }, fecha: { gte: desde, lt: hasta } },
+      select: {
+        numeroTren: true,
+        fecha: true,
+        salida: true,
+        llegada: true,
+        origen: { select: { nombre: true } },
+        destino: { select: { nombre: true } },
+      },
+    });
+    if (horarios.length === 0) return;
+
+    const porClave = new Map(
+      horarios.map((h) => [`${h.numeroTren}|${h.fecha.toISOString().slice(0, 10)}`, h]),
+    );
+    const porGrupo = new Map<string, Map<string, TrayectoFrecuente>>();
+    for (const servicio of servicios) {
+      const clave = claveDeServicio(servicio, extremos);
+      if (!pendientes.has(clave)) continue;
+      const dia = servicio.fecha.toISOString().slice(0, 10);
+      const horario =
+        porClave.get(`${servicio.numeroTren ?? ''}|${dia}`) ??
+        porClave.get(`${prefijoTripId(servicio.tripId)}|${dia}`);
+      if (!horario) continue;
+      const salida = horaGtfs(horario.salida.toISOString());
+      const claveTrayecto = `${horario.origen.nombre}→${horario.destino.nombre}|${salida}`;
+      const trayectos = porGrupo.get(clave) ?? new Map<string, TrayectoFrecuente>();
+      const previo = trayectos.get(claveTrayecto);
+      trayectos.set(
+        claveTrayecto,
+        previo
+          ? { ...previo, cuenta: previo.cuenta + 1 }
+          : {
+              cuenta: 1,
+              origenNombre: horario.origen.nombre,
+              destinoNombre: horario.destino.nombre,
+              salida,
+              llegada: horaGtfs(horario.llegada.toISOString()),
+              fecha: dia,
+            },
+      );
+      porGrupo.set(clave, trayectos);
+    }
+
+    for (const fila of filas) {
+      const mejor = [...(porGrupo.get(fila.clave ?? '')?.values() ?? [])].sort(
+        (a, b) => b.cuenta - a.cuenta,
+      )[0];
+      if (!mejor) continue;
+      fila.origenNombre ??= mejor.origenNombre;
+      fila.destinoNombre ??= mejor.destinoNombre;
+      fila.salida ??= mejor.salida;
+      fila.llegada ??= mejor.llegada;
+      fila.fecha ??= mejor.fecha;
+    }
   }
 
   private async obtenerTripUpdates(url: string): Promise<TripUpdates> {

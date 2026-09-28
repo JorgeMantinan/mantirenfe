@@ -44,8 +44,8 @@ export function PaginaPuntualidad() {
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight">Trenes más impuntuales</h1>
           <p className="text-muted-foreground">
-            Ranking mensual de servicios con retraso de 5 minutos o más, medido con los datos en
-            vivo de Renfe
+            Ranking mensual de trayectos (origen → destino) con retrasos de 5 minutos o más, medido
+            con los datos en vivo de Renfe
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
@@ -108,8 +108,8 @@ export function PaginaPuntualidad() {
               })}
             </CardTitle>
             <CardDescription>
-              Servicios impuntuales = un trayecto concreto de un tren que llegó con 5+ minutos de
-              retraso
+              Servicios impuntuales = viajes de un mismo trayecto (origen → destino) que llegaron
+              con 5+ minutos de retraso
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -119,8 +119,10 @@ export function PaginaPuntualidad() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-3 font-medium">#</th>
                     <th className="py-2 pr-3 font-medium">Tren</th>
-                    <th className="py-2 pr-3 font-medium">Trayecto habitual</th>
+                    <th className="py-2 pr-3 font-medium">Trayecto</th>
                     <th className="py-2 pr-3 font-medium">Salida</th>
+                    <th className="py-2 pr-3 font-medium">Llegada</th>
+                    <th className="py-2 pr-3 font-medium">Llegada estimada</th>
                     <th className="py-2 pr-3 font-medium text-right">Servicios impuntuales</th>
                     <th className="py-2 pr-3 font-medium text-right">Retraso medio</th>
                     <th className="py-2 font-medium text-right">Peor retraso</th>
@@ -128,7 +130,7 @@ export function PaginaPuntualidad() {
                 </thead>
                 <tbody>
                   {datos.map((f, i) => (
-                    <tr key={f.vehiculoId} className="border-b last:border-b-0">
+                    <tr key={f.clave ?? f.vehiculoId} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 text-muted-foreground">{i + 1}</td>
                       <td className="py-2 pr-3 font-medium">{f.numeroTren ?? f.vehiculoId}</td>
                       <td className="py-2 pr-3">
@@ -141,6 +143,8 @@ export function PaginaPuntualidad() {
                         )}
                       </td>
                       <td className="py-2 pr-3">{f.salida ?? '—'}</td>
+                      <td className="py-2 pr-3">{f.llegada ?? '—'}</td>
+                      <td className="py-2 pr-3">{f.llegadaEstimada ?? '—'}</td>
                       <td className="py-2 pr-3 text-right">{f.vecesImpuntuales}</td>
                       <td className="py-2 pr-3 text-right">{formatMinutos(f.retrasoMedioSeg)}</td>
                       <td className="py-2 text-right">{formatMinutos(f.retrasoMaxSeg)}</td>
@@ -149,6 +153,10 @@ export function PaginaPuntualidad() {
                 </tbody>
               </table>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Llegada estimada = llegada programada + peor retraso registrado en el mes: es una
+              estimación orientativa, no una hora oficial.
+            </p>
           </CardContent>
         </Card>
       )}

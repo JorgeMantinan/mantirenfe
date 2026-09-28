@@ -17,6 +17,7 @@ import {
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
 import { sincronizarIncidencias } from './processors/incidencias';
 import { enviarResumenSemanal } from './processors/resumen-semanal';
+import { persistirSuprimidos } from './processors/suprimidos';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -90,6 +91,20 @@ async function programarTareas() {
     },
   );
 
+  // Trenes suprimidos (trip_updates CANCELED). Cadencia de 5 min: el feed se
+  // renueva cada 15-30 s, pero la tabla es histórica (upsert + poda de 7 días)
+  // y no hace falta martillearlo.
+  await colaMasiva.add(
+    'suprimidos',
+    {},
+    {
+      repeat: { pattern: '*/5 * * * *' },
+      jobId: 'suprimidos-gtfs-rt',
+      removeOnComplete: 50,
+      removeOnFail: 100,
+    },
+  );
+
   // Resumen semanal por push. Los cron de BullMQ son UTC: '0 8 * * 1' es lunes
   // 09:00 peninsular en invierno y 10:00 en verano — siempre lunes por la mañana
   // peninsular sin tener que cambiar el patrón cada cambio de hora.
@@ -105,7 +120,7 @@ async function programarTareas() {
   );
 
   logger.info(
-    'Tareas repetibles programadas (barrido 1min, incidencias 1min, sync GTFS 04:00, resumen semanal lunes)',
+    'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes)',
   );
   return { colaSondeo, colaMasiva, colaSync };
 }
@@ -130,6 +145,13 @@ async function main() {
       // servicio se refrescan solas cada minuto sin tocar el resto
       if (job.name === 'incidencias') {
         await sincronizarIncidencias(logger);
+        return;
+      }
+
+      // Mismo queue que el barrido, otro job repetible: los trenes suprimidos
+      // se persisten cada 5 min sin tocar el resto
+      if (job.name === 'suprimidos') {
+        await persistirSuprimidos(logger);
         return;
       }
 

@@ -18,6 +18,7 @@ import { PaginaNoEncontrada } from '@/pages/not-found';
 import { PaginaNotificaciones } from '@/pages/notificaciones/page';
 import { PaginaRecuperarPassword } from '@/pages/reset/page';
 import { PaginaRegistro } from '@/pages/registro/page';
+import { PaginaSuprimidos } from '@/pages/suprimidos/page';
 import { PaginaAjustes } from '@/pages/ajustes/page';
 import { PaginaCookies } from '@/pages/cookies/page';
 import { PaginaTransparencia } from '@/pages/transparencia/page';
@@ -108,6 +109,7 @@ export default function App() {
         />
         <Route path="/mapa" element={<PaginaMapa />} />
         <Route path="/incidencias" element={<PaginaIncidencias />} />
+        <Route path="/suprimidos" element={<PaginaSuprimidos />} />
         <Route path="/trenes" element={<PaginaTrenes />} />
         <Route path="/estaciones" element={<PaginaEstaciones />} />
         <Route path="/puntualidad" element={<PaginaPuntualidad />} />

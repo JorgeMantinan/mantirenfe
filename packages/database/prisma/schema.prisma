@@ -64,6 +64,7 @@ model Estacion {
   alertasDestino  Alerta[] @relation("AlertaDestino")
   horariosSalida  HorarioTren[] @relation("HorarioOrigen")
   horariosLlegada HorarioTren[] @relation("HorarioDestino")
+  paradas         ParadaHorario[]
 }
 
 model Alerta {
@@ -174,6 +175,9 @@ model HorarioTren {
   salida          DateTime
   llegada         DateTime
   operador        String?
+  // Trip GTFS que originó esta fila (1 fila por trip + fecha). Solo extremos:
+  // sirve para cruzar con ParadaHorario y saber qué viajes operan cada día.
+  tripId          String?
   origenEstacionId String
   destinoEstacionId String
   origen          Estacion @relation("HorarioOrigen", fields: [origenEstacionId], references: [id], onDelete: Cascade)
@@ -181,6 +185,32 @@ model HorarioTren {
 
   @@unique([numeroTren, fecha, origenEstacionId, salida])
   @@index([fecha, origenEstacionId])
+}
+
+// Paradas intermedias de cada trip del feed GTFS, SIN fecha: una fila por
+// (trip, stop_sequence) del stop_times.txt. Es el modelo GTFS canónico
+// (~1.66M filas fijas para AV/LD + CER) frente a materializar trayecto ×
+// fecha (~2.9M, descartado por cuota). Los días de servicio no se guardan
+// aquí: se resuelven cruzando tripId con HorarioTren.fecha.
+//
+// llegadaMin/salidaMin son minutos desde medianoche del día de servicio GTFS
+// (pueden superar 1440 en servicios que acaban tras la medianoche). No son
+// Date porque una parada sin fecha no tiene instante propio: el Date real se
+// calcula en la query como fecha del viaje + minutos.
+model ParadaHorario {
+  tripId     String
+  orden      Int
+  estacionId String
+  llegadaMin Int?
+  salidaMin  Int?
+  estacion   Estacion @relation(fields: [estacionId], references: [id], onDelete: Cascade)
+
+  // PK compuesta (sin id: ahorra una columna y su índice en 1.66M filas).
+  // gtfs: (trip_id, stop_sequence) es único por especificación. Medido en los
+  // feeds: AV/LD y CER no comparten ningún trip_id (0 solapes de 7.148+114.348).
+  @@id([tripId, orden])
+  // Origen de la query de horarios: paradas de una estación en viajes concretos
+  @@index([estacionId, tripId])
 }
 
 model PosicionTren {
@@ -223,6 +253,28 @@ model Incidencia {
   actualizadaEn       DateTime @default(now())
 
   @@index([activa])
+}
+
+// Trenes suprimidos detectados en el feed GTFS-RT (trip updates con
+// scheduleRelationship CANCELED). El feed no publica la fecha de servicio del
+// viaje, así que `fecha` es el día PENINSULAR en que se detectó: un trip puede
+// cancelarse hoy y operar mañana (misma tripId, distinta fecha).
+//
+// Sin FK a HorarioTren: el trip puede no estar en el horario (número null) y la
+// fila debe sobrevivir a re-sincronizaciones del GTFS estático.
+//
+// Semántica: si el trip deja de aparecer CANCELED en el feed, la fila se
+// MANTIENE (la cancelación fue real; el feed solo refleja el estado "ahora").
+// La única limpieza es la poda por antigüedad (>7 días) del worker.
+model Cancelacion {
+  id          String   @id @default(cuid())
+  tripId      String
+  fecha       DateTime @db.Date
+  numeroTren  String?
+  detectadaEn DateTime @default(now())
+
+  @@unique([tripId, fecha])
+  @@index([fecha])
 }
 
 model ImpuntualidadTren {

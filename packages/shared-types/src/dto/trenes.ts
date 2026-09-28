@@ -16,6 +16,28 @@ export function horaGtfs(iso: string | null | undefined): string {
   return iso.length >= 16 ? iso.slice(11, 16) : iso;
 }
 
+/**
+ * Día peninsular (YYYY-MM-DD). El worker registra las cancelaciones con el
+ * reloj de España, así que la API y la web deben usar el mismo para que el
+ * "hoy" por defecto no se desalinee entre las 00:00 y las 02:00 (UTC).
+ */
+export function fechaGtfs(ahora: Date = new Date()): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+}
+
+/**
+ * Fecha de una fila `@db.Date` ya serializada (la API la envía como ISO
+ * completo a medianoche UTC).
+ */
+export function fechaIso(valor: string | Date): string {
+  return typeof valor === 'string' ? valor.slice(0, 10) : valor.toISOString().slice(0, 10);
+}
+
 export type BusquedaHorariosQuery = z.infer<typeof busquedaHorariosQuerySchema>;
 
 export interface TramoTransbordo {
@@ -143,21 +165,60 @@ export interface EstadoSerializado {
   paradasSuprimidas?: string[];
 }
 
-/** Ranking mensual de impuntualidad (servicios con retraso >= umbral) */
+/**
+ * Ranking mensual de impuntualidad (servicios con retraso >= umbral).
+ *
+ * Cada fila es un **eje** del servicio (origen → destino del trip, resueltos
+ * con `ParadaHorario`), no un vehículo físico: la misma unidad que hace dos
+ * rutas distintas aparece en dos filas, y cada una cuenta solo sus propios
+ * servicios. Los trips sin paradas en el feed caen al agrupado por
+ * `vehiculoId` (antigua semántica) y se enriquecen con `HorarioTren`.
+ */
 export interface PuntualidadTrenResponse {
+  /** Vehículo representativo del grupo (el que más servicios impuntuales sumó) */
   vehiculoId: string;
   numeroTren: string | null;
-  /** Nº de servicios (trip+fecha) impuntuales en el mes */
+  /** Nº de servicios distintos (trip+fecha) impuntuales en el mes de ese eje */
   vecesImpuntuales: number;
   /** Media del retraso máximo de cada servicio, en segundos */
   retrasoMedioSeg: number;
   /** Peor retraso visto en el mes, en segundos */
   retrasoMaxSeg: number;
-  /** Trayecto habitual entre sus servicios impuntuales */
+  /** Origen real del eje (nombre desde `Estacion`) */
   origenNombre?: string | null;
+  /** Destino real del eje (nombre desde `Estacion`) */
   destinoNombre?: string | null;
-  /** Salida habitual del trayecto (hora peninsular HH:MM) */
+  /** Salida programada del eje (hora peninsular HH:MM) */
   salida?: string | null;
   /** Fecha del servicio impuntual representativo (YYYY-MM-DD) */
   fecha?: string | null;
+  /** Llegada programada del eje: última parada de sus trips (HH:MM) */
+  llegada?: string | null;
+  /**
+   * Llegada programada + `retrasoMaxSeg` del eje: estimación orientativa,
+   * NO una hora oficial (HH:MM).
+   */
+  llegadaEstimada?: string | null;
+  /** Clave estable del grupo (eje o vehículo si no hay paradas): id de fila en las UI */
+  clave?: string | null;
+}
+
+/**
+ * Fila de `GET /suprimidos`: un tren con cancelación registrada (GTFS-RT
+ * CANCELED) para la fecha consultada.
+ *
+ * `origen`/`destino`/`salida`/`llegada` son `null` cuando no hay datos que los
+ * sustenten (la trip no está en `HorarioTren` ni tiene paradas conocidas): la
+ * fila se devuelve igual para poder enseñarla con el badge "Sin datos".
+ * Las horas son hora peninsular en HH:MM.
+ */
+export interface SuprimidoResponse {
+  tripId: string;
+  numeroTren: string | null;
+  /** Día de la detección (YYYY-MM-DD) */
+  fecha: string;
+  origen: string | null;
+  destino: string | null;
+  salida: string | null;
+  llegada: string | null;
 }

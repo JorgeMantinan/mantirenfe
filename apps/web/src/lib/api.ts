@@ -23,6 +23,7 @@ export async function api<T>(
   const rutasPublicas = [
     '/estaciones',
     '/incidencias',
+    '/suprimidos',
     '/trenes/horarios',
     '/trenes/estacion',
     '/trenes/posiciones',

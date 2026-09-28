@@ -11,6 +11,7 @@ import { IncidenciasModule } from './incidencias/incidencias.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { QueueModule } from './queue/queue.module';
+import { SuprimidosModule } from './suprimidos/suprimidos.module';
 import { TrenesModule } from './trenes/trenes.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { TrenesModule } from './trenes/trenes.module';
     EstacionesModule,
     TrenesModule,
     IncidenciasModule,
+    SuprimidosModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

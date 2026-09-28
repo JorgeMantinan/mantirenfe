@@ -63,6 +63,15 @@ const ENTRADAS_PEQUENAS = [
   'trips.txt',
 ];
 
+/**
+ * Filas por createMany de ParadaHorario. 10k filas ≈1MB de parámetros: grande
+ * suficiente para que el viaje a la BD no domine el sync, pequeño para no
+ * desbancar la memoria del contenedor free (512MB).
+ */
+const TAM_LOTE_PARADAS = 10_000;
+/** Chunks de id para los deleteMany (el límite de parámetros de PG es65.535). */
+const TAM_LOTE_IDS = 5_000;
+
 function memoriaMb(): number {
   const u = process.memoryUsage();
   return Math.round((u.heapUsed + u.external + u.arrayBuffers) / 1048576);
@@ -215,7 +224,13 @@ function diasActivos(
 
 interface ManejadorStopTimes {
   cabecera: (celdas: string[]) => void;
-  linea: (celdas: string[]) => void;
+  /**
+   * `linea` puede ser asíncrona: así el volcado de ParadaHorario a la BD (en
+   * lotes de10k) se intercala con el streaming del zip sin acumular los1,66M
+   * de filas en memoria. El `await` dentro del bucle del stream aplica
+   * backpressure natural (el stream se frena mientras se escribe).
+   */
+  linea: (celdas: string[]) => void | Promise<void>;
 }
 
 /**
@@ -261,24 +276,24 @@ async function recorrerZip(
       if (nombre === 'stop_times.txt' && stopTimes) {
         let pendiente = Buffer.alloc(0);
         let cabeceraHecha = false;
-        const procesarLinea = (linea: string) => {
+        const procesarLinea = async (linea: string) => {
           if (!cabeceraHecha) {
             stopTimes.cabecera(parsearLinea(linea));
             cabeceraHecha = true;
           } else if (linea.trim()) {
-            stopTimes.linea(parsearLinea(linea));
+            await stopTimes.linea(parsearLinea(linea));
           }
         };
         for await (const trozo of entry.stream()) {
           pendiente = Buffer.concat([pendiente, trozo as Buffer]);
           let fin = pendiente.indexOf(10);
           while (fin >= 0) {
-            procesarLinea(pendiente.subarray(0, fin).toString('utf8').replace(/\r$/, ''));
+            await procesarLinea(pendiente.subarray(0, fin).toString('utf8').replace(/\r$/, ''));
             pendiente = pendiente.subarray(fin + 1);
             fin = pendiente.indexOf(10);
           }
         }
-        if (pendiente.length > 0) procesarLinea(pendiente.toString('utf8'));
+        if (pendiente.length > 0) await procesarLinea(pendiente.toString('utf8'));
       } else if (ENTRADAS_PEQUENAS.includes(nombre)) {
         buffers.set(nombre, await entry.buffer());
       }
@@ -417,6 +432,57 @@ function tripsLigeros(contenido: Buffer): TripLigero[] {
   return trips;
 }
 
+interface ParadaHorarioCruda {
+  tripId: string;
+  orden: number;
+  estacionId: string;
+  llegadaMin: number | null;
+  salidaMin: number | null;
+}
+
+type ClientePrisma = ReturnType<typeof getPrisma>;
+
+/**
+ * Ejecuta un borrado por chunks de ids: un solo `deleteMany` con los114k trips
+ * de CER superaría el límite de65.535 parámetros de Postgres.
+ */
+async function borrarPorChunks(
+  ids: string[],
+  borrar: (chunk: string[]) => Promise<{ count: number }>,
+): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < ids.length; i += TAM_LOTE_IDS) {
+    const resultado = await borrar(ids.slice(i, i + TAM_LOTE_IDS));
+    total += resultado.count;
+  }
+  return total;
+}
+
+/**
+ * Retira de ParadaHorario los trips que ya no aparecen en los feeds
+ * sincronizados (servicio retirado, feed fuera de configuración...): sin esto
+ * la tabla crecería sin límite y nos comería la cuota free de Supabase.
+ *
+ * Solo se llama cuando TODOS los feeds se han procesado: si un feed falla, sus
+ * trips no están en `conocidos` y le borraríamos todas las paradas.
+ */
+async function limpiarParadasObsoletas(
+  cliente: ClientePrisma,
+  conocidos: Set<string>,
+  logger: Logger,
+): Promise<void> {
+  const enBd = await cliente.paradaHorario.findMany({
+    distinct: ['tripId'],
+    select: { tripId: true },
+  });
+  const obsoletos = enBd.map((p) => p.tripId).filter((tripId) => !conocidos.has(tripId));
+  if (obsoletos.length === 0) return;
+  const borrados = await borrarPorChunks(obsoletos, (chunk) =>
+    cliente.paradaHorario.deleteMany({ where: { tripId: { in: chunk } } }),
+  );
+  logger.info({ obsoletos: obsoletos.length, borrados }, 'Paradas GTFS obsoletas retiradas');
+}
+
 export async function sincronizarHorarios(logger: Logger): Promise<number> {
   const prisma = getPrisma();
   const hoy = new Date();
@@ -426,17 +492,76 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
   const hasta = new Date(hoy);
   hasta.setUTCDate(hasta.getUTCDate() + Number(process.env.GTFS_DIAS_VENTANA ?? 45));
 
-  let insertados = 0;
+  // Se resuelve una sola vez: el streaming de stop_times necesita saber a qué
+  // estación pertenece cada parada (hay FK a Estacion) y no cambia durante el
+  // run (sincronizarEstaciones corre antes).
+  const estacionesPorCodigo = new Map(
+    (
+      await prisma.estacion.findMany({
+        select: { id: true, codigo: true },
+      })
+    ).map((e) => [e.codigo, e.id]),
+  );
 
-  for (const fuente of fuentesGtfs()) {
+  // Backfill de HorarioTren.tripId: las filas creadas antes de la migración no
+  // pueden "completarse" con createMany (el @@unique las salta), así que se
+  // borran para que este mismo run las recrie con tripId. Solo afecta a filas
+  // SIN tripId dentro de la ventana: tras el primer sync ya no queda ninguna y
+  // este count devuelve0 (coste residual en los runs siguientes).
+  const sinTripId = await prisma.horarioTren.count({
+    where: { fecha: { gte: desde, lte: hasta }, tripId: null },
+  });
+  if (sinTripId > 0) {
+    logger.info({ filas: sinTripId }, 'Repoblando horarios de la ventana sin tripId');
+  }
+
+  let insertados = 0;
+  let insertadasParadas = 0;
+  const feeds = fuentesGtfs();
+  const tripsConocidos = new Set<string>();
+  let feedsOk = 0;
+
+  for (const fuente of feeds) {
     const url = fuente.url;
+    const inicioFeed = Date.now();
     // stop_times se acumula solo en sus extremos (primera/ultima parada por trip)
     const extremos = new Map<string, ExtremosViaje>();
+    // Trips vistos en stop_times: van a ParadaHorario aunque no estén en trips.txt
+    const tripsStopTimes = new Set<string>();
+    let loteParadas: ParadaHorarioCruda[] = [];
+    let errorParadas: unknown = null;
+    let msParadas = 0;
+    let filasParadas = 0;
     let iTrip = -1;
     let iStop = -1;
     let iSeq = -1;
     let iArr = -1;
     let iDep = -1;
+
+    /** Escribe un lote y deja constancia de cuánto se tarda en la BD. */
+    const vaciarLoteParadas = async () => {
+      if (loteParadas.length === 0) return;
+      const lote = loteParadas;
+      loteParadas = [];
+      const inicio = Date.now();
+      try {
+        const resultado = await prisma.paradaHorario.createMany({
+          data: lote,
+          skipDuplicates: true,
+        });
+        insertadasParadas += resultado.count;
+      } catch (error) {
+        // Un fallo aquí (tabla sin migrar, cuota...) no debe tumbar el sync de
+        // horarios: se corta el volcado de este feed y el próximo run lo
+        // reintenta. No se borra nada, así que no se pierde información.
+        if (!errorParadas) {
+          errorParadas = error;
+          logger.error({ url, err: error }, 'No se pudieron guardar las paradas GTFS');
+        }
+      } finally {
+        msParadas += Date.now() - inicio;
+      }
+    };
 
     const buffers = await recorrerZip(url, logger, {
       cabecera: (cabecera) => {
@@ -446,10 +571,11 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         iArr = cabecera.indexOf('arrival_time');
         iDep = cabecera.indexOf('departure_time');
       },
-      linea: (celdas) => {
+      linea: async (celdas) => {
         const tripId = iTrip >= 0 ? celdas[iTrip] : undefined;
         const stopId = iStop >= 0 ? celdas[iStop] : undefined;
         if (!tripId || !stopId) return;
+        tripsStopTimes.add(tripId);
         const orden = Number(iSeq >= 0 ? celdas[iSeq] : NaN);
         const llegada = minutosDesdeMedianoche(
           (iArr >= 0 ? celdas[iArr] : '') || (iDep >= 0 ? celdas[iDep] : '') || '',
@@ -458,6 +584,29 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
           (iDep >= 0 ? celdas[iDep] : '') || (iArr >= 0 ? celdas[iArr] : '') || '',
         );
         if (!Number.isFinite(orden) || llegada === null || salida === null) return;
+
+        // ParadaHorario: TODA la parada del trip (no solo extremos), sin fecha.
+        // Se descartan las paradas cuya estación no exista en Estacion (FK).
+        const estacionId = estacionesPorCodigo.get(stopId);
+        if (estacionId && !errorParadas) {
+          loteParadas.push({ tripId, orden, estacionId, llegadaMin: llegada, salidaMin: salida });
+          filasParadas++;
+          if (loteParadas.length >= TAM_LOTE_PARADAS) await vaciarLoteParadas();
+          if (filasParadas % 200_000 === 0) {
+            logger.info(
+              {
+                fase: 'paradas',
+                url,
+                leidas: filasParadas,
+                insertadas: insertadasParadas,
+                msParadas,
+                ms: Date.now() - inicioFeed,
+                mb: memoriaMb(),
+              },
+              'progreso ParadaHorario',
+            );
+          }
+        }
 
         const parada: ParadaViaje = { stopId, orden, llegada, salida };
         const ext = extremos.get(tripId);
@@ -469,8 +618,24 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         }
       },
     });
+    await vaciarLoteParadas();
 
-    logger.info({ fase: 'stop-times', url, mb: memoriaMb(), trips: extremos.size }, 'sync memoria');
+    const msFeed = Date.now() - inicioFeed;
+    logger.info(
+      {
+        fase: 'stop-times',
+        url,
+        mb: memoriaMb(),
+        trips: extremos.size,
+        filasParadas,
+        insertadas: insertadasParadas,
+        msParadas,
+        msStream: msFeed - msParadas,
+        ms: msFeed,
+        paradasError: errorParadas ? String(errorParadas) : undefined,
+      },
+      'sync memoria',
+    );
 
     const tripsBuf = buffers.get('trips.txt');
     const calendarBuf = buffers.get('calendar.txt');
@@ -523,13 +688,29 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     }
 
     const trips = tripsLigeros(tripsBuf);
+    // Los trips de este feed protegen sus paradas de la limpieza final
+    for (const trip of trips) tripsConocidos.add(trip.tripId);
+    for (const tripId of tripsStopTimes) tripsConocidos.add(tripId);
 
-    const estacionesPorCodigo = new Map(
-      (await prisma.estacion.findMany({ select: { id: true, codigo: true } })).map((e) => [
-        e.codigo,
-        e.id,
-      ]),
-    );
+    if (sinTripId > 0) {
+      // Acotado a los numeroTren de ESTE feed: si falla a mitad, las filas del
+      // otro feed (con otro rango de numeroTren) siguen intactas.
+      const numeros = new Set<string>();
+      for (const trip of trips) numeros.add(trip.numeroTren || trip.tripId || 'sin-numero');
+      const borradas = await borrarPorChunks([...numeros], (chunk) =>
+        prisma.horarioTren.deleteMany({
+          where: {
+            fecha: { gte: desde, lte: hasta },
+            tripId: null,
+            numeroTren: { in: chunk },
+          },
+        }),
+      );
+      logger.info(
+        { url, numeros: numeros.size, borradas },
+        'Horarios sin tripId retirados para reinsertarlos con tripId',
+      );
+    }
 
     const fechasCache = new Map<string, Set<string>>();
     let lote: Array<{
@@ -538,6 +719,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       salida: Date;
       llegada: Date;
       operador: string | null;
+      tripId: string;
       origenEstacionId: string;
       destinoEstacionId: string;
     }> = [];
@@ -592,6 +774,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
           salida: new Date(salidaMs),
           llegada: new Date(llegadaMs),
           operador,
+          tripId,
           origenEstacionId: origenId,
           destinoEstacionId: destinoId,
         });
@@ -599,12 +782,37 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       }
     }
     await vaciarLote();
+    feedsOk++;
 
     logger.info(
-      { url, trips: trips.length, fechas: fechasCache.size, insertados, mb: memoriaMb() },
+      {
+        url,
+        trips: trips.length,
+        fechas: fechasCache.size,
+        insertados,
+        paradas: insertadasParadas,
+        msParadas,
+        ms: Date.now() - inicioFeed,
+        mb: memoriaMb(),
+      },
       'Horarios GTFS importados',
     );
   }
 
+  // Limpieza final de ParadaHorario: solo con todos los feeds correctos.
+  if (feeds.length > 0 && feedsOk === feeds.length) {
+    try {
+      await limpiarParadasObsoletas(prisma, tripsConocidos, logger);
+    } catch (error) {
+      logger.warn({ err: error }, 'No se pudieron limpiar las paradas GTFS obsoletas');
+    }
+  } else {
+    logger.warn(
+      { feedsOk, feeds: feeds.length },
+      'Limpieza de paradas GTFS obsoletas omitida (algún feed falló)',
+    );
+  }
+
+  logger.info({ insertados, insertadasParadas, mb: memoriaMb() }, 'Horarios GTFS sincronizados');
   return insertados;
 }
