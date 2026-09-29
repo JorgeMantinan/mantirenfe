@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import {
   Dimensions,
   FlatList,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,6 +18,7 @@ import {
   esOuigo,
   funcionIndemnizacion,
   horaGtfs,
+  type EstacionDetalleResponse,
   type EstacionResponse,
   type HorarioTrenResponse,
   type HorariosResponse,
@@ -92,6 +94,11 @@ function quitarArticulo(texto: string): string {
   return texto.replace(/^(la|el|los|las|a|o)\s+/, '');
 }
 
+/** Enlace externo a OpenStreetMap con la estación centrada (zoom 16). */
+function mapaExterno(latitud: number, longitud: number): string {
+  return `https://www.openstreetmap.org/?mlat=${latitud}&mlon=${longitud}#map=16/${latitud}/${longitud}`;
+}
+
 export default function Trenes() {
   const [modo, setModo] = useState<Modo>('estaciones');
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
@@ -163,18 +170,57 @@ export default function Trenes() {
   const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
   const [cargandoSalidas, setCargandoSalidas] = useState(false);
   const [estacionSel, setEstacionSel] = useState('');
+  // Ficha enriquecida (data.renfe.com): se pide en paralelo a las salidas y si
+  // falla seguimos enseñando la tarjeta solo con las salidas.
+  const [detalle, setDetalle] = useState<EstacionDetalleResponse | null>(null);
+  const [detalleListo, setDetalleListo] = useState(false);
+  const [coordsSel, setCoordsSel] = useState<{ lat: number; lng: number } | null>(null);
+  const peticionDetalle = useRef(0);
 
-  const cargarSalidas = (nombre: string) => {
+  const cargarDetalle = (nombre: string) => {
+    const id = ++peticionDetalle.current;
+    setDetalle(null);
+    setDetalleListo(false);
+    api<EstacionDetalleResponse>(`/estaciones/detalle?q=${encodeURIComponent(nombre)}`)
+      .then((d) => {
+        if (peticionDetalle.current !== id) return;
+        setDetalle(d);
+        setDetalleListo(true);
+      })
+      .catch(() => {
+        if (peticionDetalle.current !== id) return;
+        setDetalle(null);
+        setDetalleListo(true);
+      });
+  };
+
+  const cargarSalidas = (nombre: string, estacion?: EstacionResponse) => {
     const fecha = new Date().toISOString().slice(0, 10);
     setEstacionSel(nombre);
     setSalidas(null);
     setCargandoSalidas(true);
+    setCoordsSel(
+      estacion && estacion.latitud !== null && estacion.longitud !== null
+        ? { lat: estacion.latitud, lng: estacion.longitud }
+        : null,
+    );
+    cargarDetalle(nombre);
     api<HorarioTrenResponse[]>(
       `/trenes/estacion?estacion=${encodeURIComponent(nombre)}&fecha=${fecha}`,
     )
       .then(setSalidas)
       .catch(() => setSalidas([]))
       .finally(() => setCargandoSalidas(false));
+  };
+
+  /** Cierra la tarjeta de salidas y cancela la ficha pendiente (si la hay). */
+  const cerrarSalidas = () => {
+    peticionDetalle.current++;
+    setSalidas(null);
+    setEstacionSel('');
+    setDetalle(null);
+    setDetalleListo(false);
+    setCoordsSel(null);
   };
 
   // Búsqueda en el servidor mientras se escribe (la lista fija no incluía,
@@ -307,6 +353,19 @@ export default function Trenes() {
     if (modo === 'horarios') void buscarHorarios();
     if (modo === 'impuntuales') cargarImpuntuales();
   };
+
+  // Ficha de la estación seleccionada (fallo tolerado: sin ficha no se rompe nada)
+  const latitud = detalle?.latitud ?? coordsSel?.lat ?? null;
+  const longitud = detalle?.longitud ?? coordsSel?.lng ?? null;
+  const urlMapa = latitud !== null && longitud !== null ? mapaExterno(latitud, longitud) : null;
+  const aforos = (detalle?.aforos ?? []).slice(0, 3);
+  const lineaFicha = [
+    detalle?.poblacion,
+    detalle?.provincia,
+    detalle?.cp ? `CP ${detalle.cp}` : null,
+  ]
+    .filter((valor): valor is string => Boolean(valor))
+    .join(' · ');
 
   return (
     <View style={s.pantalla}>
@@ -501,16 +560,39 @@ export default function Trenes() {
             <Text style={s.nombre}>
               {cargandoSalidas ? 'Cargando salidas...' : `Salidas de ${estacionSel} hoy`}
             </Text>
-            <Text
-              style={{ color: paleta.primario, fontWeight: '600' }}
-              onPress={() => {
-                setSalidas(null);
-                setEstacionSel('');
-              }}
-            >
+            <Text style={{ color: paleta.primario, fontWeight: '600' }} onPress={cerrarSalidas}>
               Cerrar
             </Text>
           </View>
+          {!cargandoSalidas && !detalleListo ? (
+            <Text style={s.meta}>Cargando datos de la estación…</Text>
+          ) : detalle ? (
+            <View style={s.ficha}>
+              {detalle.direccion ? <Text style={s.meta}>{detalle.direccion}</Text> : null}
+              {lineaFicha ? <Text style={s.meta}>{lineaFicha}</Text> : null}
+              {urlMapa ? (
+                <Boton
+                  titulo="Ver en mapa"
+                  variante="contorno"
+                  onPress={() => {
+                    void Linking.openURL(urlMapa).catch(() => undefined);
+                  }}
+                  style={s.botonMapa}
+                />
+              ) : null}
+              {aforos.length > 0 ? (
+                <View style={s.aforos}>
+                  <Text style={s.nombre}>Aforo histórico (2018)</Text>
+                  {aforos.map((aforo) => (
+                    <Text key={aforo.franja} style={s.meta}>
+                      {aforo.franja} · {(aforo.subidos + aforo.bajados).toLocaleString('es-ES')}{' '}
+                      viajeros
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           {!cargandoSalidas && (salidas ?? []).length === 0 ? (
             <Text style={s.meta}>Sin salidas registradas hoy</Text>
           ) : (
@@ -541,7 +623,7 @@ export default function Trenes() {
             <Tarjeta
               style={{ borderColor: estacionSel === item.nombre ? paleta.primario : undefined }}
             >
-              <Pressable onPress={() => cargarSalidas(item.nombre)}>
+              <Pressable onPress={() => cargarSalidas(item.nombre, item)}>
                 <Text style={s.nombre}>{item.nombre}</Text>
                 <Text style={s.meta}>
                   {item.codigo}
@@ -899,6 +981,22 @@ const estilos = (c: Paleta) =>
     },
     salidasScroll: {
       maxHeight: MAX_ALTO_SALIDAS,
+    },
+    ficha: {
+      gap: espaciado.xs,
+      paddingVertical: espaciado.sm,
+      borderTopWidth: 1,
+      borderTopColor: c.borde,
+    },
+    botonMapa: {
+      minHeight: 40,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      alignSelf: 'flex-start',
+    },
+    aforos: {
+      gap: 2,
+      marginTop: espaciado.xs,
     },
     fila: {
       flexDirection: 'row',

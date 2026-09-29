@@ -103,6 +103,14 @@ function Aplicacion() {
           name="alertas/[id]"
           options={{ title: 'Alerta', headerLeft: () => <Atras /> }}
         />
+        <Stack.Screen
+          name="incidencias"
+          options={{ title: 'Incidencias', headerLeft: () => <Atras /> }}
+        />
+        <Stack.Screen
+          name="suprimidos"
+          options={{ title: 'Suprimidos', headerLeft: () => <Atras /> }}
+        />
       </Stack>
     </AuthProvider>
   );

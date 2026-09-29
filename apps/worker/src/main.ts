@@ -56,7 +56,6 @@ async function programarTareas() {
   const { Queue } = await import('bullmq');
   const colaSondeo = new Queue(COLA_SONDEO, { connection: conexion });
   const colaMasiva = new Queue(COLA_SONDEO_MASIVO, { connection: conexion });
-  const colaSync = new Queue(COLA_SYNC_GTFS, { connection: conexion });
 
   await colaMasiva.add(
     'barrido',
@@ -69,16 +68,10 @@ async function programarTareas() {
     },
   );
 
-  await colaSync.add(
-    'sync-gtfs',
-    {},
-    {
-      repeat: { pattern: '0 4 * * *' },
-      jobId: 'sync-gtfs-diario',
-      removeOnComplete: 20,
-      removeOnFail: 50,
-    },
-  );
+  // El sync GTFS pesado (ParadaHorario: ~237 MB pico) ya NO corre aquí: lo hace
+  // GitHub Actions (`.github/workflows/sync-gtfs.yml`) para no reventar los
+  // 512 MB del contenedor de Render (API+worker comparten plan free). El
+  // worker de COLA_SYNC_GTFS se mantiene por si se encola manualmente.
 
   // Incidencias de servicio (alerts.pb, el feed se renueva cada 20 s)
   await colaMasiva.add(
@@ -138,7 +131,7 @@ async function programarTareas() {
   logger.info(
     'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes, digest-email 07:00/08:00)',
   );
-  return { colaSondeo, colaMasiva, colaSync };
+  return { colaSondeo, colaMasiva };
 }
 
 async function main() {

@@ -1,0 +1,42 @@
+# Sync GTFS diario (horarios + ParadaHorario + estaciones).
+# Fuera de Render a propósito: el sync pica ~237 MB y el contenedor de Render
+# (API + worker juntos) solo tiene512 MB en el plan free — ahí residía el OOM.
+# El worker ya no programa este job (ver apps/worker/src/main.ts).
+#
+# Secrets requeridos (repo → Settings → Secrets and variables → Actions):
+#   BACKUP_DATABASE_URL  (mismo valor que el backup semanal: DATABASE_URL de Supabase)
+#   NAP_API_KEY          (opcional; sin ella se omite el feed de Ouigo con un warning)
+name: Sync GTFS diario
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # 04:00 UTC = 05:00/06:00 peninsular (antes del pico de mañana)
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar cliente Prisma
+        run: pnpm db:generate
+
+      - name: Sincronizar estaciones, horarios y paradas GTFS
+        run: pnpm --filter @mantirenfe/worker exec tsx src/cli/sync-gtfs.ts
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          GTFS_DIAS_VENTANA: '45'
+          GTFS_ZIP_URLS_OUIGO: 'https://nap.transportes.gob.es/api/Fichero/download/1766'
+          NAP_API_KEY: ${{ secrets.NAP_API_KEY }}

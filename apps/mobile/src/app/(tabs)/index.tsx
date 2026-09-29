@@ -1,19 +1,31 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { AlertaResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaAvisos, etiquetaEstado } from '@/lib/alertas';
+import {
+  cuentaAtras,
+  etiquetaDia,
+  proximaSalida,
+  relojPeninsular,
+  textoPlazas,
+  tonoPlazas,
+} from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 import { sincronizarWidget } from '@/widget/actualizarWidget';
 
+/** Cada cuánto se re-calcula la cuenta atrás (la hora de salida no se mueve). */
+const INTERVALO_CUENTA_ATRAS_MS = 60_000;
+
 export default function Alertas() {
   const [alertas, setAlertas] = useState<AlertaResponse[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [listo, setListo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
   const s = useMemo(() => estilos(paleta), [paleta]);
@@ -23,6 +35,7 @@ export default function Alertas() {
     api<AlertaResponse[]>('/alertas')
       .then((datos) => {
         setAlertas(datos);
+        setListo(true);
         setError(null);
         void sincronizarWidget(datos);
       })
@@ -64,12 +77,32 @@ export default function Alertas() {
   return (
     <View style={s.pantalla}>
       <View style={s.encabezado}>
-        <Text style={s.titulo}>Mis alertas</Text>
-        <Boton
-          titulo="+ Nueva"
-          onPress={() => router.push('/alertas/nueva')}
-          style={s.botonNueva}
-        />
+        <View style={s.filaEncabezado}>
+          <Text style={s.titulo}>Mis alertas</Text>
+          <Boton
+            titulo="+ Nueva"
+            onPress={() => router.push('/alertas/nueva')}
+            style={s.botonNueva}
+          />
+        </View>
+        <View style={s.accesos}>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push('/incidencias')}
+            style={s.acceso}
+          >
+            <Ionicons name="warning-outline" size={14} color={paleta.primario} />
+            <Text style={s.accesoTexto}>Incidencias</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push('/suprimidos')}
+            style={s.acceso}
+          >
+            <Ionicons name="remove-circle-outline" size={14} color={paleta.primario} />
+            <Text style={s.accesoTexto}>Suprimidos</Text>
+          </Pressable>
+        </View>
       </View>
 
       {error ? (
@@ -83,6 +116,7 @@ export default function Alertas() {
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
         contentContainerStyle={s.lista}
+        ListHeaderComponent={<TarjetaProximoViaje alertas={listo ? alertas : null} />}
         ListEmptyComponent={
           cargando ? null : (
             <View style={s.vacio}>
@@ -148,6 +182,68 @@ export default function Alertas() {
   );
 }
 
+/**
+ * "Tu próximo viaje": la próxima salida entre las alertas ACTIVAS, con cuenta
+ * atrás (re-render cada minuto) y acceso al detalle. `alertas = null` significa
+ * "aún sin cargar" y no pinta nada.
+ */
+function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) {
+  const [ahora, setAhora] = useState(() => new Date());
+  const { paleta } = useTema();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
+  useEffect(() => {
+    const id = setInterval(() => setAhora(new Date()), INTERVALO_CUENTA_ATRAS_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  if (alertas === null) return null;
+
+  const salida = proximaSalida(alertas, ahora);
+
+  if (!salida) {
+    return (
+      <Tarjeta>
+        <Text style={s.viajeTitulo}>Tu próximo viaje</Text>
+        <Text style={s.viajeVacio}>Aún no hay ninguna salida en camino</Text>
+      </Tarjeta>
+    );
+  }
+
+  const hoy = relojPeninsular(ahora).fecha;
+  const etiqueta = etiquetaDia(salida.fecha, hoy);
+  const detalles = [salida.salida ?? 'hora por confirmar'];
+  if (salida.numeroTren) detalles.push(`tren ${salida.numeroTren}`);
+  const linea = salida.salida ? `${etiqueta} · ${detalles.join(' · ')}` : detalles.join(' · ');
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push(`/alertas/${salida.alertaId}`)}
+    >
+      <Tarjeta style={{ borderColor: paleta.primario }}>
+        <View style={s.viajeFila}>
+          <Text style={s.viajeTitulo}>Tu próximo viaje</Text>
+          <Etiqueta tono={tonoPlazas(salida.estado)}>{textoPlazas(salida)}</Etiqueta>
+        </View>
+        <Text style={s.viajeRuta}>
+          {salida.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+          {salida.destinoNombre}
+        </Text>
+        <Text style={s.viajeCuenta}>
+          {salida.salidaEn === null ? etiqueta : cuentaAtras(salida.salidaEn - ahora.getTime())}
+        </Text>
+        <Text style={s.viajeLinea}>{linea}</Text>
+        {salida.estado === 'sin-datos' ? (
+          <Text style={s.viajeNota}>
+            Aún no sabemos las plazas: comprobamos cada {salida.intervaloSondeoMin} min
+          </Text>
+        ) : null}
+      </Tarjeta>
+    </Pressable>
+  );
+}
+
 const estilos = (c: Paleta) =>
   StyleSheet.create({
     pantalla: {
@@ -155,14 +251,32 @@ const estilos = (c: Paleta) =>
       backgroundColor: c.fondoSecundario,
     },
     encabezado: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      gap: espaciado.sm,
       paddingHorizontal: espaciado.md,
       paddingVertical: espaciado.sm,
       backgroundColor: c.fondo,
       borderBottomWidth: 1,
       borderBottomColor: c.borde,
+    },
+    filaEncabezado: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    accesos: {
+      flexDirection: 'row',
+      gap: espaciado.lg,
+    },
+    acceso: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 2,
+    },
+    accesoTexto: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.primario,
     },
     titulo: {
       fontSize: 22,
@@ -227,5 +341,39 @@ const estilos = (c: Paleta) =>
       textAlign: 'center',
       maxWidth: 280,
       marginBottom: espaciado.sm,
+    },
+    viajeFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    viajeTitulo: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.primario,
+    },
+    viajeRuta: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    viajeCuenta: {
+      fontSize: 30,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    viajeLinea: {
+      fontSize: 13,
+      color: c.textoSecundario,
+    },
+    viajeNota: {
+      fontSize: 12,
+      color: c.textoSecundario,
+    },
+    viajeVacio: {
+      fontSize: 14,
+      color: c.textoSecundario,
     },
   });

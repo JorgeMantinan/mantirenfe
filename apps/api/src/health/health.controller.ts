@@ -49,6 +49,7 @@ export class HealthController {
 
     const alertas = await this.resumenSondeo();
     const sano = estado.baseDatos === 'ok';
+    const memoria = process.memoryUsage();
     return {
       estado,
       sano,
@@ -56,6 +57,12 @@ export class HealthController {
       ultimoSondeoGlobal: alertas.ultimoSondeoEn,
       alertas,
       umbralRetrasoMinutos: UMBRAL_RETRASO_MINUTOS,
+      // Diagnóstico de OOM de Render: si rssMb se acerca a512, hay que actuar
+      memoria: {
+        rssMb: Math.round(memoria.rss / 1_048_576),
+        heapUsadoMb: Math.round(memoria.heapUsed / 1_048_576),
+        heapTotalMb: Math.round(memoria.heapTotal / 1_048_576),
+      },
     };
   }
 

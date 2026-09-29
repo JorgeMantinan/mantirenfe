@@ -1,0 +1,335 @@
+import { fechaGtfs, type AlertaResponse, type EstadoSerializado } from '@mantirenfe/shared-types';
+import { formatearPrecio } from './precios';
+
+/** Días que miramos hacia delante cuando una alerta recurrente no tiene trenes hoy. */
+export const HORIZONTE_DIAS = 7;
+
+/** Estado de la plaza del tren elegido (para el badge de la tarjeta). */
+export type EstadoPlazas = 'cancelado' | 'plazas' | 'completo' | 'sin-datos';
+
+/** Tonos de `Etiqueta` (móvil) que usa la tarjeta, sin depender de React. */
+export type TonoPlazas = 'error' | 'exito' | 'neutro' | 'primario';
+
+export interface ProximaSalida {
+  alertaId: string;
+  origenNombre: string;
+  destinoNombre: string;
+  /** Día peninsular de la salida (YYYY-MM-DD). */
+  fecha: string;
+  /** Hora peninsular (HH:MM); null si solo conocemos el día. */
+  salida: string | null;
+  /** Marca de tiempo de la salida para la cuenta atrás; null sin hora. */
+  salidaEn: number | null;
+  numeroTren: string | null;
+  estado: EstadoPlazas;
+  precioMin: number | null;
+  intervaloSondeoMin: number;
+}
+
+export interface RelojPeninsular {
+  /** Día peninsular (YYYY-MM-DD). */
+  fecha: string;
+  /** Hora peninsular (HH:MM). */
+  hora: string;
+}
+
+const fmtHoraPeninsular = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Madrid',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Reloj de España (día y hora) para comparar con las salidas del worker. */
+export function relojPeninsular(ahora: Date = new Date()): RelojPeninsular {
+  return { fecha: fechaGtfs(ahora), hora: fmtHoraPeninsular.format(ahora) };
+}
+
+function aFecha(fecha: string): { anio: number; mes: number; dia: number } {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return { anio: anio ?? 1970, mes: mes ?? 1, dia: dia ?? 1 };
+}
+
+/** Suma días a una fecha (YYYY-MM-DD) sin depender de la zona horaria local. */
+export function sumarDias(fecha: string, dias: number): string {
+  const { anio, mes, dia } = aFecha(fecha);
+  return new Date(Date.UTC(anio, mes - 1, dia + dias)).toISOString().slice(0, 10);
+}
+
+/** Día de la semana (0 = domingo) de una fecha YYYY-MM-DD. */
+function diaSemana(fecha: string): number {
+  const { anio, mes, dia } = aFecha(fecha);
+  return new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay();
+}
+
+/**
+ * ¿Se vigila la alerta en esa fecha? Las recurrentes no caducan (y, con
+ * `soloLaborables`, solo de lunes a viernes); las puntuales van por su fecha.
+ */
+export function aplicaEnFecha(
+  alerta: Pick<AlertaResponse, 'recurrente' | 'soloLaborables' | 'fechaViaje'>,
+  fecha: string,
+): boolean {
+  if (!alerta.recurrente) return alerta.fechaViaje === fecha;
+  if (!alerta.soloLaborables) return true;
+  const dow = diaSemana(fecha);
+  return dow !== 0 && dow !== 6;
+}
+
+/**
+ * Primer día (>= desde) en el que toca vigilar la alerta. Las puntuales solo
+ * valen en su fecha de viaje (null si ya pasó); las recurrentes miran hasta
+ * `HORIZONTE_DIAS` días (para saltarse un fin de semana de `soloLaborables`).
+ */
+export function proximaFechaAplicable(
+  alerta: Pick<AlertaResponse, 'recurrente' | 'soloLaborables' | 'fechaViaje'>,
+  desde: string,
+): string | null {
+  if (!alerta.recurrente) return alerta.fechaViaje >= desde ? alerta.fechaViaje : null;
+  for (let i = 0; i <= HORIZONTE_DIAS; i++) {
+    const fecha = sumarDias(desde, i);
+    if (aplicaEnFecha(alerta, fecha)) return fecha;
+  }
+  return null;
+}
+
+/**
+ * `salida` de `ultimoEstado` como día + hora peninsulares. El worker guarda la
+ * hora GTFS tratada como UTC (`2026-09-28T06:00:00.000Z` = 06:00 de servicio);
+ * si viniera solo la hora (`06:00`) devolvemos `fecha: null`.
+ */
+function parseSalida(bruto: string): { fecha: string | null; hora: string } {
+  if (bruto.includes('T')) return { fecha: bruto.slice(0, 10), hora: bruto.slice(11, 16) };
+  const hora = bruto.slice(0, 5);
+  return { fecha: null, hora: /^\d{2}:\d{2}$/.test(hora) ? hora : '' };
+}
+
+/** Trenes de la alerta para ese día dentro de su franja horaria, por hora. */
+function trenesDelDia(alerta: AlertaResponse, fecha: string): EstadoSerializado[] {
+  return (alerta.ultimoEstado ?? [])
+    .map((tren) => ({ tren, parsed: parseSalida(tren.salida) }))
+    .filter(({ parsed }) => parsed.fecha === null || parsed.fecha === fecha)
+    .filter(({ parsed }) => {
+      if (!parsed.hora) return false;
+      if (alerta.horaDesde && parsed.hora < alerta.horaDesde) return false;
+      if (alerta.horaHasta && parsed.hora > alerta.horaHasta) return false;
+      return true;
+    })
+    .sort((a, b) => a.parsed.hora.localeCompare(b.parsed.hora))
+    .map(({ tren }) => tren);
+}
+
+function estadoDeTren(tren: EstadoSerializado): EstadoPlazas {
+  if (tren.cancelado === true) return 'cancelado';
+  return tren.disponible ? 'plazas' : 'completo';
+}
+
+function salidaConTren(
+  alerta: AlertaResponse,
+  fecha: string,
+  tren: EstadoSerializado,
+): ProximaSalida {
+  const { hora } = parseSalida(tren.salida);
+  return {
+    alertaId: alerta.id,
+    origenNombre: alerta.origenNombre,
+    destinoNombre: alerta.destinoNombre,
+    fecha,
+    salida: hora,
+    salidaEn: instantePeninsular(fecha, hora),
+    numeroTren: tren.numeroTren || alerta.numeroTren || null,
+    estado: estadoDeTren(tren),
+    precioMin: tren.precioMin,
+    intervaloSondeoMin: alerta.intervaloSondeoMin,
+  };
+}
+
+function salidaSinTren(alerta: AlertaResponse, fecha: string): ProximaSalida {
+  return {
+    alertaId: alerta.id,
+    origenNombre: alerta.origenNombre,
+    destinoNombre: alerta.destinoNombre,
+    fecha,
+    salida: null,
+    salidaEn: null,
+    numeroTren: alerta.numeroTren || null,
+    estado: 'sin-datos',
+    precioMin: null,
+    intervaloSondeoMin: alerta.intervaloSondeoMin,
+  };
+}
+
+/** Candidata de una alerta: su próxima salida (null si ya no tiene ninguna). */
+function candidataDeAlerta(
+  alerta: AlertaResponse,
+  hoy: string,
+  horaAhora: string,
+): ProximaSalida | null {
+  const primera = proximaFechaAplicable(alerta, hoy);
+  if (!primera) return null;
+
+  const delDia = trenesDelDia(alerta, primera);
+  const sinSalir = delDia.filter((tren) => {
+    const { hora } = parseSalida(tren.salida);
+    return primera > hoy || hora >= horaAhora;
+  });
+  if (sinSalir[0]) return salidaConTren(alerta, primera, sinSalir[0]);
+
+  if (primera === hoy && delDia.length > 0 && !alerta.recurrente) {
+    // El único viaje puntual de hoy ya ha salido: no queda nada que enseñar.
+    return null;
+  }
+
+  // ¿Hay trenes ya conocidos en un día aplicable posterior (estado guardado
+  // de otro día)? Muestran más información que "hoy, sin datos".
+  for (let i = 1; i <= HORIZONTE_DIAS; i++) {
+    const dia = sumarDias(primera, i);
+    if (!aplicaEnFecha(alerta, dia)) continue;
+    const otros = trenesDelDia(alerta, dia);
+    if (otros[0]) return salidaConTren(alerta, dia, otros[0]);
+  }
+
+  if (primera === hoy && delDia.length > 0 && alerta.recurrente) {
+    // Hoy no queda nada: la próxima salida de un trayecto cotidiano es mañana.
+    const manana = proximaFechaAplicable(alerta, sumarDias(hoy, 1));
+    if (manana) return salidaSinTren(alerta, manana);
+  }
+  return salidaSinTren(alerta, primera);
+}
+
+/**
+ * Próxima salida entre las alertas ACTIVAS: primero el día más temprano (hoy si
+ * la alerta toca hoy) y, a igualdad de día, la hora más temprana; una salida
+ * sin hora confirmada pierde frente a un tren conocido del mismo día.
+ *
+ * Solo sirve para mostrar la tarjeta del Inicio: no toca el worker.
+ */
+export function proximaSalida(
+  alertas: AlertaResponse[],
+  ahora: Date = new Date(),
+): ProximaSalida | null {
+  const { fecha: hoy, hora } = relojPeninsular(ahora);
+  let mejor: ProximaSalida | null = null;
+
+  for (const alerta of alertas) {
+    if (alerta.estado !== 'ACTIVA') continue;
+    const candidata = candidataDeAlerta(alerta, hoy, hora);
+    if (!candidata) continue;
+    if (mejor === null || claveOrden(candidata) < claveOrden(mejor)) mejor = candidata;
+  }
+  return mejor;
+}
+
+/** Orden: día, y dentro del día la hora (o por detrás si aún no se conoce). */
+function claveOrden(salida: ProximaSalida): string {
+  return `${salida.fecha}|${salida.salida ?? '~'}`;
+}
+
+function ultimoDomingo(anio: number, mes: number): number {
+  const ultimoDia = new Date(Date.UTC(anio, mes, 0));
+  return ultimoDia.getUTCDate() - ultimoDia.getUTCDay();
+}
+
+/**
+ * Desfase peninsular (minutos) de una fecha+hora: CEST (+120) desde el último
+ * domingo de marzo 01:00 UTC hasta el último domingo de octubre 01:00 UTC.
+ */
+function offsetPeninsular(fecha: string, hora: string): number {
+  const { anio, mes, dia } = aFecha(fecha);
+  const [h, m] = hora.split(':').map(Number);
+  const comoUtc = Date.UTC(anio, mes - 1, dia, h ?? 0, m ?? 0);
+  const inicio = Date.UTC(anio, 2, ultimoDomingo(anio, 3), 1);
+  const fin = Date.UTC(anio, 9, ultimoDomingo(anio, 10), 1);
+  return comoUtc >= inicio && comoUtc < fin ? 120 : 60;
+}
+
+/** Instante real (ms) de una salida peninsular, para la cuenta atrás. */
+export function instantePeninsular(fecha: string, hora: string): number {
+  const { anio, mes, dia } = aFecha(fecha);
+  const [h, m] = hora.split(':').map(Number);
+  return Date.UTC(anio, mes - 1, dia, h ?? 0, m ?? 0) - offsetPeninsular(fecha, hora) * 60_000;
+}
+
+/** "faltan 3 h 25 min" (o "ha salido") a partir de los milisegundos restantes. */
+export function cuentaAtras(milisegundos: number): string {
+  if (milisegundos <= 0) return 'ha salido';
+  const minutos = Math.floor(milisegundos / 60_000);
+  if (minutos === 0) return 'faltan menos de 1 min';
+  const dias = Math.floor(minutos / 1440);
+  const horas = Math.floor((minutos % 1440) / 60);
+  const resto = minutos % 60;
+  if (dias > 0) return `faltan ${dias} d ${horas} h`;
+  if (horas > 0) return resto === 0 ? `faltan ${horas} h` : `faltan ${horas} h ${resto} min`;
+  return `faltan ${minutos} min`;
+}
+
+const DIAS_SEMANA = [
+  'domingo',
+  'lunes',
+  'martes',
+  'miércoles',
+  'jueves',
+  'viernes',
+  'sábado',
+] as const;
+
+const MESES = [
+  'ene',
+  'feb',
+  'mar',
+  'abr',
+  'may',
+  'jun',
+  'jul',
+  'ago',
+  'sep',
+  'oct',
+  'nov',
+  'dic',
+] as const;
+
+/** Fecha corta ("3 oct") para la tarjeta. */
+export function fechaCorta(fecha: string): string {
+  const { mes, dia } = aFecha(fecha);
+  return `${dia} ${MESES[mes - 1] ?? ''}`.trim();
+}
+
+/**
+ * Etiqueta del día de una salida: "Hoy", "Mañana", "lunes 29" (si está cerca)
+ * o "3 oct" si ya queda más de una semana.
+ */
+export function etiquetaDia(fecha: string, hoy: string): string {
+  if (fecha <= hoy) return 'Hoy';
+  const manana = sumarDias(hoy, 1);
+  if (fecha === manana) return 'Mañana';
+  const { dia } = aFecha(fecha);
+  const dias = Math.round(
+    (Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86_400_000,
+  );
+  if (dias <= 7) return `${DIAS_SEMANA[diaSemana(fecha)] ?? ''} ${dia}`.trim();
+  return fechaCorta(fecha);
+}
+
+/** Texto del badge de estado de la próxima salida. */
+export function textoPlazas(salida: Pick<ProximaSalida, 'estado' | 'precioMin'>): string {
+  switch (salida.estado) {
+    case 'cancelado':
+      return 'Cancelado';
+    case 'plazas':
+      return salida.precioMin === null
+        ? 'Hay plazas'
+        : `Hay plazas desde ${formatearPrecio(salida.precioMin)}`;
+    case 'completo':
+      return 'Completo';
+    default:
+      return 'Sin datos de plazas aún';
+  }
+}
+
+/** Tono del `Etiqueta` de estado (rojo / verde / gris / acento). */
+export function tonoPlazas(estado: EstadoPlazas): TonoPlazas {
+  if (estado === 'cancelado') return 'error';
+  if (estado === 'plazas') return 'exito';
+  if (estado === 'completo') return 'neutro';
+  return 'primario';
+}
