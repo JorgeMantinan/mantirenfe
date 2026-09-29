@@ -28,6 +28,7 @@ import {
 import {
   duracionCorta,
   horaGtfs,
+  textoConexion,
   type AlertaResponse,
   type AvisoAlertaResponse,
   type EstadoSerializado,
@@ -278,7 +279,7 @@ export function PaginaDetalleAlerta() {
                               )}
                               {tren.tramo === 'conexion' && (
                                 <p className="text-xs text-muted-foreground">
-                                  Conexión en {tren.conexionEn ?? '—'}
+                                  {textoConexion(tren)}
                                 </p>
                               )}
                             </td>

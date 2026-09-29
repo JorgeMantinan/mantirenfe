@@ -182,6 +182,25 @@ function precioDeTarifa(tarifa: TarifaVenta): number {
   return Number(String(tarifa.precioTarifa ?? '').replace(',', '.'));
 }
 
+/** "21:29:00" (o "21:29") → "21:29"; null si no es una hora HH:MM legible. */
+function horaHhmm(valor: string | null | undefined): string | null {
+  const hhmm = (valor ?? '').slice(0, 5);
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm) ? hhmm : null;
+}
+
+/**
+ * Minutos de espera entre la llegada al enlace y la salida del segundo tramo.
+ * Solo se calcula si las dos horas existen y no hay cruce de medianoche (la
+ * venta no trae la fecha de cada tramo, así que un valor negativo no es fiable):
+ * en ese caso se omite `esperaMin` y la UI se queda con las dos horas.
+ */
+function esperaEnEnlace(llegada: string | null, salida: string | null): number | undefined {
+  if (!llegada || !salida) return undefined;
+  const aMinutos = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+  const espera = aMinutos(salida) - aMinutos(llegada);
+  return espera >= 0 ? espera : undefined;
+}
+
 /**
  * "Tipo de billete" que corresponde al `tarifaMinima` que mostramos: si alguna
  * tarifa del listado tiene ese precio, se usa su título; si no, el de menor
@@ -217,7 +236,8 @@ export function tarifaMasBarata(tren: TrenVenta): string | undefined {
  * la diferencia estaba en el segundo tren. Ahora:
  *  - una conexión lista los dos tramos en `numeroTren` ("09201 + 00622"), con
  *    lo que `trenId` deja de colisionar y cada fila es identificable;
- *  - `tramo`/`conexionEn` marcan la conexión ("conexión en Santiago");
+ *  - `tramo`/`conexionEn` marcan la conexión ("conexión en Santiago"), con las
+ *    horas de enlace (`conexionLlegada`/`conexionSalida`/`esperaMin`);
  *  - se exponen `horaLlegada`, `duracionMin` (rápido/lento), `tipoTren` y
  *    `tarifa` (tipo de billete).
  */
@@ -251,6 +271,15 @@ export function mapearTrenesVenta(
       tramo: esConexion ? 'conexion' : 'directo',
     };
     if (transbordo) fila.conexionEn = transbordo;
+    if (esConexion) {
+      // Horas en la estación de enlace: llega el primer tramo, sale el segundo
+      const llegadaEnlace = horaHhmm(tramos[0]?.horaLlegada);
+      const salidaEnlace = horaHhmm(tramos[1]?.horaSalida);
+      if (llegadaEnlace) fila.conexionLlegada = llegadaEnlace;
+      if (salidaEnlace) fila.conexionSalida = salidaEnlace;
+      const espera = esperaEnEnlace(llegadaEnlace, salidaEnlace);
+      if (espera !== undefined) fila.esperaMin = espera;
+    }
     if (llegada) fila.horaLlegada = llegada.slice(0, 5);
     if (typeof t.duracionViajeTotalEnMinutos === 'number' && t.duracionViajeTotalEnMinutos > 0) {
       fila.duracionMin = t.duracionViajeTotalEnMinutos;
@@ -531,6 +560,9 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
         moneda: 'EUR' as const,
         tramo: 'conexion',
         conexionEn: x.nombre,
+        conexionLlegada: c.primera.llegada.toISOString().slice(11, 16),
+        conexionSalida: c.segunda.salida.toISOString().slice(11, 16),
+        esperaMin: c.esperaMin,
         horaLlegada: c.segunda.llegada.toISOString().slice(11, 16),
         duracionMin: Math.max(
           1,

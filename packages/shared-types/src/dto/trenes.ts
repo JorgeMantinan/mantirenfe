@@ -156,6 +156,12 @@ export interface EstadoTrenDisponible {
   tramo?: 'directo' | 'conexion';
   /** Estación donde se hace el transbordo (solo conexiones) */
   conexionEn?: string;
+  /** Hora peninsular (HH:MM) en la que el primer tramo llega a `conexionEn` */
+  conexionLlegada?: string;
+  /** Hora peninsular (HH:MM) en la que el segundo tramo sale de `conexionEn` */
+  conexionSalida?: string;
+  /** Espera en la estación de enlace en minutos (solo si es calculable) */
+  esperaMin?: number;
   /** Hora peninsular de llegada programada (HH:MM) */
   horaLlegada?: string;
   /** Duración total del viaje en minutos (para comparar rápido/lento) */
@@ -194,6 +200,12 @@ export interface EstadoSerializado {
   tramo?: 'directo' | 'conexion';
   /** Estación del transbordo: la UI lo pinta como "conexión en X" */
   conexionEn?: string;
+  /** Hora peninsular (HH:MM) de llegada del primer tramo a `conexionEn` */
+  conexionLlegada?: string;
+  /** Hora peninsular (HH:MM) de salida del segundo tramo desde `conexionEn` */
+  conexionSalida?: string;
+  /** Espera en la estación de enlace en minutos (omitida si no es fiable) */
+  esperaMin?: number;
   /** Hora peninsular de llegada (HH:MM) */
   horaLlegada?: string;
   /** Duración total del viaje en minutos */
@@ -202,6 +214,32 @@ export interface EstadoSerializado {
   tipoTren?: string;
   /** Tarifa más barata (Básico, Elige...) */
   tarifa?: string;
+}
+
+/**
+ * Línea de conexión de "Plazas de hoy" (web y móvil): estación de enlace y, si
+ * la fuente los trae, la hora a la que llega el primer tramo y la de salida del
+ * segundo. Los tres campos son opcionales (compatibilidad con estados guardados
+ * antes de existir), así que se pinta lo que haya:
+ * "Conexión en MADRID-CHAMARTÍN — llega 12:15 · sale 13:40 (espera 1h25)".
+ */
+export function textoConexion(tren: {
+  conexionEn?: string;
+  conexionLlegada?: string;
+  conexionSalida?: string;
+  esperaMin?: number;
+}): string {
+  const horas: string[] = [];
+  if (tren.conexionLlegada) horas.push(`llega ${tren.conexionLlegada}`);
+  if (tren.conexionSalida) horas.push(`sale ${tren.conexionSalida}`);
+  const espera =
+    typeof tren.esperaMin === 'number' && Number.isFinite(tren.esperaMin) && tren.esperaMin > 0
+      ? ` (espera ${duracionCorta(tren.esperaMin)})`
+      : '';
+  const detalle = horas.length > 0 ? `${horas.join(' · ')}${espera}` : '';
+  if (!detalle) return `Conexión en ${tren.conexionEn ?? '—'}`;
+  // Con estación se separa con "—"; sin ella no se duplica el guion
+  return `Conexión en ${tren.conexionEn ?? '—'}${tren.conexionEn ? ' — ' : ' '}${detalle}`;
 }
 
 /**

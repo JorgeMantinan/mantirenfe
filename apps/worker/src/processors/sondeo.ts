@@ -42,6 +42,9 @@ export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializad
       // inflar `alerta.ultimoEstado` en alertas de fuentes que no los traen.
       if (t.tramo) serializado.tramo = t.tramo;
       if (t.conexionEn) serializado.conexionEn = t.conexionEn;
+      if (t.conexionLlegada) serializado.conexionLlegada = t.conexionLlegada;
+      if (t.conexionSalida) serializado.conexionSalida = t.conexionSalida;
+      if (typeof t.esperaMin === 'number') serializado.esperaMin = t.esperaMin;
       if (t.horaLlegada) serializado.horaLlegada = t.horaLlegada;
       if (typeof t.duracionMin === 'number') serializado.duracionMin = t.duracionMin;
       if (t.tipoTren) serializado.tipoTren = t.tipoTren;

@@ -19,9 +19,10 @@ import { formatearPuntosPrecio } from './precios';
  * `alerta.ultimoEstado` es un Json de Prisma: se normaliza para devolver solo
  * lo que la UI espera (y null si el worker aún no ha guardado nada).
  *
- * Los campos de detalle (`tramo`, `conexionEn`, `horaLlegada`, `duracionMin`,
- * `tipoTren`, `tarifa`) son opcionales: se copian solo si traen el tipo
- * esperado, para tolerar estados guardados por versiones anteriores.
+ * Los campos de detalle (`tramo`, `conexionEn`, `conexionLlegada`,
+ * `conexionSalida`, `esperaMin`, `horaLlegada`, `duracionMin`, `tipoTren`,
+ * `tarifa`) son opcionales: se copian solo si traen el tipo esperado, para
+ * tolerar estados guardados por versiones anteriores.
  */
 export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
   if (!Array.isArray(valor)) return null;
@@ -45,6 +46,11 @@ export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | nul
       ...(estaciones.length > 0 ? { paradasSuprimidas: estaciones } : {}),
       ...(t.tramo === 'directo' || t.tramo === 'conexion' ? { tramo: t.tramo } : {}),
       ...(textoPropio(t.conexionEn) ? { conexionEn: t.conexionEn } : {}),
+      ...(textoPropio(t.conexionLlegada) ? { conexionLlegada: t.conexionLlegada } : {}),
+      ...(textoPropio(t.conexionSalida) ? { conexionSalida: t.conexionSalida } : {}),
+      ...(typeof t.esperaMin === 'number' && Number.isFinite(t.esperaMin)
+        ? { esperaMin: t.esperaMin }
+        : {}),
       ...(textoPropio(t.horaLlegada) ? { horaLlegada: t.horaLlegada } : {}),
       ...(typeof t.duracionMin === 'number' && Number.isFinite(t.duracionMin)
         ? { duracionMin: t.duracionMin }

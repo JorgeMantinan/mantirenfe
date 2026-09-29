@@ -4,15 +4,24 @@ import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from '
 import {
   duracionCorta,
   horaGtfs,
+  textoConexion,
   type AlertaResponse,
   type AvisoAlertaResponse,
   type EstadoSerializado,
+  type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
 import { construirIcs } from '@/lib/ics';
+import {
+  agruparPrecios,
+  anchoBarra,
+  consejoPrecio,
+  formatearPrecio,
+  MAX_PUNTOS_GRAFICA,
+} from '@/lib/precios';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 
@@ -22,11 +31,6 @@ function haceCuanto(iso: string): string {
   if (minutos < 1) return 'hace un momento';
   if (minutos < 60) return `hace ${minutos} min`;
   return new Date(iso).toLocaleString('es-ES');
-}
-
-function formatearPrecio(precioMin: number | null): string {
-  if (precioMin === null) return '—';
-  return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
 }
 
 /** "AVE · llega 09:48 · 3h48": lo que diferencia dos filas de la tabla. */
@@ -44,6 +48,7 @@ export default function DetalleAlerta() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
   const [notificaciones, setNotificaciones] = useState<AvisoAlertaResponse[]>([]);
+  const [precios, setPrecios] = useState<PuntoPrecio[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
@@ -56,10 +61,13 @@ export default function DetalleAlerta() {
       api<AlertaResponse>(`/alertas/${id}`),
       // Histórico de avisos de ESA alerta: ya viene filtrado por la API
       api<AvisoAlertaResponse[]>(`/alertas/${id}/avisos`),
+      // Histórico de precios: se pinta en la tarjeta "Evolución de precio"
+      api<PuntoPrecio[]>(`/alertas/${id}/precios`).catch(() => [] as PuntoPrecio[]),
     ])
-      .then(([datos, avisosDeLaAlerta]) => {
+      .then(([datos, avisosDeLaAlerta, historial]) => {
         setAlerta(datos);
         setNotificaciones(avisosDeLaAlerta);
+        setPrecios(historial);
         // Al abrir el detalle se marcan como leídos los avisos de esta alerta
         const sinLeer = avisosDeLaAlerta.filter((n) => !n.leida).map((n) => n.id);
         if (sinLeer.length > 0) {
@@ -82,6 +90,9 @@ export default function DetalleAlerta() {
   const trenes = alerta?.ultimoEstado ?? [];
   const esDisponibilidad =
     alerta?.criterio === 'DISPONIBILIDAD' || alerta?.criterio === 'APERTURA_VENTA';
+  const seriesPrecios = useMemo(() => agruparPrecios(precios), [precios]);
+  /** Igual que en la web: la evolución se enseña en disponibilidad o si hay datos. */
+  const verEvolucion = alerta?.criterio === 'DISPONIBILIDAD' || seriesPrecios.length > 0;
 
   const compartir = async () => {
     if (!alerta) return;
@@ -192,7 +203,7 @@ export default function DetalleAlerta() {
                       </Text>
                       {extras ? <Text style={s.detalle}>{extras}</Text> : null}
                       {tren.tramo === 'conexion' ? (
-                        <Text style={s.detalle}>Conexión en {tren.conexionEn ?? '—'}</Text>
+                        <Text style={s.detalle}>{textoConexion(tren)}</Text>
                       ) : null}
                       {tren.precioMin !== null ? (
                         <Text style={s.precio}>
@@ -229,6 +240,58 @@ export default function DetalleAlerta() {
                   <Text style={s.fecha}>Último sondeo: {haceCuanto(alerta.ultimoSondeoEn)}</Text>
                 ) : null}
               </>
+            )}
+          </Tarjeta>
+        </>
+      ) : null}
+
+      {alerta && verEvolucion ? (
+        <>
+          <Text style={s.subtitulo}>Evolución de precio</Text>
+          <Tarjeta>
+            <Text style={s.detalle}>¿Compro ahora o espero? Puntos de cada sondeo</Text>
+            {seriesPrecios.length === 0 ? (
+              <Text style={s.detalle}>Aún no hay evolución de precios</Text>
+            ) : (
+              seriesPrecios.map((serie) => (
+                <View key={serie.clave} style={s.serie}>
+                  <View style={s.serieCabecera}>
+                    <Text style={s.plazaTren}>
+                      {horaGtfs(serie.salida)}
+                      {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+                    </Text>
+                    <Text style={s.fecha}>
+                      {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
+                    </Text>
+                  </View>
+                  {serie.puntos.slice(-MAX_PUNTOS_GRAFICA).map((punto, indice) => (
+                    <View key={`${punto.registradoEn}-${indice}`} style={s.barraFila}>
+                      <View style={s.barra}>
+                        <View
+                          style={[
+                            s.barraRelleno,
+                            {
+                              width: `${anchoBarra(punto.precioMin, serie.minimo, serie.maximo)}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View
+                        style={[
+                          s.puntoFinal,
+                          {
+                            backgroundColor: punto.disponible
+                              ? paleta.exito
+                              : paleta.textoSecundario,
+                          },
+                        ]}
+                      />
+                      <Text style={s.barraPrecio}>{formatearPrecio(punto.precioMin)}</Text>
+                    </View>
+                  ))}
+                  <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
+                </View>
+              ))
             )}
           </Tarjeta>
         </>
@@ -346,5 +409,47 @@ const estilos = (c: Paleta) =>
       color: c.textoSecundario,
       textAlign: 'center',
       paddingVertical: espaciado.lg,
+    },
+    serie: {
+      gap: espaciado.xs,
+    },
+    serieCabecera: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    barraFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: espaciado.sm,
+    },
+    barra: {
+      flex: 1,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: c.acento,
+      overflow: 'hidden',
+    },
+    barraRelleno: {
+      height: '100%',
+      borderRadius: 5,
+      backgroundColor: c.primario,
+    },
+    puntoFinal: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    barraPrecio: {
+      width: 62,
+      textAlign: 'right',
+      fontSize: 11,
+      color: c.textoSecundario,
+    },
+    consejo: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: c.aviso,
     },
   });
