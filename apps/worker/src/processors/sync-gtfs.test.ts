@@ -226,11 +226,11 @@ const ZIP_PRINCIPAL = zipGtfs({
     '28000,Barcelona-Sants,41.38,2.14\n',
   'routes.txt': 'route_id,agency_id,route_short_name,route_long_name,route_type\nR1,1,AVE,,2\n',
   'calendar.txt': CALENDAR,
-  'trips.txt': 'route_id,service_id,trip_id,trip_short_name\nR1,S1,T1,01234\n',
+  'trips.txt': 'route_id,service_id,trip_id,trip_short_name\nR1,S1,T1-2026-09-29,01234\n',
   'stop_times.txt':
     'trip_id,arrival_time,departure_time,stop_id,stop_sequence\n' +
-    'T1,08:00:00,08:00:00,17000,1\n' +
-    'T1,10:30:00,10:30:00,28000,2\n',
+    'T1-2026-09-29,08:00:00,08:00:00,17000,1\n' +
+    'T1-2026-09-29,10:30:00,10:30:00,28000,2\n',
 });
 
 // Feed "OUIGO": route_long_name es la ruta, no el operador → se fuerza OUIGO.
@@ -355,7 +355,7 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
 
     const porTren = new Map(store.horarios.map((h) => [h.numeroTren, h]));
     expect(porTren.get('01234')?.operador).toBe('AVE');
-    expect(porTren.get('01234')?.tripId).toBe('T1');
+    expect(porTren.get('01234')?.tripId).toBe('T1-2026-09-29');
     const ouigo = porTren.get('09876');
     expect(ouigo?.operador).toBe('OUIGO');
     expect(ouigo?.tripId).toBe('OT1');
@@ -365,8 +365,8 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
     // ParadaHorario guarda TODAS las paradas del trip (no solo los extremos),
     // una fila por (trip, stop_sequence) y sin fecha
     expect(store.paradas.map((p) => `${p.tripId}:${p.orden}:${p.estacionId}`)).toEqual([
-      'T1:1:17000',
-      'T1:2:28000',
+      'T1-2026-09-29:1:17000',
+      'T1-2026-09-29:2:28000',
       'OT1:1:17000',
       'OT1:2:66000',
     ]);
@@ -402,8 +402,8 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
 
     await sincronizarHorarios(logger);
 
-    expect(store.reparaciones).toEqual([{ id: 'h-legacy', tripId: 'T1' }]);
-    expect(store.horarios.find((h) => h.id === 'h-legacy')?.tripId).toBe('T1');
+    expect(store.reparaciones).toEqual([{ id: 'h-legacy', tripId: 'T1-2026-09-29' }]);
+    expect(store.horarios.find((h) => h.id === 'h-legacy')?.tripId).toBe('T1-2026-09-29');
     expect(store.consultasReparacion.length).toBeGreaterThan(0);
   });
 });

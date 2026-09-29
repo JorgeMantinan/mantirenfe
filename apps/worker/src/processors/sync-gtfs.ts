@@ -1016,7 +1016,11 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       // puede ser el tripId de una publicación anterior (Larga Distancia los
       // regenera con la fecha de alta). Sin este pase la fila conservaría el id
       // viejo y el cruce con ParadaHorario (que sí tiene el id nuevo) no cuadra.
-      if (resultado.count < filas.length) {
+      // Solo se repara si el feed trae tripIds con sufijo de fecha (AV/LD):
+      // en CER son estables y reparar sus113k trips por lotes de500 alargaba
+      // el sync de Actions por encima del timeout (cancelado 2 veces).
+      const feedConFechas = filas.some((f) => /\d{4}-\d{2}-\d{2}$/.test(f.tripId));
+      if (resultado.count < filas.length && feedConFechas) {
         const reparadas = await repararTripIdsDesactualizados(prisma, filas, tripIdsDelFeed);
         if (reparadas > 0) {
           tripIdsReparados += reparadas;
