@@ -16,11 +16,15 @@ import { api } from '@/lib/api';
 import { etiquetaEstado } from '@/lib/alertas';
 import { construirIcs } from '@/lib/ics';
 import {
+  agruparContagos,
   agruparPrecios,
   anchoBarra,
   consejoPrecio,
+  esSeriePlana,
   formatearPrecio,
-  MAX_PUNTOS_GRAFICA,
+  recortarContagos,
+  textoSerieCompacta,
+  textoSondeosOcultos,
 } from '@/lib/precios';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
@@ -253,45 +257,66 @@ export default function DetalleAlerta() {
             {seriesPrecios.length === 0 ? (
               <Text style={s.detalle}>Aún no hay evolución de precios</Text>
             ) : (
-              seriesPrecios.map((serie) => (
-                <View key={serie.clave} style={s.serie}>
-                  <View style={s.serieCabecera}>
-                    <Text style={s.plazaTren}>
-                      {horaGtfs(serie.salida)}
-                      {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+              seriesPrecios.map((serie) => {
+                const plana = esSeriePlana(serie.puntos);
+                const { visibles, sondeosOcultos } = recortarContagos(
+                  agruparContagos(serie.puntos),
+                );
+                if (plana) {
+                  return (
+                    <Text key={serie.clave} style={s.detalle}>
+                      {textoSerieCompacta(serie)}
+                      {' · '}
+                      <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
                     </Text>
-                    <Text style={s.fecha}>
-                      {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
-                    </Text>
-                  </View>
-                  {serie.puntos.slice(-MAX_PUNTOS_GRAFICA).map((punto, indice) => (
-                    <View key={`${punto.registradoEn}-${indice}`} style={s.barraFila}>
-                      <View style={s.barra}>
+                  );
+                }
+                return (
+                  <View key={serie.clave} style={s.serie}>
+                    <View style={s.serieCabecera}>
+                      <Text style={s.plazaTren}>
+                        {horaGtfs(serie.salida)}
+                        {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+                      </Text>
+                      <Text style={s.fecha}>
+                        {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
+                      </Text>
+                    </View>
+                    {visibles.map((grupo, indice) => (
+                      <View key={`${grupo.registradoEn}-${indice}`} style={s.barraFila}>
+                        <View style={s.barra}>
+                          <View
+                            style={[
+                              s.barraRelleno,
+                              {
+                                width: `${anchoBarra(grupo.precioMin, serie.minimo, serie.maximo)}%`,
+                              },
+                            ]}
+                          />
+                        </View>
                         <View
                           style={[
-                            s.barraRelleno,
+                            s.puntoFinal,
                             {
-                              width: `${anchoBarra(punto.precioMin, serie.minimo, serie.maximo)}%`,
+                              backgroundColor: grupo.disponible
+                                ? paleta.exito
+                                : paleta.textoSecundario,
                             },
                           ]}
                         />
+                        <Text style={s.barraPrecio}>{formatearPrecio(grupo.precioMin)}</Text>
+                        <Text style={s.multiplicador}>
+                          {grupo.cantidad > 1 ? `×${grupo.cantidad}` : ''}
+                        </Text>
                       </View>
-                      <View
-                        style={[
-                          s.puntoFinal,
-                          {
-                            backgroundColor: punto.disponible
-                              ? paleta.exito
-                              : paleta.textoSecundario,
-                          },
-                        ]}
-                      />
-                      <Text style={s.barraPrecio}>{formatearPrecio(punto.precioMin)}</Text>
-                    </View>
-                  ))}
-                  <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
-                </View>
-              ))
+                    ))}
+                    {sondeosOcultos > 0 ? (
+                      <Text style={s.resumen}>{textoSondeosOcultos(sondeosOcultos)}</Text>
+                    ) : null}
+                    <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
+                  </View>
+                );
+              })
             )}
           </Tarjeta>
         </>
@@ -444,6 +469,17 @@ const estilos = (c: Paleta) =>
     barraPrecio: {
       width: 62,
       textAlign: 'right',
+      fontSize: 11,
+      color: c.textoSecundario,
+    },
+    multiplicador: {
+      width: 32,
+      textAlign: 'right',
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textoSecundario,
+    },
+    resumen: {
       fontSize: 11,
       color: c.textoSecundario,
     },

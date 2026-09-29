@@ -1,4 +1,4 @@
-import type { PuntoPrecio } from '@mantirenfe/shared-types';
+import { horaGtfs, type PuntoPrecio } from '@mantirenfe/shared-types';
 
 /** Serie de un tren concreto, agrupada por numeroTren + salida. */
 export interface SeriePrecio {
@@ -11,8 +11,17 @@ export interface SeriePrecio {
   maximo: number | null;
 }
 
+/** Punto con sus sondeos consecutivos a ese mismo precio. */
+export interface ContagoPrecio extends PuntoPrecio {
+  /** Cuántos sondeos seguidos hay a este precio. */
+  cantidad: number;
+}
+
 /** Puntos máximos pintados por tren para que la tarjeta no se dispare. */
 export const MAX_PUNTOS_GRAFICA = 100;
+
+/** Tramos de precio (grupos) que se pintan como máximo en la tarjeta. */
+export const MAX_GRUPOS_GRAFICA = 8;
 
 export function formatearPrecio(precioMin: number | null): string {
   if (precioMin === null) return '—';
@@ -46,8 +55,69 @@ export function agruparPrecios(puntos: PuntoPrecio[]): SeriePrecio[] {
 }
 
 /**
+ * Une puntos consecutivos con el mismo precioMin en un único elemento con
+ * `cantidad` (sondeos seguidos a ese precio) y el resto de campos del primero.
+ * Un cambio de precio corta la agrupación: cada tramo es una fila de la tarjeta.
+ */
+export function agruparContagos(puntos: PuntoPrecio[]): ContagoPrecio[] {
+  const contagos: ContagoPrecio[] = [];
+  for (const punto of puntos) {
+    const ultimo = contagos[contagos.length - 1];
+    if (ultimo && ultimo.precioMin === punto.precioMin) {
+      ultimo.cantidad += 1;
+      continue;
+    }
+    contagos.push({ ...punto, cantidad: 1 });
+  }
+  return contagos;
+}
+
+/** true si todo el rango mantiene el mismo precio (o solo hay un punto). */
+export function esSeriePlana(puntos: PuntoPrecio[]): boolean {
+  const primero = puntos[0]?.precioMin;
+  if (primero === undefined || primero === null) return false;
+  return puntos.every((punto) => punto.precioMin === primero);
+}
+
+/** "08:00 · tren 03311 — 38,00 € (sin cambios · 12 sondeos)": serie plana en una línea. */
+export function textoSerieCompacta(serie: SeriePrecio): string {
+  const sondeos = serie.puntos.length;
+  const hora = horaGtfs(serie.salida);
+  const tren = serie.numeroTren ? ` · tren ${serie.numeroTren}` : '';
+  return `${hora}${tren} — ${formatearPrecio(serie.minimo)} (sin cambios · ${sondeos} sondeo${
+    sondeos === 1 ? '' : 's'
+  })`;
+}
+
+/**
+ * Últimos MAX_GRUPOS_GRAFICA grupos (los más recientes) y cuántos sondeos de
+ * los grupos anteriores quedan fuera del gráfico.
+ */
+export function recortarContagos(contagos: ContagoPrecio[]): {
+  visibles: ContagoPrecio[];
+  sondeosOcultos: number;
+} {
+  if (contagos.length <= MAX_GRUPOS_GRAFICA) {
+    return { visibles: contagos, sondeosOcultos: 0 };
+  }
+  const ocultos = contagos.slice(0, contagos.length - MAX_GRUPOS_GRAFICA);
+  return {
+    visibles: contagos.slice(-MAX_GRUPOS_GRAFICA),
+    sondeosOcultos: ocultos.reduce((total, grupo) => total + grupo.cantidad, 0),
+  };
+}
+
+/** "…y 37 sondeos anteriores" (singular si solo queda uno fuera). */
+export function textoSondeosOcultos(sondeos: number): string {
+  if (sondeos <= 0) return '';
+  if (sondeos === 1) return '…y 1 sondeo anterior';
+  return `…y ${sondeos} sondeos anteriores`;
+}
+
+/**
  * Ancho (0-100) de la barra de un punto: proporcional al rango min→max de su
  * tren. El mínimo se queda en un 8% para que la mejor opción siga viéndose.
+ * Funciona igual con el precioMin de un grupo agrupado.
  */
 export function anchoBarra(
   precioMin: number | null,
@@ -61,6 +131,12 @@ export function anchoBarra(
 
 function fechaCorta(iso: string): string {
   return new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+}
+
+/** Horas redondeadas entre dos marcas de tiempo, con un mínimo de 1 h. */
+function horasEntre(desde: string, hasta: string): number {
+  const horas = (Date.parse(hasta) - Date.parse(desde)) / 3_600_000;
+  return Number.isFinite(horas) ? Math.max(1, Math.round(horas)) : 1;
 }
 
 /**
@@ -92,5 +168,5 @@ export function consejoPrecio(puntos: PuntoPrecio[]): string {
   if (maximoAnterior !== null) {
     return `El precio ha bajado desde ${formatearPrecio(maximoAnterior)} → buen momento`;
   }
-  return 'Sin cambios en 24 h';
+  return `Precio estable en las últimas ${horasEntre(primero.registradoEn, ultimo.registradoEn)} h`;
 }
