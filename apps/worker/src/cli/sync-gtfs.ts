@@ -18,7 +18,10 @@ import { sincronizarEstaciones, sincronizarHorarios } from '../processors/sync-g
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 
 async function main(): Promise<void> {
+  logger.info('CLI sync GTFS: iniciado (node ' + process.version + ')');
+  logger.info('CLI: sincronizando estaciones...');
   const estaciones = await sincronizarEstaciones(logger);
+  logger.info({ estaciones }, 'CLI: estaciones listas, pasando a horarios');
   const horarios = await sincronizarHorarios(logger);
   logger.info({ estaciones, horarios }, 'Sync GTFS completado (CLI)');
 }

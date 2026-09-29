@@ -16,7 +16,7 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +37,15 @@ jobs:
       # (turbo construye también sus dependencias del workspace).
       - name: Compilar paquetes del workspace
         run: pnpm turbo build --filter=@mantirenfe/database
+
+      # Diagnóstico: si Renfe/NAP no responden desde el runner, el sync se
+      # colgaría sin logs. Imprime status HTTP en <10 s.
+      - name: Diagnóstico de red (feeds)
+        run: |
+          echo -n "renfe: " && curl -s -o /dev/null -w "%{http_code} en %{time_total}s" --max-time 10 -I https://ssl.renfe.com/gtransit/Fichero_AV_LD/google_transit.zip || echo "SIN RESPUESTA"
+          echo ""
+          echo -n "nap: " && curl -s -o /dev/null -w "%{http_code} en %{time_total}s" --max-time 10 https://nap.transportes.gob.es/api/Fichero/download/1766 -H "ApiKey: ${{ secrets.NAP_API_KEY }}" || echo "SIN RESPUESTA"
+          echo ""
 
       - name: Sincronizar estaciones, horarios y paradas GTFS
         run: pnpm --filter @mantirenfe/worker exec tsx src/cli/sync-gtfs.ts

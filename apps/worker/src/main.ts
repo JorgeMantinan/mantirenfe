@@ -40,6 +40,8 @@ const API_BASE_URL =
     ? 'https://mantirenfe.vercel.app/api'
     : 'http://localhost:3000/api');
 let minutosDesdeSnapshot = 0;
+/** Diagnóstico de OOM de Render: imprime la memoria del worker cada5 barridos (~5 min). */
+let contadorMemoriaWorker = 0;
 
 async function snapshotPosiciones(logger: pino.Logger): Promise<void> {
   try {
@@ -271,6 +273,18 @@ async function main() {
       }
       if (pendientes.length > 0) {
         logger.info({ procesadas: pendientes.length }, 'Barrido de alertas completado');
+
+        contadorMemoriaWorker += 1;
+        if (contadorMemoriaWorker % 5 === 0) {
+          const m = process.memoryUsage();
+          logger.info(
+            {
+              rssMb: Math.round(m.rss / 1_048_576),
+              heapUsadoMb: Math.round(m.heapUsed / 1_048_576),
+            },
+            'memoria worker',
+          );
+        }
       }
 
       try {
