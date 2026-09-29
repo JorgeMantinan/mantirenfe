@@ -1,6 +1,8 @@
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '@/hooks/useAuth';
 import { destinoDeNotificacion } from '@/lib/notificaciones';
@@ -51,6 +53,30 @@ export default function RootLayout() {
   );
 }
 
+/**
+ * Botón "atrás" seguro: si la app se abrió desde una notificación (pila vacía),
+ * back() no haría nada → volvemos al Inicio (lista de alertas) siempre.
+ */
+function volverSeguro() {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace('/');
+  }
+}
+
+function Atras({ color }: { color?: string }) {
+  return (
+    <Pressable
+      onPress={volverSeguro}
+      hitSlop={12}
+      style={{ flexDirection: 'row', alignItems: 'center' }}
+    >
+      <Ionicons name="arrow-back" size={22} color={color ?? '#75258c'} />
+    </Pressable>
+  );
+}
+
 function Aplicacion() {
   const { paleta, oscuro } = useTema();
 
@@ -71,9 +97,12 @@ function Aplicacion() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="alertas/nueva"
-          options={{ title: 'Nueva alerta', presentation: 'modal' }}
+          options={{ title: 'Nueva alerta', presentation: 'modal', headerLeft: () => <Atras /> }}
         />
-        <Stack.Screen name="alertas/[id]" options={{ title: 'Alerta' }} />
+        <Stack.Screen
+          name="alertas/[id]"
+          options={{ title: 'Alerta', headerLeft: () => <Atras /> }}
+        />
       </Stack>
     </AuthProvider>
   );
