@@ -19,14 +19,20 @@ export function AnuncioAdsense() {
 
   useEffect(() => {
     if (!CLIENTE || !SLOT || empujado.current) return;
-    const scriptId = 'adsense-script';
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.async = true;
-      script.crossOrigin = 'anonymous';
-      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENTE}`;
-      document.head.appendChild(script);
+    // El script ya puede venir en index.html (verificación de AdSense): no duplicar
+    const yaExiste = Array.from(document.querySelectorAll('script')).some((s) =>
+      (s.src ?? '').includes('adsbygoogle.js'),
+    );
+    if (!yaExiste) {
+      const scriptId = 'adsense-script';
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENTE}`;
+        document.head.appendChild(script);
+      }
     }
     try {
       (window.adsbygoogle = window.adsbygoogle || []).push({});
