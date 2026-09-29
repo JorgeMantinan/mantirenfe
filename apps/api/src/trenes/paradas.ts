@@ -25,6 +25,8 @@ export interface BaseParadas {
     findMany: (args: {
       where: { fecha: Date };
       select: { tripId: true; numeroTren: true; operador: true };
+      /** Red de seguridad: los viajes de un día (medido: 6.512) van muy por debajo */
+      take?: number;
     }) => Promise<FilaHorarioDia[]>;
   };
   paradaHorario: {
@@ -37,9 +39,19 @@ export interface BaseParadas {
         llegadaMin: true;
         salidaMin: true;
       };
+      /** Red de seguridad: el filtro por estación + viajes del día mantiene
+       *  cada pedido por debajo de ~5.300 filas medidas (Madrid completo) */
+      take?: number;
     }) => Promise<FilaParada[]>;
   };
 }
+
+/**
+ * Techo de filas por pedido: por encima de él se corta (nunca se carga todo
+ * sin límite). Las medidas reales quedan muy por debajo, así que el corte no
+ * llega a producirse en condiciones normales.
+ */
+const LIMITE_FILAS = 20_000;
 
 interface OpcionesTrayectos {
   /** Fecha de la consulta (YYYY-MM-DD), la misma que usa HorarioTren.fecha */
@@ -67,6 +79,11 @@ interface OpcionesTrayectos {
  *
  * Los minutos GTFS se convierten a fecha real como (fecha del viaje + minutos),
  * igual que construye sus filas `HorarioTren`.
+ *
+ * Coste medido (BD real): 6.512 viajes/día → paradas de origen ≤ 5.315 filas
+ * (estación más transitada) y de destino ≤ 30 sobre esos viajes. Todos los
+ * pedidos van con `select` mínimo y `take` de red de seguridad: ninguno
+ * materializa las 1,67 M filas de `ParadaHorario`.
  */
 export async function trayectosPorParadas(
   base: BaseParadas,
@@ -77,6 +94,7 @@ export async function trayectosPorParadas(
   const delDia = await base.horarioTren.findMany({
     where: { fecha: new Date(`${fecha}T00:00:00Z`) },
     select: { tripId: true, numeroTren: true, operador: true },
+    take: LIMITE_FILAS,
   });
   const porTrip = new Map<string, { numeroTren: string; operador: string | null }>();
   for (const horario of delDia) {
@@ -97,6 +115,7 @@ export async function trayectosPorParadas(
       tripId: { in: tripIds },
     },
     select: { tripId: true, estacionId: true, orden: true, llegadaMin: true, salidaMin: true },
+    take: LIMITE_FILAS,
   });
 
   // Mejor parada de origen por viaje: la salida más temprana (una estación
@@ -117,6 +136,7 @@ export async function trayectosPorParadas(
       tripId: { in: [...viajes.keys()] },
     },
     select: { tripId: true, estacionId: true, orden: true, llegadaMin: true, salidaMin: true },
+    take: LIMITE_FILAS,
   });
 
   // Primer destino del viaje que viene después de la parada de origen

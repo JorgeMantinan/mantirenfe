@@ -9,6 +9,8 @@ export class IncidenciasService {
     return getPrisma().incidencia.findMany({
       where: { activa: true },
       orderBy: [{ desde: 'asc' }, { actualizadaEn: 'desc' }],
+      // Red de seguridad (medido: 73 activas de 214 históricas)
+      take: 500,
     });
   }
 }

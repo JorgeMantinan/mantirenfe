@@ -43,6 +43,13 @@ interface EntradaCache<T> {
 const cacheFichas = new Map<string, EntradaCache<FichaOficial | null>>();
 const cacheAforos = new Map<string, EntradaCache<AforoHistoricoResponse[] | null>>();
 
+/**
+ * Techo de entradas por caché (LRU sencillo: Map reinserta lo leído al final y
+ * lo más antiguo sale primero). Con 1.505 estaciones el límite solo corta si
+ * alguien cachea claves arbitrarias; el TTL ya expira lo que no se usa.
+ */
+const MAX_ENTRADAS_CACHE = 500;
+
 /** Solo para tests: vacía los mapas de caché. */
 export function limpiarCacheDatosRenfe(): void {
   cacheFichas.clear();
@@ -183,6 +190,9 @@ function leer<T>(cache: Map<string, EntradaCache<T>>, clave: string): EntradaCac
     cache.delete(clave);
     return undefined;
   }
+  // Reinsertarla la marca como la más reciente (orden LRU del Map)
+  cache.delete(clave);
+  cache.set(clave, entrada);
   return entrada;
 }
 
@@ -192,7 +202,13 @@ function escribir<T>(
   valor: T,
   esError: boolean,
 ): T {
+  cache.delete(clave);
   cache.set(clave, { valor, caduca: Date.now() + (esError ? TTL_ERROR_MS : TTL_MS) });
+  while (cache.size > MAX_ENTRADAS_CACHE) {
+    const masAntigua = cache.keys().next().value;
+    if (masAntigua === undefined) break;
+    cache.delete(masAntigua);
+  }
   return valor;
 }
 

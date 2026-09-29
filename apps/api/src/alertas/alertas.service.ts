@@ -123,6 +123,9 @@ export class AlertasService {
     const alertas = await prisma.alerta.findMany({
       where: { usuarioId: usuario.sub },
       orderBy: { creadaEn: 'desc' },
+      // Red de seguridad: una alerta lleva su `ultimoEstado` (JSON), así que
+      // nunca se cargan todas las del usuario sin techo (medido: ≤ 2 hoy).
+      take: 500,
     });
     if (alertas.length === 0) return [];
 

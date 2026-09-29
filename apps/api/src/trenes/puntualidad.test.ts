@@ -401,6 +401,39 @@ describe('TrenesService.puntualidadMes (agrupación por eje)', () => {
     expect(consultas.estaciones).toBe(0);
   });
 
+  it('clave canónica: entradas distintas con el mismo significado comparten la caché', async () => {
+    const consultas = instalar({
+      servicios: SERVICIOS,
+      paradas: PARADAS,
+      estaciones: [MADRID, SEVILLA, BARCELONA],
+    });
+    const servicio = new TrenesService();
+
+    await servicio.puntualidadMes(MES);
+    // 'veces' es el orden por defecto: cualquier otra cadena no-impuntualidad
+    // debe caer en la MISMA clave (si no, un ?orden=basura re-calcularía 63k filas)
+    await servicio.puntualidadMes(MES, 'orden-que-no-existe');
+
+    expect(consultas.servicios).toBe(1);
+  });
+
+  it('comparte un único cálculo entre peticiones simultáneas idénticas', async () => {
+    const consultas = instalar({
+      servicios: SERVICIOS,
+      paradas: PARADAS,
+      estaciones: [MADRID, SEVILLA, BARCELONA],
+    });
+    const servicio = new TrenesService();
+
+    const respuestas = await Promise.all(
+      Array.from({ length: 8 }, () => servicio.puntualidadMes(MES)),
+    );
+
+    // Single-flight: 8 llamadas → 1 query de servicios, no 8
+    expect(consultas.servicios).toBe(1);
+    expect(respuestas.every((r) => JSON.stringify(r) === JSON.stringify(respuestas[0]))).toBe(true);
+  });
+
   it('si ParadaHorario no devuelve nada, todo el mes agrupa por vehículo', async () => {
     instalar({ servicios: SERVICIOS, paradas: [], estaciones: [MADRID] });
 

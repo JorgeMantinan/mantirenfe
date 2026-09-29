@@ -16,6 +16,7 @@ import {
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { enriquecerPosiciones } from './enriquecer';
 import { trayectosPorParadas } from './paradas';
+import { Semforo } from '../common/semforo';
 import {
   agruparPorEje,
   aplicarLlegadaEstimada,
@@ -28,6 +29,11 @@ import {
 
 interface CachePosiciones {
   datos: PosicionTrenResponse[];
+  caduca: number;
+}
+
+interface EntradaPuntualidad {
+  valor: PuntualidadTrenResponse[];
   caduca: number;
 }
 
@@ -54,6 +60,26 @@ export class TrenesService {
   private ultimaPersistenciaPosiciones = 0;
   private readonly intervaloPersistenciaMs =
     Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
+
+  /**
+   * `GET /trenes/puntualidad` es, con diferencia, la query más pesada del API:
+   * para deducir el eje (origen→destino) de cada trip trae TODAS sus paradas
+   * del mes — 60.502 filas de ParadaHorario ≈ 26 MB de heap y 4-6 s — más las
+   * filas de `HorarioTren` del enriquecimiento (6.643 filas ≈ 14 MB).
+   *
+   * El problema en Render (512 MB) es el **pico concurrente**: cada visitante
+   * que llega mientras otra petición calcula apila su propio copia. Por eso:
+   *  - `semaforoPuntualidad` admite como máximo 2 cálculos a la vez;
+   *  - solo hay UN cálculo en vuelo por clave (mes + orden) que comparten el
+   *    resto de peticiones;
+   *  - el resultado se cachea 60 s (LRU de 60 entradas ≈ 30 kB cada una): el
+   *    ranking solo cambia cuando el worker registra nuevos retrasos.
+   */
+  private readonly semaforoPuntualidad = new Semforo(2);
+  private readonly cachePuntualidad = new Map<string, EntradaPuntualidad>();
+  private readonly puntualidadEnCurso = new Map<string, Promise<PuntualidadTrenResponse[]>>();
+  private static readonly TTL_PUNTUALIDAD_MS = 60_000;
+  private static readonly MAX_CACHE_PUNTUALIDAD = 60;
 
   async horarios(query: unknown): Promise<HorariosResponse> {
     const parsed = busquedaHorariosQuerySchema.safeParse(query);
@@ -321,6 +347,9 @@ export class TrenesService {
           origen: { select: { nombre: true } },
           destino: { select: { nombre: true } },
         },
+        // Red de seguridad: los números en juego son los de los trenes
+        // visible en el mapa (≤ ~500) × 2 días, muy por debajo del tope.
+        take: 5_000,
       });
       if (horarios.length === 0) return posiciones;
 
@@ -400,6 +429,9 @@ export class TrenesService {
         const existentes = await prisma.impuntualidadTren.findMany({
           where: { fecha: hoy, tripId: { in: [...maxPorViaje.keys()] } },
           select: { tripId: true, retrasoMaxSeg: true },
+          // Red de seguridad: los ids vienen del feed (≤ cientos de trenes/día;
+          // medido: 4.628 filas en todo un mes), muy por debajo del tope.
+          take: 5_000,
         });
         const previos = new Map(existentes.map((e) => [e.tripId, e.retrasoMaxSeg]));
         for (const [viaje, retraso] of maxPorViaje) {
@@ -500,37 +532,162 @@ export class TrenesService {
     };
   }
 
+  /**
+   * `GET /trenes/estacion`: salidas de una estación para una fecha.
+   *
+   * `HorarioTren` solo guarda los EXTREMOS de cada viaje (`origenEstacionId` =
+   * primera parada), así que filtrar por origen deja fuera a toda estación que
+   * sea parada intermedia (Arcade: 0 filas de origen, 19 salidas reales). Los
+   * trenes que paran en la estación se resuelven con `ParadaHorario` (sin
+   * fecha) restringido a los viajes que operan ese día.
+   *
+   * Orden medido en la BD real (2026-09-29) — se elige el de menos volumen:
+   *  - **Día primero (elegido)**: 6.512 filas de `HorarioTren` (todas con
+   *    tripId) y después paradas de la estación en esos viajes: 19 filas para
+   *    Arcade, 1.202 para Chamartín (la más transitada). El `take` de 20.000 es
+   *    red de seguridad: con 500 se perderían viajes (6.512 > 500 y sin orden
+   *    fijo, la query corta arbitrariamente).
+   *  - Parada primero (descartado): 29.857 filas de `ParadaHorario` para
+   *    Chamartín más un `tripId IN` de 29.857 ids.
+   *
+   * Semántica de la fila devuelta (tipo `HorarioTrenResponse`):
+   *  - `origenNombre` = **la estación consultada**: la ficha es de SUS salidas,
+   *    aunque el viaje haya empezado antes.
+   *  - `destinoNombre`/`llegada` = destino y llegada finales del viaje (los
+   *    extremos que guarda `HorarioTren`), y `salida` = la hora en la que el
+   *    tren sale de ESTA estación (`salidaMin` GTFS → fecha + minutos), así
+   *    que `duracionMin` es el trayecto restante hasta el destino final.
+   *  - Solo salen trenes en los que se puede subir: una parada sin `salidaMin`
+   *    (el tren pasa o termina aquí sin permitir salida) no se lista.
+   */
   async salidasEstacion(estacion: string, fecha: string): Promise<HorarioTrenResponse[]> {
     const prisma = getPrisma();
     const encontradas = await buscarEstaciones(prisma, estacion, 3);
     const mejor = encontradas[0];
     if (!mejor) return [];
-    const horarios = await prisma.horarioTren.findMany({
-      where: {
-        origenEstacionId: mejor.id,
-        fecha: new Date(`${fecha}T00:00:00Z`),
+
+    // Viajes que operan ese día (una fila por trip + fecha). Sin filtro de
+    // origen: la estación puede ser parada intermedia de cualquiera de ellos.
+    const delDia = await prisma.horarioTren.findMany({
+      where: { fecha: new Date(`${fecha}T00:00:00Z`) },
+      select: {
+        tripId: true,
+        numeroTren: true,
+        operador: true,
+        llegada: true,
+        destino: { select: { nombre: true } },
       },
-      orderBy: { salida: 'asc' },
-      take: 100,
-      include: { origen: true, destino: true },
+      take: 20_000,
     });
-    return horarios.map((h) => ({
-      numeroTren: h.numeroTren,
-      origenNombre: h.origen.nombre,
-      destinoNombre: h.destino.nombre,
-      salida: h.salida.toISOString(),
-      llegada: h.llegada.toISOString(),
-      duracionMin: Math.round((h.llegada.getTime() - h.salida.getTime()) / 60_000),
-      operador: h.operador,
-    }));
+    const porTrip = new Map<string, (typeof delDia)[number]>();
+    for (const viaje of delDia) {
+      // Las filas antiguas (sin tripId) no permiten cruzar con ParadaHorario
+      if (viaje.tripId && !porTrip.has(viaje.tripId)) porTrip.set(viaje.tripId, viaje);
+    }
+    if (porTrip.size === 0) return [];
+
+    // Paradas de ESTA estación en esos viajes (índice [estacionId, tripId]).
+    // `salidaMin` null = el tren pasa/termina sin dejar subir: no es una salida.
+    const paradas = await prisma.paradaHorario.findMany({
+      where: {
+        estacionId: mejor.id,
+        tripId: { in: [...porTrip.keys()] },
+        salidaMin: { not: null },
+      },
+      select: { tripId: true, orden: true, salidaMin: true },
+      take: 20_000,
+    });
+
+    // Salida más temprana por viaje (una estación puede repetirse en el trip)
+    const salidaPorTrip = new Map<string, number>();
+    for (const parada of paradas) {
+      if (parada.salidaMin === null) continue;
+      const previa = salidaPorTrip.get(parada.tripId);
+      if (previa === undefined || parada.salidaMin < previa) {
+        salidaPorTrip.set(parada.tripId, parada.salidaMin);
+      }
+    }
+    if (salidaPorTrip.size === 0) return [];
+
+    const [ano, mes, diaDelMes] = fecha.split('-').map(Number);
+    if (ano === undefined || mes === undefined || diaDelMes === undefined) return [];
+    const baseMs = Date.UTC(ano, mes - 1, diaDelMes);
+
+    const salidas: HorarioTrenResponse[] = [];
+    for (const [tripId, salidaMin] of salidaPorTrip) {
+      const viaje = porTrip.get(tripId);
+      if (!viaje) continue;
+      const salidaMs = baseMs + salidaMin * 60_000;
+      salidas.push({
+        numeroTren: viaje.numeroTren,
+        origenNombre: mejor.nombre,
+        destinoNombre: viaje.destino.nombre,
+        salida: new Date(salidaMs).toISOString(),
+        llegada: viaje.llegada.toISOString(),
+        duracionMin: Math.max(0, Math.round((viaje.llegada.getTime() - salidaMs) / 60_000)),
+        operador: viaje.operador,
+      });
+    }
+    salidas.sort((a, b) => a.salida.localeCompare(b.salida));
+    return salidas.slice(0, 100);
   }
 
   async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
+    // Clave CANÓNICA (no la entrada cruda del usuario): `rangoMes` ya resuelve
+    // mes inválido = mes en curso y solo hay dos ordenaciones reales. Sin esto,
+    // un `?mes=basura` o un `?orden=x` distinto fabricaría claves nuevas y
+    // saltaría la caché + el single-flight, permitiendo N cálculos de 63k filas
+    // en paralelo (justo lo que revienta los 512 MB de Render).
+    const { desde, hasta } = rangoMes(mes);
+    const clave = `${desde.toISOString()}|${hasta.toISOString()}|${orden === 'impuntualidad' ? 'impuntualidad' : 'veces'}`;
+
+    const cacheada = this.cachePuntualidad.get(clave);
+    if (cacheada) {
+      if (cacheada.caduca > Date.now()) {
+        // Reinsertar la marca la como la más reciente (LRU)
+        this.cachePuntualidad.delete(clave);
+        this.cachePuntualidad.set(clave, cacheada);
+        return cacheada.valor;
+      }
+      this.cachePuntualidad.delete(clave);
+    }
+
+    // Mismo mes y orden en vuelo: en vez de repetir 60k filas, se reutiliza
+    const enCurso = this.puntualidadEnCurso.get(clave);
+    if (enCurso) return enCurso;
+
+    const calculo = this.semaforoPuntualidad
+      .ejecutar(() => this.calcularPuntualidadMes(mes, orden))
+      .then((valor) => {
+        this.cachePuntualidad.set(clave, {
+          valor,
+          caduca: Date.now() + TrenesService.TTL_PUNTUALIDAD_MS,
+        });
+        while (this.cachePuntualidad.size > TrenesService.MAX_CACHE_PUNTUALIDAD) {
+          const masAntigua = this.cachePuntualidad.keys().next().value;
+          if (masAntigua === undefined) break;
+          this.cachePuntualidad.delete(masAntigua);
+        }
+        return valor;
+      })
+      .finally(() => {
+        this.puntualidadEnCurso.delete(clave);
+      });
+    this.puntualidadEnCurso.set(clave, calculo);
+    return calculo;
+  }
+
+  private async calcularPuntualidadMes(
+    mes?: string,
+    orden?: string,
+  ): Promise<PuntualidadTrenResponse[]> {
     const { desde, hasta } = rangoMes(mes);
     const prisma = getPrisma();
 
-    // Servicios impuntuales del mes (≈3k filas): se traen enteros para poder
-    // contarlos por (tripId, fecha) y agruparlos por eje en memoria.
+    // Servicios impuntuales del mes (≈4,4k filas medidas): se traen enteros
+    // para poder contarlos por (tripId, fecha) y agruparlos por eje en memoria.
+    // El `take` es una red de seguridad: un mes con más servicios de ese
+    // tope simplemente se queda con los primeros, nunca carga sin límite.
     const filas = await prisma.impuntualidadTren.findMany({
       where: { fecha: { gte: desde, lt: hasta } },
       select: {
@@ -540,16 +697,22 @@ export class TrenesService {
         fecha: true,
         retrasoMaxSeg: true,
       },
+      take: 20_000,
     });
     if (filas.length === 0) return [];
 
     // Extremos de los trips del mes en UNA query (ParadaHorario: orden mín =
     // origen del viaje, orden máx = destino). Sin paradas para un trip, ese
     // servicio cae al agrupado por vehículo (fallback).
+    // Medido: 3.998 trips distintos → 60.502 filas (≈26 MB de heap, 4-6 s).
+    // El orden por PK [tripId, orden] + `take` garantiza que un tope solo
+    // descarte trips enteros (luego agrupados por vehículo), no extremos sueltos.
     const tripIds = [...new Set(filas.map((f) => f.tripId))];
     const paradas = await prisma.paradaHorario.findMany({
       where: { tripId: { in: tripIds } },
       select: { tripId: true, orden: true, estacionId: true, llegadaMin: true, salidaMin: true },
+      orderBy: [{ tripId: 'asc' }, { orden: 'asc' }],
+      take: 150_000,
     });
     const extremos = extremosPorTrip(paradas);
 
@@ -562,6 +725,7 @@ export class TrenesService {
         ? await prisma.estacion.findMany({
             where: { id: { in: estacionesIds } },
             select: { id: true, nombre: true },
+            take: 5_000,
           })
         : [];
     const nombres = new Map(estaciones.map((e) => [e.id, e.nombre]));
@@ -633,6 +797,9 @@ export class TrenesService {
         origen: { select: { nombre: true } },
         destino: { select: { nombre: true } },
       },
+      // Medido: 6.643 filas (≈14 MB) para un mes completo. El tope solo
+      // afecta al fallback de grupos sin eje (quedan sin enriquecer).
+      take: 20_000,
     });
     if (horarios.length === 0) return;
 

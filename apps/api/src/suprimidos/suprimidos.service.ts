@@ -12,11 +12,12 @@ export class SuprimidosService {
    * actual), opcionalmente reducidos a los que pasan por `estacion`.
    *
    * El filtro por estación se resuelve con `buscarEstaciones` (top 1) y después
-   * se cruzan las paradas SOLO con los tripIds cancelados de ese día: sobre la
-   * estación más transitada (Madrid-Atocha Cercanías, 29.721 paradas) esa
-   * variante devuelve 8 filas en ~47 ms, mientras que pedir todas las paradas de
-   * la estación y cruzarlas en memoria son ~83 ms y 29.721 filas de ida.
-   * En cualquier caso el viaje de ida es el mismo número de queries (2-3).
+   * se cruzan las paradas SOLO con los tripIds cancelados de ese día. Medido en
+   * la BD real, la estación más transitada (Madrid-Chamartín, 29.857 paradas) cruza
+   * con las 55 cancelaciones de hoy en 4 filas / ~166 ms, mientras que pedir sus
+   * paradas sin el filtro de tripId serían 29.857 filas, 11 MB de heap y 15 s.
+   * Todos los pedidos van con `select` mínimo y `take` de red de seguridad
+   * (los volúmenes reales están órdenes de magnitud por debajo).
    */
   async listado(fecha?: string, estacion?: string): Promise<SuprimidoResponse[]> {
     const fechaConsulta = fecha?.trim() || fechaGtfs();
@@ -29,6 +30,8 @@ export class SuprimidosService {
     const cancelaciones = await prisma.cancelacion.findMany({
       where: { fecha: dia },
       select: { tripId: true, numeroTren: true, fecha: true },
+      // Medido: 55-63 cancelaciones por día (118 en total en la BD)
+      take: 5_000,
     });
     if (cancelaciones.length === 0) return [];
 
@@ -41,6 +44,11 @@ export class SuprimidosService {
       const paradas = await prisma.paradaHorario.findMany({
         where: { estacionId: mejor.id, tripId: { in: cancelaciones.map((c) => c.tripId) } },
         select: { tripId: true },
+        // Un trip puede parar 2 veces en la estación: DISTINCT deja 1 fila por
+        // trip y el techo evita arrastrar miles de paradas si un día trae miles
+        // de cancelaciones (la intersección real hoy es de 4 filas).
+        distinct: ['tripId'],
+        take: 5_000,
       });
       const quePasan = new Set(paradas.map((p) => p.tripId));
       delDia = cancelaciones.filter((c) => quePasan.has(c.tripId));
@@ -58,6 +66,7 @@ export class SuprimidosService {
         origen: { select: { nombre: true } },
         destino: { select: { nombre: true } },
       },
+      take: 5_000,
     });
 
     // Sin fila de horario (dato aún no sincronizado o viaje fuera de la ventana)
@@ -78,6 +87,9 @@ export class SuprimidosService {
           llegadaMin: true,
           estacion: { select: { nombre: true } },
         },
+        // Medido: 0 trips sin horario hoy; el peor caso posible (máx. 104
+        // paradas por trip × 5.000 cancelaciones) queda bajo este techo.
+        take: 20_000,
       });
     }
 
