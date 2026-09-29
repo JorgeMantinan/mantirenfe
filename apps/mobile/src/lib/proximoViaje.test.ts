@@ -8,6 +8,7 @@ import {
   instantePeninsular,
   proximaFechaAplicable,
   proximaSalida,
+  proximasSalidas,
   textoPlazas,
   tonoPlazas,
 } from './proximoViaje';
@@ -240,6 +241,109 @@ describe('proximaSalida', () => {
   it('tolera salidas guardadas solo como hora', () => {
     const salida = proximaSalida([alerta({ ultimoEstado: [tren({ salida: '20:15' })] })], AHORA);
     expect(salida).toMatchObject({ fecha: HOY, salida: '20:15' });
+  });
+});
+
+describe('proximasSalidas', () => {
+  const corunaSevilla = alerta({
+    id: 'sevilla',
+    origenNombre: 'A Coruña',
+    destinoNombre: 'Sevilla',
+    ultimoEstado: [delDia('07:30', { trenId: 's1' })],
+  });
+  const corunaVilagarcia = alerta({
+    id: 'vilagarcia',
+    origenNombre: 'A Coruña',
+    destinoNombre: 'Vilagarcía de Arousa',
+    ultimoEstado: [delDia('18:00', { trenId: 'v1' })],
+  });
+
+  it('devuelve una salida por cada alerta activa, ordenadas por día y hora', () => {
+    const sinHora = alerta({ id: 'sin-hora', destinoNombre: 'Santiago' });
+    const salidas = proximasSalidas([corunaVilagarcia, corunaSevilla, sinHora], 3, AHORA);
+
+    expect(salidas.map((s) => s.alertaId)).toEqual(['sevilla', 'vilagarcia', 'sin-hora']);
+    expect(salidas.map((s) => s.salida)).toEqual(['07:30', '18:00', null]);
+    expect(salidas.map((s) => `${s.origenNombre} → ${s.destinoNombre}`)).toEqual([
+      'A Coruña → Sevilla',
+      'A Coruña → Vilagarcía de Arousa',
+      'Madrid-Chamartín → Santiago',
+    ]);
+  });
+
+  it('ordena el día por delante de la hora (hoy sin hora gana a mañana con hora)', () => {
+    const salidas = proximasSalidas(
+      [
+        alerta({
+          id: 'manana',
+          ultimoEstado: [tren({ trenId: 'm1', salida: '2026-09-29T08:00:00.000Z' })],
+        }),
+        alerta({ id: 'hoy-sin-datos' }),
+      ],
+      3,
+      AHORA,
+    );
+    expect(salidas.map((s) => s.alertaId)).toEqual(['hoy-sin-datos', 'manana']);
+  });
+
+  it('aporta como mucho una salida por alerta y descarta las no activas', () => {
+    const salidas = proximasSalidas(
+      [
+        alerta({
+          id: 'multi',
+          ultimoEstado: [
+            delDia('08:00', { trenId: 't1' }),
+            delDia('09:00', { trenId: 't2' }),
+            delDia('10:00', { trenId: 't3' }),
+          ],
+        }),
+        alerta({ id: 'pausa', estado: 'PAUSA' }),
+        alerta({ id: 'completada', estado: 'COMPLETADA' }),
+      ],
+      3,
+      AHORA,
+    );
+
+    expect(salidas).toHaveLength(1);
+    expect(salidas[0]).toMatchObject({ alertaId: 'multi', salida: '08:00' });
+  });
+
+  it('respeta el límite, que por defecto son 3', () => {
+    const muchas = [
+      alerta({ id: 'a', ultimoEstado: [delDia('08:00', { trenId: 't8' })] }),
+      alerta({ id: 'b', ultimoEstado: [delDia('09:00', { trenId: 't9' })] }),
+      alerta({ id: 'c', ultimoEstado: [delDia('10:00', { trenId: 't10' })] }),
+      alerta({ id: 'd', ultimoEstado: [delDia('11:00', { trenId: 't11' })] }),
+    ];
+
+    expect(proximasSalidas(muchas, undefined, AHORA).map((s) => s.alertaId)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+    expect(proximasSalidas(muchas, 1, AHORA).map((s) => s.alertaId)).toEqual(['a']);
+    expect(proximasSalidas(muchas, 0, AHORA)).toEqual([]);
+  });
+
+  it('devuelve la lista vacía si no queda ninguna salida', () => {
+    expect(proximasSalidas([], 3, AHORA)).toEqual([]);
+    expect(proximasSalidas([alerta({ estado: 'PAUSA' })], 3, AHORA)).toEqual([]);
+    expect(
+      proximasSalidas(
+        [alerta({ recurrente: false, fechaViaje: '2026-09-27', estado: 'ACTIVA' })],
+        3,
+        AHORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it('su primera entrada es exactamente lo que devuelve proximaSalida', () => {
+    const alertas = [corunaVilagarcia, corunaSevilla, alerta({ id: 'sin-hora' })];
+    const una = proximaSalida(alertas, AHORA);
+
+    expect(una).not.toBeNull();
+    expect(proximasSalidas(alertas, 3, AHORA)[0]).toEqual(una);
+    expect(proximasSalidas(alertas, 1, AHORA)).toEqual(una ? [una] : []);
   });
 });
 

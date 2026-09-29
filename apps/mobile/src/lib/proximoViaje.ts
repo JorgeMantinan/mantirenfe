@@ -198,26 +198,44 @@ function candidataDeAlerta(
 }
 
 /**
- * Próxima salida entre las alertas ACTIVAS: primero el día más temprano (hoy si
- * la alerta toca hoy) y, a igualdad de día, la hora más temprana; una salida
+ * Hasta `limite` próximas salidas entre las alertas ACTIVAS: **una por alerta**
+ * (la misma que daría `proximaSalida`), ordenadas por el día más temprano (hoy
+ * si la alerta toca hoy) y, a igualdad de día, la hora más temprana; una salida
  * sin hora confirmada pierde frente a un tren conocido del mismo día.
  *
  * Solo sirve para mostrar la tarjeta del Inicio: no toca el worker.
+ */
+export function proximasSalidas(
+  alertas: AlertaResponse[],
+  limite = 3,
+  ahora: Date = new Date(),
+): ProximaSalida[] {
+  const { fecha: hoy, hora } = relojPeninsular(ahora);
+  const candidatas: ProximaSalida[] = [];
+
+  for (const alerta of alertas) {
+    if (alerta.estado !== 'ACTIVA') continue;
+    const candidata = candidataDeAlerta(alerta, hoy, hora);
+    if (candidata) candidatas.push(candidata);
+  }
+
+  candidatas.sort((a, b) => {
+    const ka = claveOrden(a);
+    const kb = claveOrden(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return candidatas.slice(0, Math.max(0, limite));
+}
+
+/**
+ * Próxima salida entre las alertas ACTIVAS (la primera de `proximasSalidas`):
+ * para la tarjeta del Inicio. No toca el worker.
  */
 export function proximaSalida(
   alertas: AlertaResponse[],
   ahora: Date = new Date(),
 ): ProximaSalida | null {
-  const { fecha: hoy, hora } = relojPeninsular(ahora);
-  let mejor: ProximaSalida | null = null;
-
-  for (const alerta of alertas) {
-    if (alerta.estado !== 'ACTIVA') continue;
-    const candidata = candidataDeAlerta(alerta, hoy, hora);
-    if (!candidata) continue;
-    if (mejor === null || claveOrden(candidata) < claveOrden(mejor)) mejor = candidata;
-  }
-  return mejor;
+  return proximasSalidas(alertas, 1, ahora)[0] ?? null;
 }
 
 /** Orden: día, y dentro del día la hora (o por detrás si aún no se conoce). */

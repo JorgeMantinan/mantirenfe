@@ -10,10 +10,12 @@ import { etiquetaAvisos, etiquetaEstado } from '@/lib/alertas';
 import {
   cuentaAtras,
   etiquetaDia,
-  proximaSalida,
+  proximasSalidas,
   relojPeninsular,
   textoPlazas,
   tonoPlazas,
+  type EstadoPlazas,
+  type ProximaSalida,
 } from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
@@ -130,62 +132,109 @@ export default function Alertas() {
           )
         }
         renderItem={({ item }) => (
-          <Tarjeta>
-            <View style={s.filaAlerta}>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={s.ruta}>
-                  {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
-                  {item.destinoNombre}
-                </Text>
-                <Text style={s.detalle}>
-                  {item.fechaViaje} · cada {item.intervaloSondeoMin} min · {item.bono}
-                </Text>
-                <View style={s.filaAvisos}>
-                  <Ionicons name="notifications-outline" size={13} color={paleta.textoSecundario} />
-                  <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Ver detalle de ${item.origenNombre} a ${item.destinoNombre}`}
+            accessibilityHint="Muestra las plazas, la evolución del precio y los avisos"
+            onPress={() => router.push(`/alertas/${item.id}`)}
+            style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+          >
+            <Tarjeta>
+              <View style={s.filaAlerta}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={s.ruta}>
+                    {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+                    {item.destinoNombre}
+                  </Text>
+                  <Text style={s.detalle}>
+                    {item.fechaViaje} · cada {item.intervaloSondeoMin} min · {item.bono}
+                  </Text>
+                  <View style={s.filaAvisos}>
+                    <Ionicons
+                      name="notifications-outline"
+                      size={13}
+                      color={paleta.textoSecundario}
+                    />
+                    <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
+                  </View>
+                </View>
+                <View style={s.filaDerecha}>
+                  <Etiqueta
+                    tono={
+                      item.estado === 'ACTIVA'
+                        ? 'exito'
+                        : item.estado === 'PAUSA'
+                          ? 'aviso'
+                          : 'neutro'
+                    }
+                  >
+                    {etiquetaEstado(item.estado)}
+                  </Etiqueta>
+                  <Ionicons name="chevron-forward" size={16} color={paleta.textoSecundario} />
                 </View>
               </View>
-              <Etiqueta
-                tono={
-                  item.estado === 'ACTIVA' ? 'exito' : item.estado === 'PAUSA' ? 'aviso' : 'neutro'
-                }
-              >
-                {etiquetaEstado(item.estado)}
-              </Etiqueta>
-            </View>
-            <View style={s.acciones}>
-              <Boton
-                titulo={item.estado === 'ACTIVA' ? 'Pausar' : 'Reanudar'}
-                variante="contorno"
-                onPress={() => void alternar(item)}
-                style={s.botonAccion}
-              />
-              <Boton
-                titulo="Editar"
-                variante="contorno"
-                onPress={() =>
-                  router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
-                }
-                style={s.botonAccion}
-              />
-              <Boton
-                titulo="Eliminar"
-                variante="fantasma"
-                onPress={() => eliminar(item)}
-                style={s.botonAccion}
-              />
-            </View>
-          </Tarjeta>
+              <View style={s.acciones}>
+                <Boton
+                  titulo={item.estado === 'ACTIVA' ? 'Pausar' : 'Reanudar'}
+                  variante="contorno"
+                  onPress={() => void alternar(item)}
+                  style={s.botonAccion}
+                />
+                <Boton
+                  titulo="Editar"
+                  variante="contorno"
+                  onPress={() =>
+                    router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
+                  }
+                  style={s.botonAccion}
+                />
+                <Boton
+                  titulo="Eliminar"
+                  variante="fantasma"
+                  onPress={() => eliminar(item)}
+                  style={s.botonAccion}
+                />
+              </View>
+            </Tarjeta>
+          </Pressable>
         )}
       />
     </View>
   );
 }
 
+/** Cuántas salidas enseña la tarjeta: la próxima + dos filas compactas. */
+const MAXIMO_SALIDAS = 3;
+
+/** Badge corto de las filas compactas: "Plazas" en vez de "Hay plazas desde …". */
+function textoPlazasCorto(estado: EstadoPlazas): string {
+  switch (estado) {
+    case 'cancelado':
+      return 'Cancelado';
+    case 'plazas':
+      return 'Plazas';
+    case 'completo':
+      return 'Completo';
+    default:
+      return 'Sin datos';
+  }
+}
+
+/**
+ * Inicio de una fila compacta: "08:00" si sale hoy, "Mañana 08:00" si cae otro
+ * día y solo la etiqueta del día cuando aún no hay hora confirmada.
+ */
+function inicioFila(salida: ProximaSalida, hoy: string): string {
+  const etiqueta = etiquetaDia(salida.fecha, hoy);
+  if (!salida.salida) return etiqueta;
+  return salida.fecha === hoy ? salida.salida : `${etiqueta} ${salida.salida}`;
+}
+
 /**
  * "Tu próximo viaje": la próxima salida entre las alertas ACTIVAS, con cuenta
- * atrás (re-render cada minuto) y acceso al detalle. `alertas = null` significa
- * "aún sin cargar" y no pinta nada.
+ * atrás (re-render cada minuto) y acceso al detalle; debajo, hasta dos filas
+ * compactas con las salidas siguientes de otras alertas (cada una lleva a su
+ * propio detalle). `alertas = null` significa "aún sin cargar" y no pinta nada.
  */
 function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) {
   const [ahora, setAhora] = useState(() => new Date());
@@ -199,7 +248,9 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
 
   if (alertas === null) return null;
 
-  const salida = proximaSalida(alertas, ahora);
+  const salidas = proximasSalidas(alertas, MAXIMO_SALIDAS, ahora);
+  const salida = salidas[0];
+  const siguientes = salidas.slice(1);
 
   if (!salida) {
     return (
@@ -219,7 +270,10 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`${salida.origenNombre} a ${salida.destinoNombre}`}
+      accessibilityHint="Abre el detalle de la alerta"
       onPress={() => router.push(`/alertas/${salida.alertaId}`)}
+      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >
       <Tarjeta style={{ borderColor: paleta.primario }}>
         <View style={s.viajeFila}>
@@ -238,6 +292,30 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
           <Text style={s.viajeNota}>
             Aún no sabemos las plazas: comprobamos cada {salida.intervaloSondeoMin} min
           </Text>
+        ) : null}
+        {siguientes.length > 0 ? (
+          <View style={s.viajeSiguientes}>
+            <View style={s.viajeSeparador} />
+            <Text style={s.viajeSiguientesTitulo}>Y también:</Text>
+            {siguientes.map((siguiente) => (
+              <Pressable
+                key={siguiente.alertaId}
+                accessibilityRole="button"
+                accessibilityLabel={`${inicioFila(siguiente, hoy)} de ${siguiente.origenNombre} a ${siguiente.destinoNombre}`}
+                accessibilityHint="Abre el detalle de la alerta"
+                onPress={() => router.push(`/alertas/${siguiente.alertaId}`)}
+                style={({ pressed }) => [s.viajeSiguienteFila, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={s.viajeSiguienteTexto}>
+                  {inicioFila(siguiente, hoy)} · {siguiente.origenNombre}{' '}
+                  <Text style={{ color: paleta.primario }}>→</Text> {siguiente.destinoNombre}
+                </Text>
+                <Etiqueta tono={tonoPlazas(siguiente.estado)} style={s.viajeSiguienteBadge}>
+                  {textoPlazasCorto(siguiente.estado)}
+                </Etiqueta>
+              </Pressable>
+            ))}
+          </View>
         ) : null}
       </Tarjeta>
     </Pressable>
@@ -296,6 +374,11 @@ const estilos = (c: Paleta) =>
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: espaciado.sm,
+    },
+    filaDerecha: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
     },
     ruta: {
       fontSize: 16,
@@ -375,5 +458,34 @@ const estilos = (c: Paleta) =>
     viajeVacio: {
       fontSize: 14,
       color: c.textoSecundario,
+    },
+    viajeSiguientes: {
+      gap: espaciado.xs,
+    },
+    viajeSeparador: {
+      height: 1,
+      backgroundColor: c.borde,
+    },
+    viajeSiguientesTitulo: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.textoSecundario,
+    },
+    viajeSiguienteFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+      paddingVertical: 6,
+    },
+    viajeSiguienteTexto: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.texto,
+    },
+    viajeSiguienteBadge: {
+      paddingVertical: 2,
+      paddingHorizontal: 8,
     },
   });
