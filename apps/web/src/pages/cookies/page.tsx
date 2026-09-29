@@ -25,10 +25,7 @@ export function PaginaCookies() {
       </Seccion>
 
       <Seccion titulo="Qué usa esta versión">
-        <p>
-          Esta versión no usa cookies publicitarias ni de terceros. Solo guardamos lo necesario para
-          que la app funcione:
-        </p>
+        <p>Guardamos lo necesario para que la app funcione:</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
             <strong className="text-foreground">Sesión de usuario</strong>: Supabase Auth guarda tu
@@ -52,20 +49,33 @@ export function PaginaCookies() {
           </li>
         </ul>
         <p>
-          <strong className="text-foreground">
-            Esta versión aún no carga cookies de terceros de publicidad
-          </strong>{' '}
-          ni scripts de analítica externa. No hay banner de consentimiento (CMP) porque no hace
-          falta todavía.
+          <strong className="text-foreground">Publicidad (Google AdSense)</strong>: en las páginas
+          de trayecto mostramos anuncios de Google AdSense. Google y sus socios pueden instalar
+          cookies y usar identificadores de dispositivo solo <em>después</em> de tu consentimiento
+          (para visitantes de la EEE, Reino Unido y Suiza). Ese consentimiento se recoge con el
+          banner de la CMP de Google al entrar:{' '}
+          <em>Consentir · No consentir · Gestionar opciones</em>. Si eliges <em>No consentir</em>,
+          los anuncios se muestran de forma no personalizada.
+        </p>
+        <p>
+          <strong className="text-foreground">No usamos analítica externa propia</strong> (ni Google
+          Analytics ni similares): solo lo necesario para que la app funcione, tal como describe la
+          lista de arriba.
         </p>
       </Seccion>
 
-      <Seccion titulo="Futuros anunciantes y afiliados">
+      <Seccion titulo="Consentimiento, anunciantes y afiliados">
         <p>
-          Si en el futuro se incorporan redes publicitarias, analítica de terceros o scripts de
-          afiliados, pediremos tu consentimiento antes de instalarlos y actualizaremos esta
-          política. Los enlaces de afiliación, cuando existan, abren webs de terceros (Trainline,
-          Omio…) que aplican sus propias cookies bajo sus políticas, no las nuestras.
+          El banner de consentimiento (CMP de Google) aparece en tu primera visita y permite
+          aceptar, rechazar o ajustar los fines en cualquier momento desde{' '}
+          <strong className="text-foreground">«Gestionar opciones»</strong>, que Google añade en la
+          propia página mientras la CMP esté activa. Retirar el consentimiento afecta a partir de
+          esa misma sesión.
+        </p>
+        <p>
+          Los enlaces de afiliación, cuando existan, abren webs de terceros (Trainline, Omio…) que
+          aplican sus propias cookies bajo sus políticas, no las nuestras; se identifican siempre
+          como enlace de afiliación.
         </p>
       </Seccion>
 
