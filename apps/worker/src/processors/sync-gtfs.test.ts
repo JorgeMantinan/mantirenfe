@@ -6,8 +6,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import {
   cabecerasGtfs,
   fuentesGtfs,
+  repararTripIdsDesactualizados,
   sincronizarEstaciones,
   sincronizarHorarios,
+  type BaseReparacionTripIds,
 } from './sync-gtfs';
 
 interface EstacionGuardada {
@@ -26,19 +28,38 @@ interface ParadaGuardada {
   salidaMin: number | null;
 }
 
+interface HorarioGuardado {
+  id: string;
+  numeroTren: string;
+  fecha: Date;
+  salida: Date;
+  operador: string | null;
+  tripId?: string | null;
+  origenEstacionId: string;
+  destinoEstacionId: string;
+}
+
+/** Clave única de HorarioTren: [numeroTren, fecha, origenEstacionId, salida]. */
+function claveHorario(f: {
+  numeroTren: string;
+  fecha: Date;
+  origenEstacionId: string;
+  salida: Date;
+}): string {
+  return `${f.numeroTren}|${f.fecha.toISOString()}|${f.origenEstacionId}|${f.salida.toISOString()}`;
+}
+
 const { prismaMock, store } = vi.hoisted(() => {
   const store = {
     estaciones: new Map<string, EstacionGuardada>(),
-    horarios: [] as Array<{
-      numeroTren: string;
-      operador: string | null;
-      tripId?: string | null;
-      origenEstacionId: string;
-      destinoEstacionId: string;
-    }>,
+    horarios: [] as HorarioGuardado[],
     paradas: [] as ParadaGuardada[],
     estacionesUpsert: [] as string[],
     estacionesCreateMany: [] as string[],
+    /** Llamadas a findMany del mecanismo de reparación de tripIds. */
+    consultasReparacion: [] as number[],
+    /** Updates aplicados por `repararTripIdsDesactualizados`. */
+    reparaciones: [] as Array<{ id: string; tripId: string }>,
   };
 
   const prismaMock = {
@@ -70,16 +91,70 @@ const { prismaMock, store } = vi.hoisted(() => {
       findMany: async () => [...store.estaciones.values()],
     },
     horarioTren: {
+      // Emula `skipDuplicates` sobre la unique [numeroTren, fecha, origen, salida]
       createMany: async (args: {
         data: Array<{
           numeroTren: string;
+          fecha: Date;
+          salida: Date;
           operador: string | null;
+          tripId: string;
           origenEstacionId: string;
           destinoEstacionId: string;
         }>;
       }) => {
-        store.horarios.push(...args.data);
-        return { count: args.data.length };
+        let count = 0;
+        for (const fila of args.data) {
+          const clave = claveHorario(fila);
+          if (store.horarios.some((h) => claveHorario(h) === clave)) continue;
+          store.horarios.push({ ...fila, id: `h${store.horarios.length + 1}` });
+          count++;
+        }
+        return { count };
+      },
+      findMany: async (args: {
+        where: {
+          AND: [
+            {
+              OR: Array<{
+                AND: {
+                  numeroTren: string;
+                  fecha: Date;
+                  origenEstacionId: string;
+                  salida: Date;
+                };
+              }>;
+            },
+            { OR: Array<{ tripId: null } | { tripId: { notIn: string[] } }> },
+          ];
+        };
+      }) => {
+        store.consultasReparacion.push(args.where.AND[0].OR.length);
+        const [porClave, porTripId] = args.where.AND;
+        const claves = new Set(porClave.OR.map((r) => claveHorario(r.AND)));
+        const admiteNull = porTripId.OR.some((r) => r.tripId === null);
+        const fuera = porTripId.OR.flatMap((r) => (r.tripId === null ? [] : r.tripId.notIn));
+        return store.horarios
+          .filter(
+            (h) =>
+              claves.has(claveHorario(h)) &&
+              (h.tripId == null ? admiteNull : !fuera.includes(h.tripId)),
+          )
+          .map((h) => ({
+            id: h.id,
+            numeroTren: h.numeroTren,
+            fecha: h.fecha,
+            origenEstacionId: h.origenEstacionId,
+            salida: h.salida,
+            tripId: h.tripId ?? null,
+          }));
+      },
+      update: async (args: { where: { id: string }; data: { tripId: string } }) => {
+        const fila = store.horarios.find((h) => h.id === args.where.id);
+        if (!fila) throw new Error(`sin fila ${args.where.id}`);
+        fila.tripId = args.data.tripId;
+        store.reparaciones.push({ id: args.where.id, tripId: args.data.tripId });
+        return fila;
       },
       count: async () => 0,
       deleteMany: async () => ({ count: 0 }),
@@ -202,6 +277,8 @@ beforeEach(() => {
   store.paradas.length = 0;
   store.estacionesUpsert.length = 0;
   store.estacionesCreateMany.length = 0;
+  store.consultasReparacion.length = 0;
+  store.reparaciones.length = 0;
   peticiones.length = 0;
 });
 
@@ -299,5 +376,174 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
     // La ApiKey del NAP no se filtra a otros hosts (2 feeds × 2 pasadas)
     expect(peticiones).toHaveLength(4);
     for (const peticion of peticiones) expect(peticion.apikey).toBeUndefined();
+  });
+
+  it('repara el tripId de otra publicación que choca en la unique', async () => {
+    process.env.GTFS_ZIP_URLS = `${base}/renfe.zip`;
+    process.env.GTFS_ZIP_URLS_OUIGO = '';
+
+    await sincronizarEstaciones(logger);
+
+    // Fila heredada de una publicación anterior: MISMA unique que la del feed
+    // ([numeroTren, fecha, origen, salida]) pero con un tripId que el feed ya
+    // no publica → createMany la salta y, sin reparación, no cruzaría nunca.
+    const hoy = new Date();
+    hoy.setUTCHours(0, 0, 0, 0);
+    store.horarios.push({
+      id: 'h-legacy',
+      numeroTren: '01234',
+      fecha: new Date(hoy),
+      salida: new Date(hoy.getTime() + 8 * 60 * 60_000),
+      operador: 'AVE',
+      tripId: 'T1-DE-OTRA-PUBLICACION',
+      origenEstacionId: '17000',
+      destinoEstacionId: '28000',
+    });
+
+    await sincronizarHorarios(logger);
+
+    expect(store.reparaciones).toEqual([{ id: 'h-legacy', tripId: 'T1' }]);
+    expect(store.horarios.find((h) => h.id === 'h-legacy')?.tripId).toBe('T1');
+    expect(store.consultasReparacion.length).toBeGreaterThan(0);
+  });
+});
+
+describe('repararTripIdsDesactualizados', () => {
+  const FECHA = new Date(Date.UTC(2026, 8, 29));
+  const SALIDA = new Date(Date.UTC(2026, 8, 29, 8, 0));
+
+  interface FilaBd {
+    id: string;
+    numeroTren: string;
+    fecha: Date;
+    origenEstacionId: string;
+    salida: Date;
+    tripId: string | null;
+  }
+
+  function filaFeed(tripId: string, sobre: { salida?: Date } = {}) {
+    return {
+      numeroTren: '01234',
+      fecha: FECHA,
+      origenEstacionId: '17000',
+      salida: sobre.salida ?? SALIDA,
+      tripId,
+    };
+  }
+
+  /** Doble que aplica el mismo `where` que Prisma (claves únicas + NOT IN). */
+  function doble(filasBd: FilaBd[]) {
+    const actualizadas: Array<{ id: string; tripId: string }> = [];
+    let consultas = 0;
+    const base: BaseReparacionTripIds = {
+      horarioTren: {
+        findMany: async (args) => {
+          consultas++;
+          const [porClave, porTripId] = args.where.AND;
+          const claves = new Set(porClave.OR.map((r) => claveHorario(r.AND)));
+          const admiteNull = porTripId.OR.some((r) => r.tripId === null);
+          const fuera = porTripId.OR.flatMap((r) => (r.tripId === null ? [] : r.tripId.notIn));
+          return filasBd.filter(
+            (f) =>
+              claves.has(claveHorario(f)) &&
+              (f.tripId === null ? admiteNull : !fuera.includes(f.tripId)),
+          );
+        },
+        update: async (args) => {
+          const fila = filasBd.find((f) => f.id === args.where.id);
+          if (fila) fila.tripId = args.data.tripId;
+          actualizadas.push({ id: args.where.id, tripId: args.data.tripId });
+        },
+      },
+    };
+    return { base, actualizadas, consultas: () => consultas };
+  }
+
+  /** TripIds que el feed publica hoy (el set completo, no solo el lote). */
+  const publicados = (...tripIds: string[]) => new Set(tripIds);
+
+  it('actualiza el tripId cuando la unique choca con uno distinto', async () => {
+    const bd: FilaBd[] = [{ id: 'h1', ...filaFeed('0123412026-09-24') }];
+    const { base, actualizadas } = doble(bd);
+
+    const reparadas = await repararTripIdsDesactualizados(
+      base,
+      [filaFeed('0123412026-09-29')],
+      publicados('0123412026-09-29'),
+    );
+
+    expect(reparadas).toBe(1);
+    expect(actualizadas).toEqual([{ id: 'h1', tripId: '0123412026-09-29' }]);
+    expect(bd[0]?.tripId).toBe('0123412026-09-29');
+  });
+
+  it('no toca la fila si el tripId ya es el del feed', async () => {
+    const bd: FilaBd[] = [{ id: 'h1', ...filaFeed('0123412026-09-29') }];
+    const { base, actualizadas, consultas } = doble(bd);
+
+    const reparadas = await repararTripIdsDesactualizados(
+      base,
+      [filaFeed('0123412026-09-29')],
+      publicados('0123412026-09-29'),
+    );
+
+    expect(reparadas).toBe(0);
+    expect(actualizadas).toEqual([]);
+    // El NOT IN de la BD descarta la fila: no se escribe nada
+    expect(consultas()).toBe(1);
+  });
+
+  it('no toca filas cuya clave única no está en el lote del feed', async () => {
+    const otraSalida = new Date(SALIDA.getTime() + 60 * 60_000);
+    const bd: FilaBd[] = [
+      { id: 'h-otra', ...filaFeed('0123412026-09-24', { salida: otraSalida }) },
+    ];
+    const { base, actualizadas } = doble(bd);
+
+    const reparadas = await repararTripIdsDesactualizados(
+      base,
+      [filaFeed('0123412026-09-29')],
+      publicados('0123412026-09-29'),
+    );
+
+    expect(reparadas).toBe(0);
+    expect(actualizadas).toEqual([]);
+    expect(bd[0]?.tripId).toBe('0123412026-09-24');
+  });
+
+  it('no reescribe un viaje gemelo que el feed sigue publicando (sin oscilar)', async () => {
+    // Misma unique, dos tripId vigentes: el lote trae uno y la BD tiene el otro
+    const bd: FilaBd[] = [{ id: 'h1', ...filaFeed('0063242026-09-29') }];
+    const { base, actualizadas } = doble(bd);
+
+    const reparadas = await repararTripIdsDesactualizados(
+      base,
+      [filaFeed('0063212026-09-29')],
+      publicados('0063212026-09-29', '0063242026-09-29'),
+    );
+
+    expect(reparadas).toBe(0);
+    expect(actualizadas).toEqual([]);
+    expect(bd[0]?.tripId).toBe('0063242026-09-29');
+  });
+
+  it('con dos viajes gemelos (misma unique) elige el menor, sin oscilar', async () => {
+    const bd: FilaBd[] = [{ id: 'h1', ...filaFeed('viejo-publicacion-anterior') }];
+    const { base, actualizadas } = doble(bd);
+
+    const reparadas = await repararTripIdsDesactualizados(
+      base,
+      [filaFeed('0019022026-09-29'), filaFeed('0019012026-09-29')],
+      publicados('0019022026-09-29', '0019012026-09-29'),
+    );
+
+    expect(reparadas).toBe(1);
+    expect(actualizadas).toEqual([{ id: 'h1', tripId: '0019012026-09-29' }]);
+  });
+
+  it('sin filas no consulta la BD', async () => {
+    const { base, consultas } = doble([]);
+    await expect(repararTripIdsDesactualizados(base, [], publicados())).resolves.toBe(0);
+    expect(consultas()).toBe(0);
   });
 });

@@ -395,6 +395,52 @@ interface ExtremosViaje {
   ultima: ParadaViaje;
 }
 
+/**
+ * Acumula la primera/última parada de un trip (la de `orden` mínimo y la de
+ * `orden` máximo). Compartido por el sync y por `filasDeFeed` para que el
+ * backfill calcule EXACTAMENTE los mismos extremos que inserta el sync.
+ */
+function registrarExtremo(
+  extremos: Map<string, ExtremosViaje>,
+  tripId: string,
+  parada: ParadaViaje,
+): void {
+  const ext = extremos.get(tripId);
+  if (!ext) {
+    extremos.set(tripId, { primera: parada, ultima: parada });
+    return;
+  }
+  if (parada.orden < ext.primera.orden) ext.primera = parada;
+  if (parada.orden > ext.ultima.orden) ext.ultima = parada;
+}
+
+/** `calendar.txt` + `calendar_dates.txt` ya indexados, igual que en el sync. */
+function leerCalendarios(
+  calendarBuf?: Buffer,
+  calendarDatesBuf?: Buffer,
+): {
+  calendar: Map<string, Record<string, string>>;
+  calendarDates: Map<string, Array<{ fecha: string; tipo: string }>>;
+} {
+  const calendar = new Map<string, Record<string, string>>();
+  if (calendarBuf) {
+    for (const fila of parsearCsv(calendarBuf)) {
+      if (fila.service_id) calendar.set(fila.service_id, fila);
+    }
+  }
+  const calendarDates = new Map<string, Array<{ fecha: string; tipo: string }>>();
+  if (calendarDatesBuf) {
+    for (const fila of parsearCsv(calendarDatesBuf)) {
+      const fecha = fechaIsoDesdeGtfs(fila.date ?? '');
+      if (!fila.service_id || !fecha || !fila.exception_type) continue;
+      const lista = calendarDates.get(fila.service_id) ?? [];
+      lista.push({ fecha, tipo: fila.exception_type });
+      calendarDates.set(fila.service_id, lista);
+    }
+  }
+  return { calendar, calendarDates };
+}
+
 interface TripLigero {
   tripId: string;
   serviceId: string;
@@ -459,6 +505,255 @@ async function borrarPorChunks(
 }
 
 /**
+ * Fila de `HorarioTren` reducida a los 4 campos de su unique
+ * `[numeroTren, fecha, origenEstacionId, salida]` + el tripId del feed.
+ */
+export interface FilaClaveHorario {
+  numeroTren: string;
+  fecha: Date;
+  origenEstacionId: string;
+  salida: Date;
+  tripId: string;
+}
+
+/** Pedidos mínimos a la BD para reparar tripIds (Prisma real o un doble). */
+export interface BaseReparacionTripIds {
+  horarioTren: {
+    findMany: (args: {
+      where: {
+        AND: [
+          /** Claves únicas exactas del lote (la unique garantiza ≤1 fila por clave) */
+          {
+            OR: Array<{
+              AND: {
+                numeroTren: string;
+                fecha: Date;
+                origenEstacionId: string;
+                salida: Date;
+              };
+            }>;
+          },
+          /** Solo filas cuyo tripId NO es el del feed (o que no tienen) */
+          { OR: Array<{ tripId: null } | { tripId: { notIn: string[] } }> },
+        ];
+      };
+      select: {
+        id: true;
+        numeroTren: true;
+        fecha: true;
+        origenEstacionId: true;
+        salida: true;
+        tripId: true;
+      };
+      take?: number;
+    }) => Promise<
+      Array<{
+        id: string;
+        numeroTren: string;
+        fecha: Date;
+        origenEstacionId: string;
+        salida: Date;
+        tripId: string | null;
+      }>
+    >;
+    update: (args: { where: { id: string }; data: { tripId: string } }) => Promise<unknown>;
+  };
+}
+
+function claveDeFila(f: {
+  numeroTren: string;
+  fecha: Date;
+  origenEstacionId: string;
+  salida: Date;
+}): string {
+  return `${f.numeroTren}|${f.fecha.toISOString()}|${f.origenEstacionId}|${f.salida.toISOString()}`;
+}
+
+/**
+ * El feed de Larga Distancia regenera los tripId con cada publicación
+ * (`0019012026-09-24` → `0019012026-09-29`) y `HorarioTren` los guarda con
+ * `createMany(skipDuplicates)`: la unique `[numeroTren, fecha, origen, salida]`
+ * salta la fila NUEVA y conserva la vieja, con un tripId que ya no está en
+ * `ParadaHorario` → los cruces por paradas intermedias devuelven 0.
+ *
+ * Esta función repara esas filas: busca las de ESTE lote cuyo tripId no es
+ * ninguno de los que trae el feed y, si su clave única coincide con una fila
+ * del lote, la actualiza al tripId actual. Medido (2026-09-29): 1.391 de 1.466
+ * filas LD de hoy.
+ *
+ * - El `findMany` busca por las claves únicas EXACTAS del lote: la unique
+ *   garantiza ≤1 fila por clave, así que el pedido no se trunca (un filtro
+ *   `fecha IN + numeroTren IN` devolvía hasta 26k filas y cortaba por `take`).
+ *   El `tripId NOT IN` descarta en la BD las filas ya correctas: en régimen
+ *   normal devuelve 0 filas y no se escribe nada.
+ * - `tripIdsPublicados` son TODOS los tripIds vigentes del feed: sin ellos, dos
+ *   viajes gemelos con la misma clave única (p. ej. `006321…` y `006324…`, los
+ *   dos existentes en `ParadaHorario`) se irían reescribiendo mutuamente cada
+ *   sync, porque cada lote solo ve los gemelos que le tocan. Medido: 358
+ *   "reparaciones" por pasada que no arreglaban nada.
+ * - Con viajes gemelos (dos tripId con la misma clave única) se elige el menor
+ *   de forma determinista, así el resultado no oscila entre syncs.
+ * - Solo se tocan filas cuya clave está en el feed: las filas huérfanas (cuya
+ *   programación ya no existe) no tienen tripId con el que sustituirlas.
+ *
+ * Devuelve el número de UPDATEs ejecutados.
+ */
+export async function repararTripIdsDesactualizados(
+  cliente: BaseReparacionTripIds,
+  filas: FilaClaveHorario[],
+  tripIdsPublicados: ReadonlySet<string>,
+): Promise<number> {
+  if (filas.length === 0) return 0;
+
+  // Una entrada por clave única: con viajes gemelos gana el menor tripId.
+  const porClave = new Map<string, FilaClaveHorario>();
+  const tripIdsFeed = new Set<string>();
+  for (const fila of filas) {
+    tripIdsFeed.add(fila.tripId);
+    const clave = claveDeFila(fila);
+    const previa = porClave.get(clave);
+    if (previa === undefined || fila.tripId < previa.tripId) porClave.set(clave, fila);
+  }
+  const unicas = [...porClave.values()];
+
+  const candidatas = await cliente.horarioTren.findMany({
+    where: {
+      AND: [
+        {
+          OR: unicas.map((clave) => ({
+            AND: {
+              numeroTren: clave.numeroTren,
+              fecha: clave.fecha,
+              origenEstacionId: clave.origenEstacionId,
+              salida: clave.salida,
+            },
+          })),
+        },
+        { OR: [{ tripId: null }, { tripId: { notIn: [...tripIdsFeed] } }] },
+      ],
+    },
+    select: {
+      id: true,
+      numeroTren: true,
+      fecha: true,
+      origenEstacionId: true,
+      salida: true,
+      tripId: true,
+    },
+    // ≤1 fila por clave única (la unique lo garantiza): el tope es exacto
+    take: unicas.length,
+  });
+
+  let reparadas = 0;
+  for (const existente of candidatas) {
+    // Vigente en el feed (viaje gemelo de la misma clave única): no se toca
+    if (existente.tripId !== null && tripIdsPublicados.has(existente.tripId)) continue;
+    const nuevo = porClave.get(claveDeFila(existente))?.tripId;
+    if (nuevo === undefined || nuevo === existente.tripId) continue;
+    await cliente.horarioTren.update({ where: { id: existente.id }, data: { tripId: nuevo } });
+    reparadas++;
+  }
+  return reparadas;
+}
+
+/**
+ * Filas que `sincronizarHorarios` insertaría para el feed `url` dentro de la
+ * ventana [desde, hasta]: mismas claves únicas y mismo tripId que el sync.
+ * Existe para que el backfill puntual (`scripts/backfill-tripids.ts`) repare
+ * `HorarioTren.tripId` con el MISMO parser, sin duplicar la lógica.
+ *
+ * `estaciones` es el mapa código → id que usa el sync: aplica el mismo filtro
+ * de FK y la misma clave de `origenEstacionId` que `sincronizarHorarios` (sin
+ * él se devolverían claves que el sync nunca inserta).
+ */
+export async function filasDeFeed(
+  url: string,
+  logger: Logger,
+  desde: Date,
+  hasta: Date,
+  estaciones: ReadonlyMap<string, string>,
+): Promise<FilaClaveHorario[]> {
+  const extremos = new Map<string, ExtremosViaje>();
+  let iTrip = -1;
+  let iStop = -1;
+  let iSeq = -1;
+  let iArr = -1;
+  let iDep = -1;
+
+  const buffers = await recorrerZip(url, logger, {
+    cabecera: (celdas) => {
+      iTrip = celdas.indexOf('trip_id');
+      iStop = celdas.indexOf('stop_id');
+      iSeq = celdas.indexOf('stop_sequence');
+      iArr = celdas.indexOf('arrival_time');
+      iDep = celdas.indexOf('departure_time');
+    },
+    linea: (celdas) => {
+      const tripId = iTrip >= 0 ? celdas[iTrip] : undefined;
+      const stopId = iStop >= 0 ? celdas[iStop] : undefined;
+      if (!tripId || !stopId) return;
+      const orden = Number(iSeq >= 0 ? celdas[iSeq] : NaN);
+      const llegada = minutosDesdeMedianoche(
+        (iArr >= 0 ? celdas[iArr] : '') || (iDep >= 0 ? celdas[iDep] : '') || '',
+      );
+      const salida = minutosDesdeMedianoche(
+        (iDep >= 0 ? celdas[iDep] : '') || (iArr >= 0 ? celdas[iArr] : '') || '',
+      );
+      if (!Number.isFinite(orden) || llegada === null || salida === null) return;
+      registrarExtremo(extremos, tripId, { stopId, orden, llegada, salida });
+    },
+  });
+
+  const tripsBuf = buffers.get('trips.txt');
+  const calendarBuf = buffers.get('calendar.txt');
+  const calendarDatesBuf = buffers.get('calendar_dates.txt');
+  buffers.clear();
+  if (!tripsBuf) {
+    logger.warn({ url }, 'trips.txt ausente en el zip, no hay filas que reparar');
+    return [];
+  }
+  const { calendar, calendarDates } = leerCalendarios(calendarBuf, calendarDatesBuf);
+
+  const fechasCache = new Map<string, Set<string>>();
+  const filas: FilaClaveHorario[] = [];
+  for (const trip of tripsLigeros(tripsBuf)) {
+    let fechas = fechasCache.get(trip.serviceId);
+    if (!fechas) {
+      fechas = diasActivos(calendar, calendarDates, trip.serviceId, desde, hasta);
+      fechasCache.set(trip.serviceId, fechas);
+    }
+    if (fechas.size === 0) continue;
+
+    const ext = extremos.get(trip.tripId);
+    if (!ext || ext.primera.orden === ext.ultima.orden) continue;
+    const origenEstacionId = estaciones.get(ext.primera.stopId);
+    const destinoEstacionId = estaciones.get(ext.ultima.stopId);
+    if (!origenEstacionId || !destinoEstacionId || origenEstacionId === destinoEstacionId) {
+      continue;
+    }
+
+    const numeroTren = trip.numeroTren || trip.tripId || 'sin-numero';
+    for (const fechaIso of fechas) {
+      const partes = fechaIso.split('-').map(Number);
+      const ano = partes[0];
+      const mes = partes[1];
+      const dia = partes[2];
+      if (ano === undefined || mes === undefined || dia === undefined) continue;
+      const base = Date.UTC(ano, mes - 1, dia);
+      filas.push({
+        numeroTren,
+        fecha: new Date(base),
+        origenEstacionId,
+        salida: new Date(base + ext.primera.salida * 60_000),
+        tripId: trip.tripId,
+      });
+    }
+  }
+  logger.info({ url, filas: filas.length, trips: extremos.size }, 'Filas de feed leídas');
+  return filas;
+}
+
+/**
  * Retira de ParadaHorario los trips que ya no aparecen en los feeds
  * sincronizados (servicio retirado, feed fuera de configuración...): sin esto
  * la tabla crecería sin límite y nos comería la cuota free de Supabase.
@@ -517,6 +812,8 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
 
   let insertados = 0;
   let insertadasParadas = 0;
+  /** tripIds de HorarioTren reescritos al tripId de la publicación actual. */
+  let tripIdsReparados = 0;
   const feeds = fuentesGtfs();
   const tripsConocidos = new Set<string>();
   let feedsOk = 0;
@@ -609,13 +906,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         }
 
         const parada: ParadaViaje = { stopId, orden, llegada, salida };
-        const ext = extremos.get(tripId);
-        if (!ext) {
-          extremos.set(tripId, { primera: parada, ultima: parada });
-        } else {
-          if (orden < ext.primera.orden) ext.primera = parada;
-          if (orden > ext.ultima.orden) ext.ultima = parada;
-        }
+        registrarExtremo(extremos, tripId, parada);
       },
     });
     await vaciarLoteParadas();
@@ -649,23 +940,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       continue;
     }
 
-    const calendar = new Map<string, Record<string, string>>();
-    if (calendarBuf) {
-      for (const fila of parsearCsv(calendarBuf)) {
-        if (fila.service_id) calendar.set(fila.service_id, fila);
-      }
-    }
-
-    const calendarDates = new Map<string, Array<{ fecha: string; tipo: string }>>();
-    if (calendarDatesBuf) {
-      for (const fila of parsearCsv(calendarDatesBuf)) {
-        const fecha = fechaIsoDesdeGtfs(fila.date ?? '');
-        if (!fila.service_id || !fecha || !fila.exception_type) continue;
-        const lista = calendarDates.get(fila.service_id) ?? [];
-        lista.push({ fecha, tipo: fila.exception_type });
-        calendarDates.set(fila.service_id, lista);
-      }
-    }
+    const { calendar, calendarDates } = leerCalendarios(calendarBuf, calendarDatesBuf);
 
     const operadorPorRuta = new Map<string, string | null>();
     const agencyPorId = new Map<string, string>();
@@ -691,6 +966,10 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     // Los trips de este feed protegen sus paradas de la limpieza final
     for (const trip of trips) tripsConocidos.add(trip.tripId);
     for (const tripId of tripsStopTimes) tripsConocidos.add(tripId);
+    // TripIds vigentes de ESTE feed (los de stop_times cuentan aunque no
+    // estén en trips.txt): con ellos la reparación no reescribe viajes gemelos
+    // que el feed sigue publicando.
+    const tripIdsDelFeed = new Set<string>([...trips.map((t) => t.tripId), ...tripsStopTimes]);
 
     if (sinTripId > 0) {
       // Acotado a los numeroTren de ESTE feed: si falla a mitad, las filas del
@@ -726,12 +1005,24 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
 
     const vaciarLote = async () => {
       if (lote.length === 0) return;
+      const filas = lote;
+      lote = [];
       const resultado = await prisma.horarioTren.createMany({
-        data: lote,
+        data: filas,
         skipDuplicates: true,
       });
       insertados += resultado.count;
-      lote = [];
+      // Si createMany ha saltado filas es que su unique ya existía en la BD:
+      // puede ser el tripId de una publicación anterior (Larga Distancia los
+      // regenera con la fecha de alta). Sin este pase la fila conservaría el id
+      // viejo y el cruce con ParadaHorario (que sí tiene el id nuevo) no cuadra.
+      if (resultado.count < filas.length) {
+        const reparadas = await repararTripIdsDesactualizados(prisma, filas, tripIdsDelFeed);
+        if (reparadas > 0) {
+          tripIdsReparados += reparadas;
+          logger.info({ url, reparadas }, 'tripIds de HorarioTren actualizados al feed actual');
+        }
+      }
     };
 
     for (const trip of trips) {
@@ -813,6 +1104,9 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     );
   }
 
-  logger.info({ insertados, insertadasParadas, mb: memoriaMb() }, 'Horarios GTFS sincronizados');
+  logger.info(
+    { insertados, insertadasParadas, tripIdsReparados, mb: memoriaMb() },
+    'Horarios GTFS sincronizados',
+  );
   return insertados;
 }

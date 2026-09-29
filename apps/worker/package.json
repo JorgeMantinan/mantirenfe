@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "db:backfill-tripids": "tsx scripts/backfill-tripids.ts"
   },
   "dependencies": {
     "@mantirenfe/database": "workspace:*",
