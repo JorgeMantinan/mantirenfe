@@ -15,6 +15,7 @@ import {
   procesarResumenes,
 } from './processors/recordatorios';
 import { sincronizarEstaciones, sincronizarHorarios } from './processors/sync-gtfs';
+import { abrirServicioSalud } from './health-servidor';
 import { sincronizarIncidencias } from './processors/incidencias';
 import { enviarResumenSemanal } from './processors/resumen-semanal';
 import { enviarDigestDiario } from './processors/digest-email';
@@ -138,6 +139,12 @@ async function programarTareas() {
 
 async function main() {
   logger.info('Worker MantiRenfe arrancando');
+
+  // Servicio de salud (solo en Render: PORT asignado): el health check mantiene
+  // el servicio worker despierto en el plan free y expone su memoria.
+  if (process.env.PORT) {
+    abrirServicioSalud(Number(process.env.PORT), logger);
+  }
   await programarTareas();
 
   const workerSondeo = new Worker(

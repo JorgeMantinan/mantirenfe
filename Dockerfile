@@ -32,4 +32,7 @@ WORKDIR /repo
 RUN corepack enable
 COPY --from=build /repo /repo
 EXPOSE 3000
-CMD ["sh", "-c", "node apps/api/dist/main.js & node apps/worker/dist/main.js & wait"]
+# SERVICIO=api | worker | ambos (default): permite separar API y worker en dos
+# servicios de Render (512 MB cada uno en free) sin duplicar la imagen.
+ENV SERVICIO=ambos
+CMD ["sh", "-c", "if [ \"$SERVICIO\" = \"api\" ]; then exec node apps/api/dist/main.js; elif [ \"$SERVICIO\" = \"worker\" ]; then exec node apps/worker/dist/main.js; else node apps/api/dist/main.js & node apps/worker/dist/main.js & wait; fi"]

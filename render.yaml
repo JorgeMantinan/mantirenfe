@@ -1,5 +1,17 @@
-# Blueprint de Render: crea el servicio web (API + worker) desde este repo.
-# Las variables con sync: false se rellenan en el dashboard de Render tras el primer deploy.
+# Blueprint de Render: DOS servicios (512 MB cada uno en free) en lugar de
+# API+worker juntos en un contenedor — los OOM repetidos venían de compartir
+# 512 MB (API ~140 MB + worker + picos de sondeo/posiciones).
+#
+# Al aplicar este Blueprint (Render → New + → Blueprint → este repo):
+#  - "mantirenfe" se ACTUALIZA en sitio (mismo nombre = misma URL pública;
+#    la web de Vercel no cambia) y pasa a correr SOLO la API (SERVICIO=api).
+#  - "mantirenfe-worker" se crea nuevo (SERVICIO=worker). Sus envs con
+#    sync:false hay que rellenarlas en su dashboard (copia los valores del
+#    servicio antiguo, están a mano en el panel de "mantirenfe").
+#  - El health check /health del worker (servicio propio) lo mantiene despierto
+#    en free y expone su memoria (diagnóstico de OOM).
+#  - Cuando los dos estén verdes, ELIMINA el contenedor viejo si quedara
+#    duplicado (Blueprint con mismo nombre lo reutiliza: no debería).
 services:
   - type: web
     name: mantirenfe
@@ -8,6 +20,8 @@ services:
     plan: free
     healthCheckPath: /api/health
     envVars:
+      - key: SERVICIO
+        value: api
       - key: NODE_ENV
         value: production
       - key: API_PORT
@@ -20,10 +34,12 @@ services:
         value: '120'
       - key: GTFS_DIAS_VENTANA
         value: '45'
-      # Obligatorias (rellenar en el dashboard)
+      # Obligatorias (rellenar en el dashboard del servicio nuevo si no existen)
       - key: WEB_ORIGIN
         sync: false
       - key: SUPABASE_URL
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_APP
         sync: false
@@ -36,4 +52,68 @@ services:
       - key: VAPID_PRIVATE_KEY
         sync: false
       - key: VAPID_SUBJECT
+        sync: false
+
+  - type: web
+    name: mantirenfe-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SERVICIO
+        value: worker
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: FUENTE_DISPONIBILIDAD
+        value: dwr
+      - key: RETRASO_UMBRAL_SEG
+        value: '300'
+      - key: DWR_CACHE_SEG
+        value: '120'
+      - key: GTFS_DIAS_VENTANA
+        value: '45'
+      - key: RESUMEN_HORA
+        value: '07:30'
+      # Env del worker — todas sync:false: se rellenan una vez en el dashboard
+      # del servicio nuevo (copia los valores del panel de "mantirenfe")
+      - key: REDIS_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_APP
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_DESDE
+        sync: false
+      - key: GTFS_RT_URLS
+        sync: false
+      - key: GTFS_RT_TRIP_UPDATES_URL
+        sync: false
+      - key: GTFS_RT_ALERTS_URL
+        sync: false
+      - key: GTFS_ZIP_URLS
+        sync: false
+      - key: GTFS_ZIP_URLS_OUIGO
+        sync: false
+      - key: NAP_API_KEY
+        sync: false
+      - key: SENTRY_DSN
         sync: false
