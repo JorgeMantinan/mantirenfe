@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { BellPlus, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
 import { BloqueBilletes } from '@/components/BloqueBilletes';
@@ -31,6 +32,7 @@ function grupoOperador(operador: string | null | undefined): 'Renfe' | 'Ouigo' |
 }
 
 export function PaginaTrenes() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
@@ -153,7 +155,7 @@ export function PaginaTrenes() {
       setMotivo(datos.motivo ?? null);
       setSinEstacion(datos.estacionesNoEncontradas ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error en la búsqueda');
+      setError(e instanceof Error ? e.message : t('trenes.errorBusqueda'));
       setResultados(null);
     } finally {
       setCargando(false);
@@ -174,24 +176,22 @@ export function PaginaTrenes() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Buscar trenes</h1>
-        <p className="text-muted-foreground">
-          Horarios programados entre estaciones (GTFS de Renfe y de los demás operadores
-          sincronizados)
-        </p>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{t('trenes.titulo')}</h1>
+        <p className="text-muted-foreground">{t('trenes.subtitulo')}</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <Search className="h-5 w-5 text-primary" aria-hidden="true" /> Tu trayecto
+            <Search className="h-5 w-5 text-primary" aria-hidden="true" />{' '}
+            {t('trenes.buscadorTitulo')}
           </CardTitle>
-          <CardDescription>Consulta sin cuenta. Las alertas sí requieren login.</CardDescription>
+          <CardDescription>{t('trenes.buscadorDescripcion')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={buscar} className="grid gap-4 sm:grid-cols-3">
             <div className="relative space-y-2">
-              <Label htmlFor="origen">Origen</Label>
+              <Label htmlFor="origen">{t('trenes.origenLabel')}</Label>
               <Input
                 id="origen"
                 value={origen}
@@ -220,7 +220,7 @@ export function PaginaTrenes() {
               )}
             </div>
             <div className="relative space-y-2">
-              <Label htmlFor="destino">Destino</Label>
+              <Label htmlFor="destino">{t('trenes.destinoLabel')}</Label>
               <Input
                 id="destino"
                 value={destino}
@@ -249,7 +249,7 @@ export function PaginaTrenes() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fecha">Fecha</Label>
+              <Label htmlFor="fecha">{t('form.fecha')}</Label>
               <Input
                 id="fecha"
                 type="date"
@@ -261,7 +261,7 @@ export function PaginaTrenes() {
             </div>
             <div className="sm:col-span-3">
               <Button type="submit" className="w-full sm:w-auto" disabled={cargando}>
-                {cargando ? 'Buscando...' : 'Buscar horarios'}
+                {cargando ? t('trenes.buscando') : t('trenes.botonBuscar')}
               </Button>
             </div>
           </form>
@@ -285,13 +285,16 @@ export function PaginaTrenes() {
       {!cargando && resultados !== null && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Resultados</CardTitle>
+            <CardTitle className="text-xl">{t('trenes.resultados')}</CardTitle>
             <CardDescription>
               {resultados.length > 0
-                ? `${resultados.length} trenes · fuente: ${fuente ?? 'cache'}`
+                ? t('trenes.resultadosDesc', {
+                    trenes: resultados.length,
+                    fuente: fuente ?? 'cache',
+                  })
                 : motivo === 'estaciones'
-                  ? 'Estación no encontrada'
-                  : 'Sin trenes directos ni con conexión para esa fecha'}
+                  ? t('trenes.sinEstacion')
+                  : t('trenes.sinTrenes')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -300,7 +303,7 @@ export function PaginaTrenes() {
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="franja-desde" className="text-xs text-muted-foreground">
-                      Desde
+                      {t('trenes.desde')}
                     </Label>
                     <Input
                       id="franja-desde"
@@ -312,7 +315,7 @@ export function PaginaTrenes() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="franja-hasta" className="text-xs text-muted-foreground">
-                      Hasta
+                      {t('trenes.hasta')}
                     </Label>
                     <Input
                       id="franja-hasta"
@@ -325,11 +328,14 @@ export function PaginaTrenes() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm text-muted-foreground">
-                    Mostrando {resultadosVisibles.length} de {resultados.length} salidas
+                    {t('trenes.mostrando', {
+                      visibles: resultadosVisibles.length,
+                      total: resultados.length,
+                    })}
                   </p>
                   {hayFranja && (
                     <Button type="button" variant="ghost" size="sm" onClick={limpiarFranja}>
-                      Limpiar
+                      {t('trenes.limpiar')}
                     </Button>
                   )}
                 </div>
@@ -338,23 +344,20 @@ export function PaginaTrenes() {
             {resultados.length > 0 && (
               <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-3 py-2">
                 <p className="text-sm font-medium">
-                  Compara operadores: {operadoresEncontrados.join(' · ')}
+                  {t('trenes.compara', { lista: operadoresEncontrados.join(' · ') })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Las alertas cubren solo lo que su criterio alcance: disponibilidad y retraso se
-                  miden con datos de Renfe, y el horario con este mismo GTFS.
+                  {t('trenes.avisoAlertas')}
                   {hayOuigo ? (
                     <>
-                      {' '}
-                      Por eso un tren de Ouigo no se vigila con una alerta de disponibilidad. Datos
-                      de Ouigo: NAP del Ministerio —{' '}
+                      {t('trenes.avisoOuigo')}
                       <a
                         href="https://www.transportes.gob.es"
                         target="_blank"
                         rel="noreferrer"
                         className="underline"
                       >
-                        Powered by MITRAMS
+                        {t('trenes.avisoOuigoEnlace')}
                       </a>
                       .
                     </>
@@ -368,23 +371,25 @@ export function PaginaTrenes() {
                 {motivo === 'estaciones' ? (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      No encontramos la estación{' '}
-                      <strong>
-                        {sinEstacion.length > 0
-                          ? sinEstacion.map((s) => `«${s}»`).join(' y ')
-                          : 'indicada'}
-                      </strong>
-                      . Revisa el nombre (tildes, «La Coruña» = «A Coruña») o elige una sugerencia
-                      al escribir.
+                      <Trans
+                        i18nKey="trenes.sinEstacionTexto"
+                        values={{
+                          estaciones:
+                            sinEstacion.length > 0
+                              ? sinEstacion.map((s) => `«${s}»`).join(t('trayecto.faltanteUnion'))
+                              : t('trenes.estacionIndicada'),
+                        }}
+                        components={{ strong: <strong /> }}
+                      />
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Si no aparece, prueba a buscarla en{' '}
+                      {t('trenes.notaEstacionesAntes')}
                       <button
                         type="button"
                         className="underline"
                         onClick={() => navigate('/estaciones')}
                       >
-                        estaciones
+                        {t('trenes.notaEstacionesBoton')}
                       </button>
                       .
                     </p>
@@ -392,17 +397,16 @@ export function PaginaTrenes() {
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Sin trenes directos ni con conexión de <strong>{origen}</strong> a{' '}
-                      <strong>{destino}</strong> para el <strong>{fecha}</strong>. Prueba con otra
-                      fecha o divide el viaje en dos tramos.
+                      <Trans
+                        i18nKey="trenes.sinTrenesTexto"
+                        values={{ origen, destino, fecha }}
+                        components={{ strong: <strong /> }}
+                      />
                     </p>
                     <Button type="button" onClick={() => navegarAlerta()}>
-                      <BellPlus className="h-4 w-4" aria-hidden="true" /> Crear alerta de
-                      disponibilidad
+                      <BellPlus className="h-4 w-4" aria-hidden="true" /> {t('trenes.crearAlerta')}
                     </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Te avisamos cuando Renfe abra plazas para esa ruta y fecha.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t('trenes.teAvisamos')}</p>
                   </>
                 )}
               </div>
@@ -411,51 +415,54 @@ export function PaginaTrenes() {
                 {resultadosVisibles.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-center">
                     <TrainFront className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-                    <p className="text-sm text-muted-foreground">Ninguna salida en esa franja</p>
+                    <p className="text-sm text-muted-foreground">{t('trenes.ningunoFranja')}</p>
                     <Button type="button" variant="outline" size="sm" onClick={limpiarFranja}>
-                      Limpiar filtro
+                      {t('trenes.limpiarFiltro')}
                     </Button>
                   </div>
                 ) : (
                   <ul className="divide-y">
-                    {resultadosVisibles.map((t) => (
+                    {resultadosVisibles.map((tren) => (
                       <li
-                        key={`${t.numeroTren}-${t.salida}`}
+                        key={`${tren.numeroTren}-${tren.salida}`}
                         className="flex flex-wrap items-center justify-between gap-3 py-3"
                       >
                         <div>
                           <p className="font-medium">
-                            {horaGtfs(t.salida)} → {horaGtfs(t.llegada)}
+                            {horaGtfs(tren.salida)} → {horaGtfs(tren.llegada)}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {t.origenNombre} · {t.destinoNombre} · {t.duracionMin} min
+                            {tren.origenNombre} · {tren.destinoNombre} · {tren.duracionMin} min
                           </p>
-                          {t.transbordo && (
+                          {tren.transbordo && (
                             <div className="mt-1 space-y-0.5">
                               <Badge
                                 variant="outline"
                                 className="border-amber-500 text-amber-700 dark:text-amber-400"
                               >
-                                Transbordo en {t.transbordo.estacion}
+                                {t('trayecto.transbordoEn', { estacion: tren.transbordo.estacion })}
                               </Badge>
                               <p className="text-xs text-muted-foreground">
-                                {t.transbordo.trenPrimera} llega a las{' '}
-                                {horaGtfs(t.transbordo.llegadaPrimera)} · espera{' '}
-                                {t.transbordo.esperaMin} min · {t.transbordo.trenSegunda} sale a las{' '}
-                                {horaGtfs(t.transbordo.salidaSegunda)}
+                                {t('trenes.transbordoDetalle', {
+                                  tren1: tren.transbordo.trenPrimera,
+                                  llegada1: horaGtfs(tren.transbordo.llegadaPrimera),
+                                  minutos: tren.transbordo.esperaMin,
+                                  tren2: tren.transbordo.trenSegunda,
+                                  salida2: horaGtfs(tren.transbordo.salidaSegunda),
+                                })}
                               </p>
                             </div>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline">{t.numeroTren}</Badge>
-                          {t.operador && (
-                            <Badge variant={esOuigo(t.operador) ? 'aviso' : 'secondary'}>
-                              {t.operador}
+                          <Badge variant="outline">{tren.numeroTren}</Badge>
+                          {tren.operador && (
+                            <Badge variant={esOuigo(tren.operador) ? 'aviso' : 'secondary'}>
+                              {tren.operador}
                             </Badge>
                           )}
-                          <Button variant="outline" size="sm" onClick={() => navegarAlerta(t)}>
-                            <BellPlus className="h-4 w-4" aria-hidden="true" /> Alerta
+                          <Button variant="outline" size="sm" onClick={() => navegarAlerta(tren)}>
+                            <BellPlus className="h-4 w-4" aria-hidden="true" /> {t('trenes.alerta')}
                           </Button>
                         </div>
                       </li>

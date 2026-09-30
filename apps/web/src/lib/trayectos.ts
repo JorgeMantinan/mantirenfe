@@ -1,5 +1,5 @@
 import type { EstacionResponse } from '@mantirenfe/shared-types';
-import type { Idioma } from './trayectos-i18n';
+import { i18n, type Idioma } from '@/i18n';
 
 const RE_ARTICULO_INICIAL = /^(la|el|los|las|os|as|una|un|a|o) /;
 const RE_PALABRA = /[\p{L}\p{N}]+/gu;
@@ -217,10 +217,11 @@ export function rutaTrayecto(trayecto: TrayectoPopular, lang: Idioma = 'es'): st
 }
 
 export function etiquetaTrayecto(trayecto: TrayectoPopular, lang: Idioma = 'es'): string {
-  if (lang === 'en') {
-    return `Trains from ${trayecto.origenNombre} to ${trayecto.destinoNombre}`;
-  }
-  return `Horarios de ${trayecto.origenNombre} a ${trayecto.destinoNombre}`;
+  return i18n.t('trayectos.etiqueta', {
+    lng: lang,
+    origen: trayecto.origenNombre,
+    destino: trayecto.destinoNombre,
+  });
 }
 
 export function fechaHoy(): string {

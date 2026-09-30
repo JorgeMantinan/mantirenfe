@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import { supabase } from './supabase';
 
 export class ErrorApi extends Error {
@@ -32,7 +33,7 @@ export async function api<T>(
   const esPublica = rutasPublicas.some((r) => ruta.startsWith(r));
   if (!token && !esPublica) {
     // Falla en local para no mandar una petición que sabemos que será 401
-    throw new ErrorApi(401, 'No hay sesión activa: inicia sesión de nuevo');
+    throw new ErrorApi(401, i18n.t('errores.sinSesion'));
   }
   const headers = new Headers(opciones.headers);
   headers.set('Accept', 'application/json');
@@ -68,7 +69,12 @@ export async function api<T>(
       (datos as { error?: string | { message?: string } } | null)?.error instanceof Object
         ? JSON.stringify((datos as { error: unknown }).error)
         : ((datos as { error?: string } | null)?.error ?? `Error ${respuesta.status}`);
-    throw new ErrorApi(respuesta.status, typeof mensaje === 'string' ? mensaje : 'Error');
+    throw new ErrorApi(
+      respuesta.status,
+      typeof mensaje === 'string'
+        ? mensaje
+        : i18n.t('errores.status', { status: respuesta.status }),
+    );
   }
 
   return datos as T;

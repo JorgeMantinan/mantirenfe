@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Bell, BellRing, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { locale } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,13 +18,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { AlertaResponse } from '@mantirenfe/shared-types';
+import type { TFunction } from 'i18next';
 
 /** "N avisos" (singular con 1): recuento histórico que muestra cada tarjeta. */
-function textoAvisos(total: number): string {
-  return `${total} ${total === 1 ? 'aviso' : 'avisos'}`;
+function textoAvisos(total: number, t: TFunction): string {
+  return total === 1 ? t('alertas.aviso1') : t('alertas.avisosN', { n: total });
 }
 
 export function PaginaAlertas() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [alertas, setAlertas] = useState<AlertaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +48,10 @@ export function PaginaAlertas() {
     const nuevo = alerta.estado === 'ACTIVA' ? 'PAUSA' : 'ACTIVA';
     try {
       await api(`/alertas/${alerta.id}`, { method: 'PATCH', json: { estado: nuevo } });
-      toast.success(nuevo === 'ACTIVA' ? 'Alerta reanudada' : 'Alerta en pausa');
+      toast.success(nuevo === 'ACTIVA' ? t('alertas.toastReanudada') : t('alertas.toastPausa'));
       cargar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo actualizar');
+      toast.error(e instanceof Error ? e.message : t('alertas.toastNoActualizar'));
     }
   };
 
@@ -55,11 +59,11 @@ export function PaginaAlertas() {
     if (!eliminando) return;
     try {
       await api(`/alertas/${eliminando.id}`, { method: 'DELETE' });
-      toast.success('Alerta eliminada');
+      toast.success(t('alertas.toastEliminada'));
       setEliminando(null);
       cargar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+      toast.error(e instanceof Error ? e.message : t('alertas.toastNoEliminar'));
     }
   };
 
@@ -75,12 +79,12 @@ export function PaginaAlertas() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Mis alertas</h1>
-          <p className="text-muted-foreground">Trayectos vigilados y su estado de sondeo</p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">{t('menu.misAlertas')}</h1>
+          <p className="text-muted-foreground">{t('alertas.subtitulo')}</p>
         </div>
         <Button asChild>
           <Link to="/alertas/nueva">
-            <Plus aria-hidden="true" /> Nueva alerta
+            <Plus aria-hidden="true" /> {t('dashboard.nuevaAlerta')}
           </Link>
         </Button>
       </div>
@@ -89,10 +93,10 @@ export function PaginaAlertas() {
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ['TODAS', 'Todas'],
-              ['ACTIVA', 'Activas'],
-              ['PAUSA', 'En pausa'],
-              ['COMPLETADA', 'Completadas'],
+              ['TODAS', t('alertas.filtroTodas')],
+              ['ACTIVA', t('alertas.filtroActivas')],
+              ['PAUSA', t('alertas.filtroPausa')],
+              ['COMPLETADA', t('alertas.filtroCompletadas')],
             ] as const
           ).map(([valor, etiqueta]) => (
             <Button
@@ -120,14 +124,12 @@ export function PaginaAlertas() {
               <BellRing className="h-7 w-7" aria-hidden="true" />
             </div>
             <div>
-              <p className="font-heading text-lg font-semibold">Aún no tienes alertas</p>
-              <p className="text-sm text-muted-foreground">
-                Crea una para tu próximo viaje y te avisaremos si se libera plaza.
-              </p>
+              <p className="font-heading text-lg font-semibold">{t('alertas.sinAlertasTitulo')}</p>
+              <p className="text-sm text-muted-foreground">{t('alertas.sinAlertasTexto')}</p>
             </div>
             <Button asChild>
               <Link to="/alertas/nueva">
-                <Plus aria-hidden="true" /> Crear la primera
+                <Plus aria-hidden="true" /> {t('alertas.crearPrimera')}
               </Link>
             </Button>
           </CardContent>
@@ -135,7 +137,7 @@ export function PaginaAlertas() {
       ) : (
         <div className="space-y-3">
           {visibles.length === 0 && (
-            <p className="text-sm text-muted-foreground">No hay alertas con ese estado.</p>
+            <p className="text-sm text-muted-foreground">{t('alertas.sinEstado')}</p>
           )}
           {visibles.map((alerta) => (
             <Card key={alerta.id} className="transition-shadow hover:shadow-md">
@@ -153,13 +155,16 @@ export function PaginaAlertas() {
                     {alerta.horaDesde && alerta.horaHasta
                       ? `${alerta.horaDesde} – ${alerta.horaHasta}`
                       : alerta.horaDesde
-                        ? `desde ${alerta.horaDesde}`
-                        : 'todo el día'}{' '}
-                    · cada {alerta.intervaloSondeoMin} min · bono {alerta.bono}
+                        ? t('alertas.desdeHora', { hora: alerta.horaDesde })
+                        : t('comunes.todoElDia')}{' '}
+                    · {t('alertas.cadaMin', { min: alerta.intervaloSondeoMin })} ·{' '}
+                    {t('alertas.bono', { bono: alerta.bono })}
                   </p>
                   {alerta.ultimoSondeoEn && (
                     <p className="text-xs text-muted-foreground">
-                      Último sondeo: {new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')}
+                      {t('alertas.ultimoSondeo', {
+                        fecha: new Date(alerta.ultimoSondeoEn).toLocaleString(locale()),
+                      })}
                     </p>
                   )}
                 </div>
@@ -174,18 +179,14 @@ export function PaginaAlertas() {
                     }
                   >
                     {alerta.estado === 'ACTIVA'
-                      ? 'Activa'
+                      ? t('alertas.estadoActiva')
                       : alerta.estado === 'PAUSA'
-                        ? 'En pausa'
-                        : 'Completada'}
+                        ? t('alertas.estadoPausa')
+                        : t('alertas.completada')}
                   </Badge>
-                  <Badge
-                    variant="outline"
-                    className="gap-1"
-                    title="Avisos recibidos por esta alerta"
-                  >
+                  <Badge variant="outline" className="gap-1" title={t('alertas.avisosTitulo')}>
                     <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-                    {textoAvisos(alerta.avisosRecibidos ?? 0)}
+                    {textoAvisos(alerta.avisosRecibidos ?? 0, t)}
                   </Badge>
                   <Badge variant="outline">{alerta.criterio}</Badge>
                   <Button
@@ -196,11 +197,11 @@ export function PaginaAlertas() {
                   >
                     {alerta.estado === 'ACTIVA' ? (
                       <>
-                        <Pause aria-hidden="true" /> Pausar
+                        <Pause aria-hidden="true" /> {t('alertas.pausar')}
                       </>
                     ) : (
                       <>
-                        <Play aria-hidden="true" /> Reanudar
+                        <Play aria-hidden="true" /> {t('alertas.reanudar')}
                       </>
                     )}
                   </Button>
@@ -209,17 +210,17 @@ export function PaginaAlertas() {
                     size="sm"
                     onClick={() => navigate(`/alertas/nueva?editar=${alerta.id}`)}
                   >
-                    <Pencil aria-hidden="true" /> Editar
+                    <Pencil aria-hidden="true" /> {t('alertas.editar')}
                   </Button>
                   <Button variant="outline" size="sm" asChild>
-                    <Link to={`/alertas/${alerta.id}`}>Avisos</Link>
+                    <Link to={`/alertas/${alerta.id}`}>{t('alertas.avisos')}</Link>
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="text-destructive"
                     onClick={() => setEliminando(alerta)}
-                    aria-label="Eliminar alerta"
+                    aria-label={t('alertas.eliminarAria')}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
@@ -233,18 +234,21 @@ export function PaginaAlertas() {
       <Dialog open={!!eliminando} onOpenChange={(abierto) => !abierto && setEliminando(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>¿Eliminar esta alerta?</DialogTitle>
+            <DialogTitle>{t('alertas.dialogoTitulo')}</DialogTitle>
             <DialogDescription>
-              Se dejará de vigilar {eliminando?.origenNombre} → {eliminando?.destinoNombre} el{' '}
-              {eliminando?.fechaViaje}. Esta acción no se puede deshacer.
+              {t('alertas.dialogoTexto', {
+                origen: eliminando?.origenNombre ?? '',
+                destino: eliminando?.destinoNombre ?? '',
+                fecha: eliminando?.fechaViaje ?? '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEliminando(null)}>
-              Cancelar
+              {t('comunes.cancelar')}
             </Button>
             <Button variant="destructive" onClick={() => void eliminar()}>
-              Eliminar
+              {t('comunes.eliminar')}
             </Button>
           </DialogFooter>
         </DialogContent>

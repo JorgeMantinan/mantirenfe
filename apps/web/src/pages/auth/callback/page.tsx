@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function PaginaAuthCallback() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function PaginaAuthCallback() {
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-4">
-        <p className="text-center text-sm text-muted-foreground">Completando inicio de sesión…</p>
+        <p className="text-center text-sm text-muted-foreground">{t('callback.texto')}</p>
         <Skeleton className="h-24 w-full" />
       </div>
     </div>

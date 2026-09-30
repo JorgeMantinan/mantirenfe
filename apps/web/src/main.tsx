@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { Providers } from './components/providers';
+import { IdiomaProvider } from './i18n/IdiomaProvider';
 import './styles/globals.css';
 
 registerSW({ immediate: true });
@@ -22,9 +23,11 @@ async function arrancar() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <BrowserRouter>
-        <Providers>
-          <App />
-        </Providers>
+        <IdiomaProvider>
+          <Providers>
+            <App />
+          </Providers>
+        </IdiomaProvider>
       </BrowserRouter>
     </StrictMode>,
   );

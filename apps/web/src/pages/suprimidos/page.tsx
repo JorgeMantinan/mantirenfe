@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { CircleSlash, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ function sinDatos(fila: SuprimidoResponse): boolean {
 }
 
 export function PaginaSuprimidos() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [texto, setTexto] = useState('');
   const [estacion, setEstacion] = useState('');
@@ -54,7 +56,7 @@ export function PaginaSuprimidos() {
       const respuesta = await api<SuprimidoResponse[]>(`/suprimidos?${params.toString()}`);
       setDatos(respuesta);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al consultar los trenes suprimidos');
+      setError(e instanceof Error ? e.message : t('suprimidos.error'));
       setDatos(null);
     } finally {
       setCargando(false);
@@ -100,25 +102,24 @@ export function PaginaSuprimidos() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Trenes suprimidos</h1>
-        <p className="text-muted-foreground">
-          Cancelaciones detectadas en el feed GTFS-RT de Renfe, actualizadas cada 5 minutos
-        </p>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{t('suprimidos.titulo')}</h1>
+        <p className="text-muted-foreground">{t('suprimidos.subtitulo')}</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <CircleSlash className="h-5 w-5 text-primary" aria-hidden="true" /> Consultar
+            <CircleSlash className="h-5 w-5 text-primary" aria-hidden="true" />{' '}
+            {t('suprimidos.consultar')}
           </CardTitle>
           <CardDescription>
-            Sin cuenta. Solo conservamos los últimos {DIAS_HISTORICO} días de detecciones.
+            {t('suprimidos.consultarDescripcion', { dias: DIAS_HISTORICO })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={buscar} className="grid gap-4 sm:grid-cols-3">
             <div className="relative space-y-2 sm:col-span-2">
-              <Label htmlFor="estacion">Estación (opcional)</Label>
+              <Label htmlFor="estacion">{t('suprimidos.estacionLabel')}</Label>
               <Input
                 id="estacion"
                 value={texto}
@@ -150,7 +151,7 @@ export function PaginaSuprimidos() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fecha">Fecha</Label>
+              <Label htmlFor="fecha">{t('suprimidos.fechaLabel')}</Label>
               <Input
                 id="fecha"
                 type="date"
@@ -162,11 +163,11 @@ export function PaginaSuprimidos() {
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
               <Button type="submit" disabled={cargando}>
-                <Search className="h-4 w-4" aria-hidden="true" /> Buscar
+                <Search className="h-4 w-4" aria-hidden="true" /> {t('suprimidos.buscar')}
               </Button>
               {estacion ? (
                 <Button type="button" variant="outline" size="sm" onClick={quitarEstacion}>
-                  Quitar filtro de {estacion}
+                  {t('suprimidos.quitarFiltro', { estacion })}
                 </Button>
               ) : null}
             </div>
@@ -191,11 +192,17 @@ export function PaginaSuprimidos() {
       {!cargando && datos !== null ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Resultados</CardTitle>
+            <CardTitle className="text-xl">{t('suprimidos.resultados')}</CardTitle>
             <CardDescription>
               {datos.length > 0
-                ? `${datos.length} trenes suprimidos · ${fecha}${estacion ? ` · ${estacion}` : ''}`
-                : 'Sin trenes suprimidos para esa fecha/estación'}
+                ? estacion
+                  ? t('suprimidos.resultadosDescEstacion', {
+                      trenes: datos.length,
+                      fecha,
+                      estacion,
+                    })
+                  : t('suprimidos.resultadosDesc', { trenes: datos.length, fecha })
+                : t('suprimidos.sinTrenes')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -203,27 +210,24 @@ export function PaginaSuprimidos() {
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <CircleSlash className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
-                  Nada que reportar: no hay trenes suprimidos registrados para el{' '}
-                  <strong>{fecha}</strong>
-                  {estacion ? (
-                    <>
-                      {' '}
-                      que pasen por <strong>{estacion}</strong>
-                    </>
-                  ) : null}
-                  .
+                  <Trans
+                    i18nKey={
+                      estacion ? 'suprimidos.nadaReportarEstacion' : 'suprimidos.nadaReportar'
+                    }
+                    values={{ fecha, estacion }}
+                    components={{ strong: <strong /> }}
+                  />
                 </p>
                 <p className="max-w-md text-xs text-muted-foreground">
-                  La detección cubre Larga Distancia; Cercanías cancela rara vez en el feed. Si
-                  esperabas una supresión, revisa también las{' '}
+                  {t('suprimidos.notaAntes')}
                   <button
                     type="button"
                     className="underline"
                     onClick={() => navigate('/incidencias')}
                   >
-                    incidencias de servicio
+                    {t('suprimidos.notaBoton')}
                   </button>
-                  .
+                  {t('suprimidos.notaDespues')}
                 </p>
               </div>
             ) : (
@@ -231,11 +235,11 @@ export function PaginaSuprimidos() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">Tren</th>
-                      <th className="py-2 pr-3 font-medium">Origen → Destino</th>
-                      <th className="py-2 pr-3 font-medium">Salida</th>
-                      <th className="py-2 pr-3 font-medium">Llegada</th>
-                      <th className="py-2 font-medium text-right">Datos</th>
+                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colTren')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colOrigenDestino')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colSalida')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colLlegada')}</th>
+                      <th className="py-2 font-medium text-right">{t('suprimidos.colDatos')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -258,7 +262,9 @@ export function PaginaSuprimidos() {
                         <td className="py-2 pr-3">{fila.salida ?? '—'}</td>
                         <td className="py-2 pr-3">{fila.llegada ?? '—'}</td>
                         <td className="py-2 text-right">
-                          {sinDatos(fila) ? <Badge variant="aviso">Sin datos</Badge> : null}
+                          {sinDatos(fila) ? (
+                            <Badge variant="aviso">{t('suprimidos.sinDatos')}</Badge>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

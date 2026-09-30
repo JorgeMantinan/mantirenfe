@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BellRing, Bell, Plus, Ticket, Train } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +12,7 @@ import { TarjetaProximoViaje } from '@/pages/dashboard/TarjetaProximoViaje';
 import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
 
 export function PaginaDashboard() {
+  const { t } = useTranslation();
   const { user, authConfigurada } = useAuth();
   const [alertas, setAlertas] = useState<AlertaResponse[] | null>(null);
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[] | null>(null);
@@ -39,7 +41,7 @@ export function PaginaDashboard() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
-        No se pudo cargar el panel: {error}
+        {t('dashboard.errorPanel', { error })}
       </div>
     );
   }
@@ -50,14 +52,16 @@ export function PaginaDashboard() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
+            {t('dashboard.titulo')}
+          </h1>
           <p className="text-muted-foreground">
-            Hola{user?.email ? `, ${user.email.split('@')[0]}` : ''} — resumen de tus trenes
+            {t('dashboard.saludo', { nombre: user?.email ? `, ${user.email.split('@')[0]}` : '' })}
           </p>
         </div>
         <Button asChild>
           <Link to="/alertas/nueva">
-            <Plus aria-hidden="true" /> Nueva alerta
+            <Plus aria-hidden="true" /> {t('dashboard.nuevaAlerta')}
           </Link>
         </Button>
       </div>
@@ -67,7 +71,7 @@ export function PaginaDashboard() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Alertas activas</CardDescription>
+            <CardDescription>{t('dashboard.alertasActivas')}</CardDescription>
             <CardTitle className="flex items-center gap-2 text-3xl">
               {alertas === null ? <Skeleton className="h-8 w-12" /> : activas}
               <BellRing className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -76,7 +80,7 @@ export function PaginaDashboard() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Avisos sin leer</CardDescription>
+            <CardDescription>{t('dashboard.avisosSinLeer')}</CardDescription>
             <CardTitle className="flex items-center gap-2 text-3xl">
               {notificaciones === null ? <Skeleton className="h-8 w-12" /> : notificaciones.length}
               <Bell className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -85,7 +89,7 @@ export function PaginaDashboard() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total alertas</CardDescription>
+            <CardDescription>{t('dashboard.totalAlertas')}</CardDescription>
             <CardTitle className="flex items-center gap-2 text-3xl">
               {alertas === null ? <Skeleton className="h-8 w-12" /> : alertas.length}
               <Train className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -97,8 +101,8 @@ export function PaginaDashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Últimos avisos</CardTitle>
-            <CardDescription>Notificaciones de disponibilidad y cambios</CardDescription>
+            <CardTitle className="text-xl">{t('dashboard.ultimosAvisos')}</CardTitle>
+            <CardDescription>{t('dashboard.ultimosAvisosDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {notificaciones === null ? (
@@ -108,7 +112,7 @@ export function PaginaDashboard() {
               </div>
             ) : notificaciones.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                Todavía no hay avisos. Cuando haya plaza te avisaremos aquí y por push.
+                {t('dashboard.sinAvisos')}
               </div>
             ) : (
               <ul className="divide-y">
@@ -131,8 +135,8 @@ export function PaginaDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Mis alertas</CardTitle>
-            <CardDescription>Trayectos que estamos vigilando</CardDescription>
+            <CardTitle className="text-xl">{t('menu.misAlertas')}</CardTitle>
+            <CardDescription>{t('dashboard.misAlertasDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {alertas === null ? (
@@ -143,11 +147,9 @@ export function PaginaDashboard() {
             ) : alertas.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <Ticket className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">
-                  Crea tu primera alerta y deja que vigilemos tu tren.
-                </p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.sinAlertas')}</p>
                 <Button asChild size="sm">
-                  <Link to="/alertas/nueva">Crear alerta</Link>
+                  <Link to="/alertas/nueva">{t('comunes.crearAlerta')}</Link>
                 </Button>
               </div>
             ) : (
@@ -162,15 +164,15 @@ export function PaginaDashboard() {
                         {a.origenNombre} → {a.destinoNombre}
                       </p>
                       <p className="text-muted-foreground">
-                        {a.fechaViaje} · {a.horaDesde ?? 'todo el día'}
+                        {a.fechaViaje} · {a.horaDesde ?? t('comunes.todoElDia')}
                       </p>
                     </div>
                     <Badge variant={a.estado === 'ACTIVA' ? 'exito' : 'secondary'}>
                       {a.estado === 'ACTIVA'
-                        ? 'Activa'
+                        ? t('alertas.estadoActiva')
                         : a.estado === 'PAUSA'
-                          ? 'En pausa'
-                          : 'Hecha'}
+                          ? t('alertas.estadoPausa')
+                          : t('dashboard.estadoHecha')}
                     </Badge>
                   </li>
                 ))}

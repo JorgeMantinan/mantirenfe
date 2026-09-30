@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -11,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { SELECT_CLS } from '@/lib/ui-constants';
 import { fechaCorta } from '@/lib/proximoViaje';
 import { BONOS, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
+import type { TFunction } from 'i18next';
 import {
   horaGtfs,
   type AlertaResponse,
@@ -18,34 +20,41 @@ import {
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
 
-const ETIQUETAS_BONOS: Record<string, string> = {
-  GENERAL: 'Sin bono / general',
-  BONO_10: 'Bono 10',
-  BONO_20: 'Bono 20',
-  JUVENIL: 'Bono Joven',
-  ESTUDIANTE: 'Estudiante',
-  DISCAPACIDAD: 'Discapacidad',
-  FAMILIA_NUMEROSA: 'Familia numerosa',
-  MAYOR_60: 'Mayor de 60',
-  OTRO: 'Otro',
-};
-
 type Frecuencia = 'fecha' | 'diaria' | 'laborables';
 
-/** Etiquetas cortas del criterio para el resumen (el select usa textos más largos). */
-const ETIQUETAS_CRITERIO: Record<string, string> = {
-  DISPONIBILIDAD: 'Plazas libres',
-  RETRASO: 'Retraso',
-  HORARIO: 'Horario',
-  APERTURA_VENTA: 'Apertura de venta',
-  PRECIO: 'Precio',
-};
+/** Etiquetas del bono de la alerta, en el idioma activo. */
+function etiquetasBonos(t: TFunction): Record<string, string> {
+  return {
+    GENERAL: t('nuevaAlerta.bonoGeneral'),
+    BONO_10: t('nuevaAlerta.bonoBono10'),
+    BONO_20: t('nuevaAlerta.bonoBono20'),
+    JUVENIL: t('nuevaAlerta.bonoJuvenil'),
+    ESTUDIANTE: t('nuevaAlerta.bonoEstudiante'),
+    DISCAPACIDAD: t('nuevaAlerta.bonoDiscapacidad'),
+    FAMILIA_NUMEROSA: t('nuevaAlerta.bonoFamilia'),
+    MAYOR_60: t('nuevaAlerta.bonoMayor60'),
+    OTRO: t('nuevaAlerta.bonoOtro'),
+  };
+}
 
-const FRECUENCIAS: Array<{ valor: Frecuencia; etiqueta: string }> = [
-  { valor: 'fecha', etiqueta: 'Una fecha' },
-  { valor: 'diaria', etiqueta: 'Cada día' },
-  { valor: 'laborables', etiqueta: 'Lunes a viernes' },
-];
+/** Etiquetas cortas del criterio para el resumen (el select usa textos más largos). */
+function etiquetasCriterio(t: TFunction): Record<string, string> {
+  return {
+    DISPONIBILIDAD: t('nuevaAlerta.criterioPlazas'),
+    RETRASO: t('nuevaAlerta.criterioRetraso'),
+    HORARIO: t('nuevaAlerta.criterioHorarioCorto'),
+    APERTURA_VENTA: t('nuevaAlerta.criterioVentaCorta'),
+    PRECIO: t('nuevaAlerta.criterioPrecioCorto'),
+  };
+}
+
+function frecuencias(t: TFunction): Array<{ valor: Frecuencia; etiqueta: string }> {
+  return [
+    { valor: 'fecha', etiqueta: t('nuevaAlerta.frecuenciaFecha') },
+    { valor: 'diaria', etiqueta: t('nuevaAlerta.frecuenciaDiaria') },
+    { valor: 'laborables', etiqueta: t('nuevaAlerta.frecuenciaLaborables') },
+  ];
+}
 
 function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia {
   if (!recurrente) return 'fecha';
@@ -53,6 +62,7 @@ function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia 
 }
 
 export function PaginaNuevaAlerta() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const editandoId = params.get('editar');
@@ -162,7 +172,7 @@ export function PaginaNuevaAlerta() {
           setNotas(a.notas ?? '');
           setNumeroTren(a.numeroTren ?? '');
         })
-        .catch(() => toast.error('No se pudo cargar la alerta'));
+        .catch(() => toast.error(t('nuevaAlerta.errorCargar')));
     }
   }, [params, editandoId]);
 
@@ -202,20 +212,20 @@ export function PaginaNuevaAlerta() {
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (caja + toast final).
-  const criterioEtiqueta = ETIQUETAS_CRITERIO[criterio] ?? criterio;
+  const criterioEtiqueta = etiquetasCriterio(t)[criterio] ?? criterio;
   const resumenFecha = recurrente
     ? frecuencia === 'laborables'
-      ? 'L-V'
-      : 'Cada día'
+      ? t('nuevaAlerta.resumenLunesViernes')
+      : t('nuevaAlerta.resumenCadaDia')
     : fecha
       ? fechaCorta(fecha)
-      : 'Sin fecha';
+      : t('nuevaAlerta.resumenSinFecha');
   const resumenFranja =
     horaDesde || horaHasta ? `${horaDesde || '00:00'}–${horaHasta || '23:59'}` : null;
   const resumenCriterio = [
     criterioEtiqueta,
     criterio === 'PRECIO' && precioObjetivo ? `≤ ${precioObjetivo} €` : null,
-    `cada ${intervalo} min`,
+    t('alertas.cadaMin', { min: intervalo }),
   ]
     .filter(Boolean)
     .join(' ');
@@ -232,16 +242,16 @@ export function PaginaNuevaAlerta() {
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
     if (origen.trim().length < 2 || destino.trim().length < 2) {
-      toast.error('Indica estación de origen y destino');
+      toast.error(t('nuevaAlerta.errorOrigenDestino'));
       return;
     }
     if (!recurrente && !fecha) {
-      toast.error('Selecciona la fecha del viaje');
+      toast.error(t('nuevaAlerta.errorFecha'));
       return;
     }
     const objetivo = Number(precioObjetivo);
     if (criterio === 'PRECIO' && !(Number.isFinite(objetivo) && objetivo > 0)) {
-      toast.error('Indica el precio objetivo (€) del aviso');
+      toast.error(t('nuevaAlerta.errorPrecio'));
       return;
     }
 
@@ -271,17 +281,17 @@ export function PaginaNuevaAlerta() {
       });
 
       if (resultado?.error) {
-        toast.error('Revisa los campos del formulario');
+        toast.error(t('nuevaAlerta.errorCampos'));
         return;
       }
 
       if (editandoId) {
-        toast.success(`Alerta actualizada: ${resumen}.`);
+        toast.success(t('nuevaAlerta.toastActualizada', { resumen }));
       } else {
-        toast.success(`Alerta creada: ${resumen}. Empezamos a vigilarla.`, {
+        toast.success(t('nuevaAlerta.toastCreada', { resumen }), {
           duration: 8000,
           action: {
-            label: 'Crear la vuelta',
+            label: t('nuevaAlerta.accionVuelta'),
             onClick: () =>
               navigate(
                 `/alertas/nueva?origen=${encodeURIComponent(
@@ -295,7 +305,7 @@ export function PaginaNuevaAlerta() {
       }
       navigate('/alertas');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo guardar la alerta');
+      toast.error(e instanceof Error ? e.message : t('nuevaAlerta.errorGuardar'));
     } finally {
       setEnviando(false);
     }
@@ -305,15 +315,13 @@ export function PaginaNuevaAlerta() {
     <div className="mx-auto max-w-2xl space-y-6 animate-fade-in">
       <div className="space-y-1">
         <Button variant="ghost" size="sm" onClick={() => navigate('/alertas')} className="-ml-2">
-          <ArrowLeft aria-hidden="true" /> Volver
+          <ArrowLeft aria-hidden="true" /> {t('nuevaAlerta.volver')}
         </Button>
         <h1 className="font-heading text-3xl font-bold tracking-tight">
-          {editandoId ? 'Editar alerta' : 'Nueva alerta'}
+          {editandoId ? t('nuevaAlerta.editarTitulo') : t('nuevaAlerta.nuevaTitulo')}
         </h1>
         <p className="text-muted-foreground">
-          {editandoId
-            ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta'
-            : 'Te avisaremos cuando cambie la disponibilidad de este trayecto'}
+          {editandoId ? t('nuevaAlerta.editarSub') : t('nuevaAlerta.nuevaSub')}
         </p>
       </div>
 
@@ -321,17 +329,15 @@ export function PaginaNuevaAlerta() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <BellRing className="h-5 w-5 text-primary" aria-hidden="true" />
-            Trayecto a vigilar
+            {t('nuevaAlerta.trayectoTitulo')}
           </CardTitle>
-          <CardDescription>
-            Cuanto más específico seas, menos avisos innecesarios recibirás
-          </CardDescription>
+          <CardDescription>{t('nuevaAlerta.trayectoDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={enviar} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="origen">Origen</Label>
+                <Label htmlFor="origen">{t('trayectos.etiquetaOrigen')}</Label>
                 <Input
                   id="origen"
                   list="estaciones-origen"
@@ -347,7 +353,7 @@ export function PaginaNuevaAlerta() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="destino">Destino</Label>
+                <Label htmlFor="destino">{t('trayectos.etiquetaDestino')}</Label>
                 <Input
                   id="destino"
                   list="estaciones-destino"
@@ -379,9 +385,9 @@ export function PaginaNuevaAlerta() {
             </datalist>
 
             <div className="space-y-2">
-              <Label>¿Cuándo viajas?</Label>
+              <Label>{t('nuevaAlerta.cuandoViajas')}</Label>
               <div className="flex flex-wrap gap-2">
-                {FRECUENCIAS.map((f) => (
+                {frecuencias(t).map((f) => (
                   <Button
                     key={f.valor}
                     type="button"
@@ -395,9 +401,9 @@ export function PaginaNuevaAlerta() {
               </div>
               {recurrente && (
                 <p className="text-xs text-muted-foreground">
-                  Trayecto cotidiano: te avisaremos cada día
-                  {frecuencia === 'laborables' ? ', de lunes a viernes' : ''}. No hace falta fecha:
-                  se renueva automáticamente.
+                  {frecuencia === 'laborables'
+                    ? t('nuevaAlerta.recurrenteLaborables')
+                    : t('nuevaAlerta.recurrenteDiaria')}
                 </p>
               )}
             </div>
@@ -407,7 +413,7 @@ export function PaginaNuevaAlerta() {
             >
               {frecuencia === 'fecha' && (
                 <div className="space-y-2">
-                  <Label htmlFor="fecha">Fecha del viaje</Label>
+                  <Label htmlFor="fecha">{t('nuevaAlerta.fechaLabel')}</Label>
                   <Input
                     id="fecha"
                     type="date"
@@ -422,7 +428,7 @@ export function PaginaNuevaAlerta() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="horaDesde">Hora desde (opcional)</Label>
+                <Label htmlFor="horaDesde">{t('nuevaAlerta.horaDesdeLabel')}</Label>
                 <Input
                   id="horaDesde"
                   type="time"
@@ -431,7 +437,7 @@ export function PaginaNuevaAlerta() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="horaHasta">Hora hasta (opcional)</Label>
+                <Label htmlFor="horaHasta">{t('nuevaAlerta.horaHastaLabel')}</Label>
                 <Input
                   id="horaHasta"
                   type="time"
@@ -442,17 +448,17 @@ export function PaginaNuevaAlerta() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="numeroTren">Tren concreto (opcional)</Label>
+              <Label htmlFor="numeroTren">{t('nuevaAlerta.trenLabel')}</Label>
               <Input
                 id="numeroTren"
                 value={numeroTren}
                 onChange={(e) => setNumeroTren(e.target.value)}
-                placeholder="Ej.: 03311 — vacío = se vigila todos los trenes"
+                placeholder={t('nuevaAlerta.trenPlaceholder')}
                 maxLength={20}
               />
               {trenesSugeridos.length > 0 && !numeroTren.trim() && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Próximos:</span>
+                  <span className="text-xs text-muted-foreground">{t('nuevaAlerta.proximos')}</span>
                   {trenesSugeridos.map((t) => (
                     <Button
                       key={`${t.numeroTren}-${t.salida}`}
@@ -469,30 +475,28 @@ export function PaginaNuevaAlerta() {
                 </div>
               )}
               {trenesSugeridos.length > 0 && !numeroTren.trim() && (
-                <p className="text-xs text-muted-foreground">
-                  Elige uno de los próximos o déjalo en blanco para vigilar todos.
-                </p>
+                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.elegirProximo')}</p>
               )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="criterio">Qué quieres detectar</Label>
+                <Label htmlFor="criterio">{t('nuevaAlerta.criterioLabel')}</Label>
                 <select
                   id="criterio"
                   className={SELECT_CLS}
                   value={criterio}
                   onChange={(e) => setCriterio(e.target.value)}
                 >
-                  <option value="DISPONIBILIDAD">Que se libere una plaza</option>
-                  <option value="HORARIO">Cambios de horario</option>
-                  <option value="RETRASO">Retrasos del tren</option>
-                  <option value="APERTURA_VENTA">Apertura de venta de billetes</option>
-                  <option value="PRECIO">Que baje el precio</option>
+                  <option value="DISPONIBILIDAD">{t('nuevaAlerta.criterioDisponibilidad')}</option>
+                  <option value="HORARIO">{t('nuevaAlerta.criterioHorario')}</option>
+                  <option value="RETRASO">{t('nuevaAlerta.criterioRetrasoTren')}</option>
+                  <option value="APERTURA_VENTA">{t('nuevaAlerta.criterioVenta')}</option>
+                  <option value="PRECIO">{t('nuevaAlerta.criterioPrecio')}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="intervalo">Frecuencia de sondeo</Label>
+                <Label htmlFor="intervalo">{t('nuevaAlerta.intervaloLabel')}</Label>
                 <select
                   id="intervalo"
                   className={SELECT_CLS}
@@ -501,7 +505,7 @@ export function PaginaNuevaAlerta() {
                 >
                   {INTERVALOS_SONDEO_MIN.map((min) => (
                     <option key={min} value={min}>
-                      Cada {min} minutos
+                      {t('nuevaAlerta.intervaloCada', { min })}
                     </option>
                   ))}
                 </select>
@@ -510,7 +514,7 @@ export function PaginaNuevaAlerta() {
 
             {criterio === 'PRECIO' && (
               <div className="space-y-2">
-                <Label htmlFor="precioObjetivo">Avisarme si baja de X €</Label>
+                <Label htmlFor="precioObjetivo">{t('nuevaAlerta.precioLabel')}</Label>
                 <Input
                   id="precioObjetivo"
                   type="number"
@@ -519,17 +523,15 @@ export function PaginaNuevaAlerta() {
                   step="0.01"
                   value={precioObjetivo}
                   onChange={(e) => setPrecioObjetivo(e.target.value)}
-                  placeholder="Ej.: 30"
+                  placeholder={t('nuevaAlerta.precioPlaceholder')}
                   required
                 />
-                <p className="text-xs text-muted-foreground">
-                  Te avisaremos la primera vez que un tren baje a ese precio o por debajo.
-                </p>
+                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.precioTexto')}</p>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="bono">Tu bono / perfil</Label>
+              <Label htmlFor="bono">{t('nuevaAlerta.bonoLabel')}</Label>
               <select
                 id="bono"
                 className={SELECT_CLS}
@@ -538,31 +540,27 @@ export function PaginaNuevaAlerta() {
               >
                 {BONOS.map((b) => (
                   <option key={b} value={b}>
-                    {ETIQUETAS_BONOS[b] ?? b}
+                    {etiquetasBonos(t)[b] ?? b}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">
-                Guardamos tu perfil para personalizar los avisos. Renfe no publica las plazas por
-                cupo de bono/abono en sus datos públicos: los avisos de disponibilidad se calculan
-                sobre las tarifas generales de venta.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('nuevaAlerta.bonoTexto')}</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notas">Notas (opcional)</Label>
+              <Label htmlFor="notas">{t('nuevaAlerta.notasLabel')}</Label>
               <Textarea
                 id="notas"
                 value={notas}
                 onChange={(e) => setNotas(e.target.value)}
-                placeholder="Ej.: solo clase Turista, quiero el tren de la tarde..."
+                placeholder={t('nuevaAlerta.notasPlaceholder')}
                 maxLength={500}
               />
             </div>
 
             <div className="space-y-1 rounded-lg border bg-muted/40 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Resumen de la alerta
+                {t('nuevaAlerta.resumenTitulo')}
               </p>
               <p className="text-sm font-medium">
                 {origen.trim() || '—'} → {destino.trim() || '—'}
@@ -572,17 +570,17 @@ export function PaginaNuevaAlerta() {
               </p>
               {salidasResumen.length > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Próximas salidas: {salidasResumen.join(', ')}
+                  {t('nuevaAlerta.resumenProximas', { horas: salidasResumen.join(', ') })}
                 </p>
               ) : null}
             </div>
 
             <Button type="submit" className="w-full" disabled={enviando}>
               {enviando
-                ? 'Guardando...'
+                ? t('nuevaAlerta.guardando')
                 : editandoId
-                  ? 'Guardar cambios'
-                  : 'Crear alerta y empezar a vigilar'}
+                  ? t('nuevaAlerta.guardarCambios')
+                  : t('nuevaAlerta.crearYVigilar')}
             </Button>
           </form>
         </CardContent>

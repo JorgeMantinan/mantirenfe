@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Plus, Train } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ const INTERVALO_CUENTA_ATRAS_MS = 60_000;
  * activas, con cuenta atrás, estado de plazas y acceso al detalle.
  */
 export function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) {
+  const { t } = useTranslation();
   const [ahora, setAhora] = useState(() => new Date());
 
   useEffect(() => {
@@ -56,19 +58,17 @@ export function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | n
         <CardHeader className="pb-3">
           <CardDescription className="flex items-center gap-2">
             <Train className="h-4 w-4 text-primary" aria-hidden="true" />
-            Tu próximo viaje
+            {t('dashboard.proximoViaje')}
           </CardDescription>
-          <CardTitle className="text-2xl">Aún no hay ninguna salida en camino</CardTitle>
+          <CardTitle className="text-2xl">{t('dashboard.sinSalidasTitulo')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-prose text-sm text-muted-foreground">
-            {alertas.length === 0
-              ? 'Crea tu primera alerta y aquí verás tu próxima salida con la cuenta atrás y las plazas del tren.'
-              : 'Ahora mismo no hay ninguna salida en camino: en cuanto tu alerta tenga un tren con fecha, aparecerá aquí con la cuenta atrás.'}
+            {alertas.length === 0 ? t('dashboard.sinAlertasTexto') : t('dashboard.sinSalidasTexto')}
           </p>
           <Button asChild size="sm">
             <Link to="/alertas/nueva">
-              <Plus aria-hidden="true" /> Crear alerta
+              <Plus aria-hidden="true" /> {t('comunes.crearAlerta')}
             </Link>
           </Button>
         </CardContent>
@@ -78,8 +78,8 @@ export function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | n
 
   const hoy = relojPeninsular(ahora).fecha;
   const etiqueta = etiquetaDia(salida.fecha, hoy);
-  const detalles = [salida.salida ?? 'hora por confirmar'];
-  if (salida.numeroTren) detalles.push(`tren ${salida.numeroTren}`);
+  const detalles = [salida.salida ?? t('dashboard.horaPorConfirmar')];
+  if (salida.numeroTren) detalles.push(t('dashboard.trenNumero', { numero: salida.numeroTren }));
   const linea = salida.salida ? `${etiqueta} · ${detalles.join(' · ')}` : detalles.join(' · ');
 
   return (
@@ -89,7 +89,7 @@ export function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | n
           <div className="space-y-1.5">
             <CardDescription className="flex items-center gap-2">
               <Train className="h-4 w-4 text-primary" aria-hidden="true" />
-              Tu próximo viaje
+              {t('dashboard.proximoViaje')}
             </CardDescription>
             <CardTitle className="text-2xl">
               {salida.origenNombre} → {salida.destinoNombre}
@@ -106,12 +106,12 @@ export function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | n
           <p className="text-sm text-muted-foreground">{linea}</p>
           {salida.estado === 'sin-datos' && (
             <p className="text-xs text-muted-foreground">
-              Aún no sabemos las plazas: comprobamos cada {salida.intervaloSondeoMin} min
+              {t('dashboard.sinDatosPlazas', { min: salida.intervaloSondeoMin })}
             </p>
           )}
         </div>
         <Button asChild>
-          <Link to={`/alertas/${salida.alertaId}`}>Ver alerta</Link>
+          <Link to={`/alertas/${salida.alertaId}`}>{t('dashboard.verAlerta')}</Link>
         </Button>
       </CardContent>
     </Card>

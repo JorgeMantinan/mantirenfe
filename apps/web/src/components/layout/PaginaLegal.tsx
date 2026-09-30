@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SelectorIdioma } from '@/components/SelectorIdioma';
 import { Logo } from './Logo';
 
 export function PaginaLegal({
@@ -13,16 +15,21 @@ export function PaginaLegal({
   entradilla: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
           <Logo />
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft aria-hidden="true" /> Volver al inicio
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <SelectorIdioma />
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/">
+                <ArrowLeft aria-hidden="true" /> {t('comunes.volverInicio')}
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -37,15 +44,15 @@ export function PaginaLegal({
       <footer className="border-t bg-muted/30 py-6">
         <div className="container flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
           <Link to="/" className="hover:text-foreground">
-            Inicio
+            {t('comunes.inicio')}
           </Link>
           <Link to="/transparencia" className="hover:text-foreground">
-            Transparencia
+            {t('comunes.transparencia')}
           </Link>
           <Link to="/cookies" className="hover:text-foreground">
-            Cookies
+            {t('comunes.cookies')}
           </Link>
-          <span>© 2026 MantiRenfe</span>
+          <span>{t('legal.copyright')}</span>
         </div>
       </footer>
     </div>

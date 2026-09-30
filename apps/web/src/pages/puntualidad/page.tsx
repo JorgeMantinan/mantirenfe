@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CalendarClock } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { locale } from '@/i18n';
 import type { PuntualidadTrenResponse } from '@mantirenfe/shared-types';
 
 function mesActual(): string {
@@ -16,6 +18,7 @@ function formatMinutos(segundos: number): string {
 }
 
 export function PaginaPuntualidad() {
+  const { t } = useTranslation();
   const [mes, setMes] = useState(mesActual);
   const [orden, setOrden] = useState<'veces' | 'impuntualidad'>('veces');
   const [datos, setDatos] = useState<PuntualidadTrenResponse[] | null>(null);
@@ -42,15 +45,14 @@ export function PaginaPuntualidad() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Trenes más impuntuales</h1>
-          <p className="text-muted-foreground">
-            Ranking mensual de trayectos (origen → destino) con retrasos de 5 minutos o más, medido
-            con los datos en vivo de Renfe
-          </p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
+            {t('puntualidad.titulo')}
+          </h1>
+          <p className="text-muted-foreground">{t('puntualidad.subtitulo')}</p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <CalendarClock aria-hidden="true" className="h-4 w-4" />
-          <span className="sr-only">Mes</span>
+          <span className="sr-only">{t('puntualidad.mes')}</span>
           <input
             type="month"
             value={mes}
@@ -67,14 +69,14 @@ export function PaginaPuntualidad() {
           size="sm"
           onClick={() => setOrden('veces')}
         >
-          Más veces impuntuales
+          {t('puntualidad.ordenVeces')}
         </Button>
         <Button
           variant={orden === 'impuntualidad' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setOrden('impuntualidad')}
         >
-          Mayor impuntualidad media
+          {t('puntualidad.ordenMedia')}
         </Button>
       </div>
 
@@ -93,24 +95,20 @@ export function PaginaPuntualidad() {
       ) : datos.length === 0 ? (
         <Card>
           <CardContent className="py-14 text-center text-sm text-muted-foreground">
-            Aún no hay datos de impuntualidad para este mes. Vuelve dentro de un rato: medimos los
-            retrasos en tiempo real mientras el mapa y las alertas están en marcha.
+            {t('puntualidad.vacio')}
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {new Date(`${mes}-02T00:00:00Z`).toLocaleDateString('es-ES', {
+              {new Date(`${mes}-02T00:00:00Z`).toLocaleDateString(locale(), {
                 month: 'long',
                 year: 'numeric',
                 timeZone: 'UTC',
               })}
             </CardTitle>
-            <CardDescription>
-              Servicios impuntuales = viajes de un mismo trayecto (origen → destino) que llegaron
-              con 5+ minutos de retraso
-            </CardDescription>
+            <CardDescription>{t('puntualidad.descripcion')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -118,14 +116,20 @@ export function PaginaPuntualidad() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-3 font-medium">#</th>
-                    <th className="py-2 pr-3 font-medium">Tren</th>
-                    <th className="py-2 pr-3 font-medium">Trayecto</th>
-                    <th className="py-2 pr-3 font-medium">Salida</th>
-                    <th className="py-2 pr-3 font-medium">Llegada</th>
-                    <th className="py-2 pr-3 font-medium">Llegada estimada</th>
-                    <th className="py-2 pr-3 font-medium text-right">Servicios impuntuales</th>
-                    <th className="py-2 pr-3 font-medium text-right">Retraso medio</th>
-                    <th className="py-2 font-medium text-right">Peor retraso</th>
+                    <th className="py-2 pr-3 font-medium">{t('puntualidad.colTren')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('puntualidad.colTrayecto')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('puntualidad.colSalida')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('puntualidad.colLlegada')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('puntualidad.colLlegadaEstimada')}</th>
+                    <th className="py-2 pr-3 font-medium text-right">
+                      {t('puntualidad.colServicios')}
+                    </th>
+                    <th className="py-2 pr-3 font-medium text-right">
+                      {t('puntualidad.colRetrasoMedio')}
+                    </th>
+                    <th className="py-2 font-medium text-right">
+                      {t('puntualidad.colPeorRetraso')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -153,10 +157,7 @@ export function PaginaPuntualidad() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Llegada estimada = llegada programada + peor retraso registrado en el mes: es una
-              estimación orientativa, no una hora oficial.
-            </p>
+            <p className="mt-3 text-xs text-muted-foreground">{t('puntualidad.nota')}</p>
           </CardContent>
         </Card>
       )}

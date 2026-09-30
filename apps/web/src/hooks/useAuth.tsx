@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { authConfigurada, supabase } from '@/lib/supabase';
+import { i18n } from '@/i18n';
 
 interface AuthContextValue {
   user: User | null;
@@ -51,13 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const entrar = useCallback(async (email: string, password: string) => {
-    if (!supabase) throw new Error('Autenticación no configurada (VITE_SUPABASE_URL)');
+    if (!supabase) throw new Error(i18n.t('errores.authNoConfig'));
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
   }, []);
 
   const registrarse = useCallback(async (email: string, password: string, nombre: string) => {
-    if (!supabase) throw new Error('Autenticación no configurada (VITE_SUPABASE_URL)');
+    if (!supabase) throw new Error(i18n.t('errores.authNoConfig'));
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -69,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const entrarConGoogle = useCallback(async () => {
-    if (!supabase) throw new Error('Autenticación no configurada (VITE_SUPABASE_URL)');
+    if (!supabase) throw new Error(i18n.t('errores.authNoConfig'));
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const entrarConMicrosoft = useCallback(async () => {
-    if (!supabase) throw new Error('Autenticación no configurada (VITE_SUPABASE_URL)');
+    if (!supabase) throw new Error(i18n.t('errores.authNoConfig'));
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {

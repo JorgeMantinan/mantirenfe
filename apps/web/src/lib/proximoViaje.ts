@@ -1,4 +1,5 @@
 import { fechaGtfs, type AlertaResponse, type EstadoSerializado } from '@mantirenfe/shared-types';
+import { i18n, locale } from '@/i18n';
 import { formatearPrecio } from './precios';
 
 /** Días que miramos hacia delante cuando una alerta recurrente no tiene trenes hoy. */
@@ -252,46 +253,31 @@ export function instantePeninsular(fecha: string, hora: string): number {
 
 /** "faltan 3 h 25 min" (o "ha salido") a partir de los milisegundos restantes. */
 export function cuentaAtras(milisegundos: number): string {
-  if (milisegundos <= 0) return 'ha salido';
+  if (milisegundos <= 0) return i18n.t('viaje.haSalido');
   const minutos = Math.floor(milisegundos / 60_000);
-  if (minutos === 0) return 'faltan menos de 1 min';
+  if (minutos === 0) return i18n.t('viaje.cuentaMenosDeUno');
   const dias = Math.floor(minutos / 1440);
   const horas = Math.floor((minutos % 1440) / 60);
   const resto = minutos % 60;
-  if (dias > 0) return `faltan ${dias} d ${horas} h`;
-  if (horas > 0) return resto === 0 ? `faltan ${horas} h` : `faltan ${horas} h ${resto} min`;
-  return `faltan ${minutos} min`;
+  if (dias > 0) return i18n.t('viaje.cuentaDias', { dias, horas });
+  if (horas > 0) {
+    return resto === 0
+      ? i18n.t('viaje.cuentaHoras', { horas })
+      : i18n.t('viaje.cuentaHorasMin', { horas, min: resto });
+  }
+  return i18n.t('viaje.cuentaMinutos', { min: minutos });
 }
 
-const DIAS_SEMANA = [
-  'domingo',
-  'lunes',
-  'martes',
-  'miércoles',
-  'jueves',
-  'viernes',
-  'sábado',
-] as const;
+/** Día de la semana en el idioma activo ("miércoles" / "Wednesday"). */
+const fmtDiaSemana = () => new Intl.DateTimeFormat(locale(), { weekday: 'long', timeZone: 'UTC' });
 
-const MESES = [
-  'ene',
-  'feb',
-  'mar',
-  'abr',
-  'may',
-  'jun',
-  'jul',
-  'ago',
-  'sep',
-  'oct',
-  'nov',
-  'dic',
-] as const;
-
-/** Fecha corta ("3 oct") para la tarjeta. */
+/** Fecha corta ("3 oct" / "3 Oct") para la tarjeta. */
 export function fechaCorta(fecha: string): string {
-  const { mes, dia } = aFecha(fecha);
-  return `${dia} ${MESES[mes - 1] ?? ''}`.trim();
+  return new Intl.DateTimeFormat(locale(), {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${fecha}T00:00:00Z`));
 }
 
 /**
@@ -299,14 +285,17 @@ export function fechaCorta(fecha: string): string {
  * o "3 oct" si ya queda más de una semana.
  */
 export function etiquetaDia(fecha: string, hoy: string): string {
-  if (fecha <= hoy) return 'Hoy';
+  if (fecha <= hoy) return i18n.t('viaje.hoy');
   const manana = sumarDias(hoy, 1);
-  if (fecha === manana) return 'Mañana';
+  if (fecha === manana) return i18n.t('viaje.manana');
   const { dia } = aFecha(fecha);
   const dias = Math.round(
     (Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86_400_000,
   );
-  if (dias <= 7) return `${DIAS_SEMANA[diaSemana(fecha)] ?? ''} ${dia}`.trim();
+  if (dias <= 7) {
+    const nombreDia = fmtDiaSemana().format(new Date(`${fecha}T00:00:00Z`));
+    return `${nombreDia} ${dia}`.trim();
+  }
   return fechaCorta(fecha);
 }
 
@@ -314,15 +303,15 @@ export function etiquetaDia(fecha: string, hoy: string): string {
 export function textoPlazas(salida: Pick<ProximaSalida, 'estado' | 'precioMin'>): string {
   switch (salida.estado) {
     case 'cancelado':
-      return 'Cancelado';
+      return i18n.t('estados.cancelado');
     case 'plazas':
       return salida.precioMin === null
-        ? 'Hay plazas'
-        : `Hay plazas desde ${formatearPrecio(salida.precioMin)}`;
+        ? i18n.t('estados.hayPlazas')
+        : i18n.t('estados.hayPlazasDesde', { precio: formatearPrecio(salida.precioMin) });
     case 'completo':
-      return 'Completo';
+      return i18n.t('estados.completo');
     default:
-      return 'Sin datos de plazas aún';
+      return i18n.t('estados.sinDatosPlazas');
   }
 }
 

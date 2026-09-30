@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { PaginaLegal } from '@/components/layout/PaginaLegal';
 
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
@@ -10,82 +11,51 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
   );
 }
 
+const FUERTE = { strong: <strong className="text-foreground" /> };
+const CODIGO = { code: <code className="rounded bg-muted px-1" /> };
+
 export function PaginaCookies() {
+  const { t } = useTranslation();
+
   return (
-    <PaginaLegal
-      titulo="Política de cookies"
-      entradilla="Qué almacenamos en tu navegador, para qué y cómo puedes controlarlo."
-    >
-      <Seccion titulo="Qué son cookies y almacenamiento local">
-        <p>
-          Las cookies son pequeños archivos que un sitio guarda en tu navegador. El almacenamiento
-          local (localStorage) hace lo mismo pero sin enviarlo con cada petición. Ambos sirven para
-          recordar cosas entre visitas: tu sesión, tu tema, tus preferencias.
-        </p>
+    <PaginaLegal titulo={t('cookies.titulo')} entradilla={t('cookies.entradilla')}>
+      <Seccion titulo={t('cookies.s1Titulo')}>
+        <p>{t('cookies.s1Texto')}</p>
       </Seccion>
 
-      <Seccion titulo="Qué usa esta versión">
-        <p>Guardamos lo necesario para que la app funcione:</p>
+      <Seccion titulo={t('cookies.s2Titulo')}>
+        <p>{t('cookies.s2Intro')}</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong className="text-foreground">Sesión de usuario</strong>: Supabase Auth guarda tu
-            sesión en localStorage (clave{' '}
-            <code className="rounded bg-muted px-1">sb-…-auth-token</code>) para que no tengas que
-            iniciar sesión en cada visita. Se borra al cerrar sesión.
+            <Trans i18nKey="cookies.liSesion" components={{ ...FUERTE, ...CODIGO }} />
           </li>
           <li>
-            <strong className="text-foreground">Tema</strong>: la preferencia de claro, oscuro o
-            sistema se guarda en localStorage para respetarla la próxima vez que entres.
+            <Trans i18nKey="cookies.liTema" components={FUERTE} />
           </li>
           <li>
-            <strong className="text-foreground">Preferencias y notificaciones</strong>: la
-            suscripción a avisos push y los ajustes de alertas se asocian a tu cuenta en nuestro
-            servidor.
+            <Trans i18nKey="cookies.liPreferencias" components={FUERTE} />
           </li>
           <li>
-            <strong className="text-foreground">Caché de la PWA</strong>: el service worker guarda
-            los recursos de la app en Cache Storage para que abra rápido y, si proceda, funcione sin
-            conexión.
+            <Trans i18nKey="cookies.liCache" components={FUERTE} />
+          </li>
+          <li>
+            <Trans i18nKey="cookies.liAds" components={{ ...FUERTE, em: <em /> }} />
+          </li>
+          <li>
+            <Trans i18nKey="cookies.liAnalitica" components={FUERTE} />
           </li>
         </ul>
-        <p>
-          <strong className="text-foreground">Publicidad (Google AdSense)</strong>: en las páginas
-          de trayecto mostramos anuncios de Google AdSense. Google y sus socios pueden instalar
-          cookies y usar identificadores de dispositivo solo <em>después</em> de tu consentimiento
-          (para visitantes de la EEE, Reino Unido y Suiza). Ese consentimiento se recoge con el
-          banner de la CMP de Google al entrar:{' '}
-          <em>Consentir · No consentir · Gestionar opciones</em>. Si eliges <em>No consentir</em>,
-          los anuncios se muestran de forma no personalizada.
-        </p>
-        <p>
-          <strong className="text-foreground">No usamos analítica externa propia</strong> (ni Google
-          Analytics ni similares): solo lo necesario para que la app funcione, tal como describe la
-          lista de arriba.
-        </p>
       </Seccion>
 
-      <Seccion titulo="Consentimiento, anunciantes y afiliados">
+      <Seccion titulo={t('cookies.s3Titulo')}>
         <p>
-          El banner de consentimiento (CMP de Google) aparece en tu primera visita y permite
-          aceptar, rechazar o ajustar los fines en cualquier momento desde{' '}
-          <strong className="text-foreground">«Gestionar opciones»</strong>, que Google añade en la
-          propia página mientras la CMP esté activa. Retirar el consentimiento afecta a partir de
-          esa misma sesión.
+          <Trans i18nKey="cookies.s3p1" components={FUERTE} />
         </p>
-        <p>
-          Los enlaces de afiliación, cuando existan, abren webs de terceros (Trainline, Omio…) que
-          aplican sus propias cookies bajo sus políticas, no las nuestras; se identifican siempre
-          como enlace de afiliación.
-        </p>
+        <p>{t('cookies.s3p2')}</p>
       </Seccion>
 
-      <Seccion titulo="Cómo controlar o borrar lo guardado">
-        <p>
-          Puedes borrar el almacenamiento de MantiRenfe desde la configuración de tu navegador
-          (Borrar datos de navegación → Cookies y datos de sitios web, o datos guardados de
-          aplicaciones). También puedes bloquear cookies y localStorage por sitio; si lo haces, la
-          sesión y el tema recordado dejarán de funcionar hasta que vuelvas a iniciar sesión.
-        </p>
+      <Seccion titulo={t('cookies.s4Titulo')}>
+        <p>{t('cookies.s4Texto')}</p>
       </Seccion>
     </PaginaLegal>
   );

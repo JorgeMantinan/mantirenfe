@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Bell,
   BellRing,
@@ -21,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from './Logo';
 
 interface ItemMenu {
+  id: string;
   titulo: string;
   items: Array<{
     href: string;
@@ -30,40 +33,61 @@ interface ItemMenu {
   }>;
 }
 
-const GRUPOS: ItemMenu[] = [
-  {
-    titulo: 'Principal',
-    items: [
-      { href: '/dashboard', etiqueta: 'Dashboard', icono: Gauge, soloAuth: true },
-      { href: '/alertas', etiqueta: 'Mis alertas', icono: BellRing, soloAuth: true },
-      { href: '/notificaciones', etiqueta: 'Notificaciones', icono: Bell, soloAuth: true },
-    ],
-  },
-  {
-    titulo: 'Explorar',
-    items: [
-      { href: '/mapa', etiqueta: 'Mapa en tiempo real', icono: Map },
-      { href: '/incidencias', etiqueta: 'Incidencias', icono: TriangleAlert },
-      { href: '/suprimidos', etiqueta: 'Suprimidos', icono: CircleSlash },
-      { href: '/trenes', etiqueta: 'Buscar trenes', icono: Ticket },
-      { href: '/estaciones', etiqueta: 'Estaciones', icono: MapPin },
-      { href: '/puntualidad', etiqueta: 'Trenes impuntuales', icono: TrendingDown },
-    ],
-  },
-  {
-    titulo: 'Cuenta',
-    items: [{ href: '/ajustes', etiqueta: 'Ajustes', icono: Settings, soloAuth: true }],
-  },
-];
+function grupos(t: TFunction): ItemMenu[] {
+  return [
+    {
+      id: 'principal',
+      titulo: t('menu.grupoPrincipal'),
+      items: [
+        {
+          href: '/dashboard',
+          etiqueta: t('menu.dashboard'),
+          icono: Gauge,
+          soloAuth: true,
+        },
+        {
+          href: '/alertas',
+          etiqueta: t('menu.misAlertas'),
+          icono: BellRing,
+          soloAuth: true,
+        },
+        {
+          href: '/notificaciones',
+          etiqueta: t('menu.notificaciones'),
+          icono: Bell,
+          soloAuth: true,
+        },
+      ],
+    },
+    {
+      id: 'explorar',
+      titulo: t('menu.grupoExplorar'),
+      items: [
+        { href: '/mapa', etiqueta: t('menu.mapa'), icono: Map },
+        { href: '/incidencias', etiqueta: t('menu.incidencias'), icono: TriangleAlert },
+        { href: '/suprimidos', etiqueta: t('menu.suprimidos'), icono: CircleSlash },
+        { href: '/trenes', etiqueta: t('menu.buscarTrenes'), icono: Ticket },
+        { href: '/estaciones', etiqueta: t('menu.estaciones'), icono: MapPin },
+        { href: '/puntualidad', etiqueta: t('menu.impuntuales'), icono: TrendingDown },
+      ],
+    },
+    {
+      id: 'cuenta',
+      titulo: t('menu.grupoCuenta'),
+      items: [{ href: '/ajustes', etiqueta: t('menu.ajustes'), icono: Settings, soloAuth: true }],
+    },
+  ];
+}
 
 export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
+  const { t } = useTranslation();
   const location = useLocation();
   const [colapsado, setColapsado] = useState(false);
   const [abiertoMovil, setAbiertoMovil] = useState(false);
   const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({
-    Principal: true,
-    Explorar: true,
-    Cuenta: true,
+    principal: true,
+    explorar: true,
+    cuenta: true,
   });
 
   const contenido = (
@@ -75,7 +99,7 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
           size="icon"
           className="hidden lg:flex"
           onClick={() => setColapsado((c) => !c)}
-          aria-label={colapsado ? 'Expandir menú' : 'Contraer menú'}
+          aria-label={colapsado ? t('menu.expandir') : t('menu.contraer')}
         >
           <ChevronDown
             className={cn('h-4 w-4 transition-transform', colapsado ? '-rotate-90' : '')}
@@ -87,27 +111,27 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
           size="icon"
           className="lg:hidden"
           onClick={() => setAbiertoMovil(false)}
-          aria-label="Cerrar menú"
+          aria-label={t('menu.cerrar')}
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </Button>
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto p-3" aria-label="Navegación principal">
-        {GRUPOS.map((grupo) => {
+      <nav className="flex-1 space-y-4 overflow-y-auto p-3" aria-label={t('menu.navegar')}>
+        {grupos(t).map((grupo) => {
           const itemsVisibles = grupo.items.filter((item) => !item.soloAuth || authConfigurada);
           if (itemsVisibles.length === 0) return null;
-          const abierto = gruposAbiertos[grupo.titulo] ?? true;
+          const abierto = gruposAbiertos[grupo.id] ?? true;
 
           return (
-            <div key={grupo.titulo}>
+            <div key={grupo.id}>
               <button
                 type="button"
                 className={cn(
                   'mb-1 flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground',
                   colapsado && 'justify-center px-0',
                 )}
-                onClick={() => setGruposAbiertos((g) => ({ ...g, [grupo.titulo]: !abierto }))}
+                onClick={() => setGruposAbiertos((g) => ({ ...g, [grupo.id]: !abierto }))}
                 aria-expanded={abierto}
               >
                 {!colapsado && <span>{grupo.titulo}</span>}
@@ -153,12 +177,7 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
       </nav>
 
       <div className="border-t p-3 text-[11px] leading-tight text-muted-foreground">
-        {!colapsado && (
-          <p>
-            Proyecto independiente, no afiliado ni patrocinado por Renfe. Origen de los datos: Renfe
-            Operadora (open data).
-          </p>
-        )}
+        {!colapsado && <p>{t('menu.pie')}</p>}
       </div>
     </div>
   );
@@ -173,7 +192,7 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
         type="button"
         className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-md border bg-background shadow-sm lg:hidden"
         onClick={() => setAbiertoMovil(true)}
-        aria-label="Abrir menú"
+        aria-label={t('menu.abrir')}
       >
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>

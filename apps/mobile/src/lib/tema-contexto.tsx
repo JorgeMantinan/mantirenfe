@@ -16,6 +16,29 @@ import { colores, coloresOscuros, type Paleta } from '@/lib/tema';
 
 export type ModoTema = 'claro' | 'oscuro' | 'sistema';
 
+const CLAVE_TEMA = 'mantirenfe:tema';
+
+function leerModoLocal(): ModoTema | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const guardado = localStorage.getItem(CLAVE_TEMA);
+    return guardado === 'claro' || guardado === 'oscuro' || guardado === 'sistema'
+      ? guardado
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function escribirModoLocal(modo: ModoTema): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CLAVE_TEMA, modo);
+  } catch {
+    return;
+  }
+}
+
 interface TemaContexto {
   modo: ModoTema;
   setModo: (modo: ModoTema) => void;
@@ -27,22 +50,25 @@ const Contexto = createContext<TemaContexto | null>(null);
 
 export function TemaProvider({ children }: { children: ReactNode }) {
   const esquemaSistema = useColorScheme();
-  const [modo, setModoEstado] = useState<ModoTema>('sistema');
-  const preferencias = useRef<PreferenciasUsuario | null>(null);
-  // Timestamp del último cambio manual: un GET lento no debe pisarlo
-  const ultimaEdicionRef = useRef(0);
+  const [modo, setModoEstado] = useState<ModoTema>(() => leerModoLocal() ?? 'sistema');
+  const huboEdicionRef = useRef(false);
+  const ordenGuardadoRef = useRef(0);
+
+  const aplicar = useCallback((siguiente: ModoTema) => {
+    setModoEstado(siguiente);
+    escribirModoLocal(siguiente);
+  }, []);
 
   const cargarPreferencias = useCallback(async () => {
-    if (Date.now() - ultimaEdicionRef.current < 8000) return; // no pisar cambios recientes
+    if (huboEdicionRef.current) return;
     try {
       const guardadas = await api<PreferenciasUsuario>('/auth/preferencias');
-      preferencias.current = guardadas;
-      if (Date.now() - ultimaEdicionRef.current < 8000) return;
-      setModoEstado(guardadas.tema);
+      if (huboEdicionRef.current) return;
+      aplicar(guardadas.tema);
     } catch {
       // sin sesión o API no disponible: se mantiene el modo actual
     }
-  }, []);
+  }, [aplicar]);
 
   useEffect(() => {
     void cargarPreferencias();
@@ -53,38 +79,38 @@ export function TemaProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((evento) => {
       if (evento === 'INITIAL_SESSION' || evento === 'SIGNED_IN') void cargarPreferencias();
       if (evento === 'SIGNED_OUT') {
-        preferencias.current = null;
-        setModoEstado('sistema');
+        huboEdicionRef.current = false;
+        aplicar('sistema');
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [cargarPreferencias]);
+  }, [aplicar, cargarPreferencias]);
 
-  const setModo = useCallback((siguiente: ModoTema) => {
-    ultimaEdicionRef.current = Date.now();
-    setModoEstado(siguiente);
-    void (async () => {
-      let actuales: Partial<PreferenciasUsuario> = preferencias.current ?? {};
-      if (!preferencias.current) {
+  const setModo = useCallback(
+    (siguiente: ModoTema) => {
+      huboEdicionRef.current = true;
+      aplicar(siguiente);
+      const orden = ++ordenGuardadoRef.current;
+      void (async () => {
+        let actuales: PreferenciasUsuario;
         try {
-          const conocidas = await api<PreferenciasUsuario>('/auth/preferencias');
-          preferencias.current = conocidas;
-          actuales = conocidas;
+          actuales = await api<PreferenciasUsuario>('/auth/preferencias');
         } catch {
-          actuales = {};
+          return;
         }
-      }
-      try {
-        const guardado = await api<PreferenciasUsuario>('/auth/preferencias', {
-          method: 'POST',
-          json: { ...actuales, tema: siguiente },
-        });
-        preferencias.current = guardado;
-      } catch {
-        // sin sesión el modo queda solo en local
-      }
-    })();
-  }, []);
+        if (orden !== ordenGuardadoRef.current) return;
+        try {
+          await api<PreferenciasUsuario>('/auth/preferencias', {
+            method: 'POST',
+            json: { ...actuales, tema: siguiente },
+          });
+        } catch {
+          // sin sesión el modo queda solo en local
+        }
+      })();
+    },
+    [aplicar],
+  );
 
   const oscuro = modo === 'sistema' ? esquemaSistema === 'dark' : modo === 'oscuro';
   const paleta = oscuro ? coloresOscuros : colores;

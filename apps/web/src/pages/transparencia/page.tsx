@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { PaginaLegal } from '@/components/layout/PaginaLegal';
 import { enlaces, hayAfiliacion, hayDonaciones } from '@/lib/monetizacion';
 
@@ -11,73 +12,59 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
   );
 }
 
+const FUERTE = { strong: <strong className="text-foreground" /> };
+
 export function PaginaTransparencia() {
+  const { t } = useTranslation();
+
   return (
-    <PaginaLegal
-      titulo="Transparencia"
-      entradilla="Qué es MantiRenfe, de dónde vienen los datos y cómo se financia el proyecto."
-    >
-      <Seccion titulo="Quiénes somos">
+    <PaginaLegal titulo={t('comunes.transparencia')} entradilla={t('transparencia.entradilla')}>
+      <Seccion titulo={t('transparencia.quienesTitulo')}>
         <p>
-          <strong className="text-foreground">MantiRenfe</strong> es un proyecto independiente, sin
-          ánimo de lucro de persona o equipo particular. No estamos afiliados, patrocinados,
-          respaldados ni gestionados por Renfe Operadora, Adif, Ouigo, Iryo ni ningún otro operador
-          ferroviario.
+          <Trans i18nKey="transparencia.quienes1" components={FUERTE} />
         </p>
         <p>
-          <strong className="text-foreground">No somos un sitio oficial de Renfe</strong> ni
-          sustituimos a venta.renfe.com: te ayudamos a vigilar disponibilidad, horarios y estado de
-          la red, pero la compra de billetes se hace siempre en la web o app de cada operador.
+          <Trans i18nKey="transparencia.quienes2" components={FUERTE} />
         </p>
       </Seccion>
 
-      <Seccion titulo="Cómo se financia">
-        <p>El proyecto no cobra a sus usuarios. Sus vías de financiación son estas dos:</p>
+      <Seccion titulo={t('transparencia.financiaTitulo')}>
+        <p>{t('transparencia.financiaIntro')}</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong className="text-foreground">Enlaces de afiliación</strong>: cuando se muestran,
-            van a servicios de compra de billetes externos. Si compras a través de ellos, podemos
-            recibir una comisión <em>sin coste extra para ti</em>. No condicionan los resultados que
-            mostramos: los horarios, precios y avisos salen de los datos de Renfe, no de quién paga.
+            <Trans
+              i18nKey="transparencia.financiaAfiliacion"
+              components={{ ...FUERTE, em: <em /> }}
+            />
           </li>
           <li>
-            <strong className="text-foreground">Donaciones</strong>: aportaciones voluntarias
-            (cuando el canal está abierto) para cubrir servidores, dominio y horas de mantenimiento.
-            Las donaciones sostienen el proyecto independiente.
+            <Trans i18nKey="transparencia.financiaDonaciones" components={FUERTE} />
           </li>
         </ul>
-        <p>Estado actual de la monetización:</p>
+        <p>{t('transparencia.estadoTitulo')}</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {hayAfiliacion
-              ? `Enlaces de afiliación activos: ${enlaces.map((e) => e.nombre).join(', ')}.`
-              : 'Sin enlaces de afiliación activos por ahora.'}
+              ? t('transparencia.afiliacionActiva', {
+                  nombres: enlaces.map((e) => e.nombre).join(', '),
+                })
+              : t('transparencia.afiliacionSin')}
           </li>
           <li>
             {hayDonaciones
-              ? 'Canal de donaciones abierto desde el pie de la landing.'
-              : 'Sin canal de donaciones abierto por ahora.'}
+              ? t('transparencia.donacionesAbierta')
+              : t('transparencia.donacionesCerrada')}
           </li>
-          <li>Sin publicidad de terceros, sin venta de datos y sin patrocinios.</li>
+          <li>{t('transparencia.sinPublicidad')}</li>
         </ul>
       </Seccion>
 
-      <Seccion titulo="Fuentes de datos">
+      <Seccion titulo={t('transparencia.fuentesTitulo')}>
         <p>
-          <strong className="text-foreground">Origen de los datos: Renfe Operadora</strong> a través
-          de su programación abierta (open data): ficheros GTFS estáticos de horarios y estaciones,
-          y feeds GTFS-Realtime de posiciones, retrasos e incidencias, publicados bajo licencia
-          CC-BY 4.0.
+          <Trans i18nKey="transparencia.fuentes1" components={FUERTE} />
         </p>
-        <p>
-          Nuestro worker sincroniza esos ficheros de forma periódica para mantener los horarios y
-          las posiciones al día. Los datos de disponibilidad de asientos proceden de la venta de
-          Renfe cuando están disponibles.
-        </p>
-        <p>
-          Las marcas «Renfe», «Adif», «Ouigo» e «Iryo» pertenecen a sus respectivos titulares y se
-          citan solo con fines informativos.
-        </p>
+        <p>{t('transparencia.fuentes2')}</p>
+        <p>{t('transparencia.fuentes3')}</p>
       </Seccion>
     </PaginaLegal>
   );

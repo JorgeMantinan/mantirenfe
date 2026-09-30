@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ExternalLink,
   Map,
@@ -17,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
+import { locale } from '@/i18n';
 import {
   horaGtfs,
   type EstacionDetalleResponse,
@@ -33,6 +35,7 @@ function mapaExterno(latitud: number, longitud: number): string {
 }
 
 export function PaginaEstaciones() {
+  const { t } = useTranslation();
   const [texto, setTexto] = useState('');
   const [sugerencias, setSugerencias] = useState<EstacionResponse[]>([]);
   const [sel, setSel] = useState<EstacionResponse | null>(null);
@@ -156,31 +159,26 @@ export function PaginaEstaciones() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Estaciones</h1>
-        <p className="text-muted-foreground">
-          Busca por nombre o por ciudad/zona —prueba «Vigo»— para ver las salidas de hoy, las
-          incidencias que afectan a esa estación y su situación en el mapa.
-        </p>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{t('menu.estaciones')}</h1>
+        <p className="text-muted-foreground">{t('estaciones.subtitulo')}</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <Search className="h-5 w-5 text-primary" aria-hidden="true" /> Buscar estación
+            <Search className="h-5 w-5 text-primary" aria-hidden="true" />{' '}
+            {t('estaciones.buscarTitulo')}
           </CardTitle>
-          <CardDescription>
-            El buscador tolera tildes y abreviaturas: con «Vigo» aparecen todas las estaciones de la
-            ciudad.
-          </CardDescription>
+          <CardDescription>{t('estaciones.buscarDescripcion')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="relative space-y-2">
-            <Label htmlFor="estacion">Estación</Label>
+            <Label htmlFor="estacion">{t('estaciones.estacionLabel')}</Label>
             <Input
               id="estacion"
               value={texto}
               onChange={(e) => sugerir(e.target.value)}
-              placeholder="Vigo-Guixar, Madrid-Atocha, Valencia..."
+              placeholder={t('estaciones.placeholder')}
               autoComplete="off"
             />
             {sugerencias.length > 0 && (
@@ -202,10 +200,7 @@ export function PaginaEstaciones() {
               </ul>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Escribe al menos 2 letras. Si no la encuentras, prueba con la ciudad, la comarca o la
-            provincia.
-          </p>
+          <p className="text-xs text-muted-foreground">{t('estaciones.ayuda')}</p>
         </CardContent>
       </Card>
 
@@ -218,26 +213,28 @@ export function PaginaEstaciones() {
                 {sel.nombre}
               </CardTitle>
               <CardDescription>
-                Código {sel.codigo}
+                {t('estaciones.codigo', { codigo: sel.codigo })}
                 {sel.ciudad ? ` · ${sel.ciudad}` : ''}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Estación {sel.codigo}</Badge>
+                  <Badge variant="outline">
+                    {t('estaciones.badgeEstacion', { codigo: sel.codigo })}
+                  </Badge>
                   {sel.ciudad ? <Badge variant="secondary">{sel.ciudad}</Badge> : null}
                   <Badge variant={afectadas.length > 0 ? 'aviso' : 'exito'}>
                     {afectadas.length > 0
-                      ? `${afectadas.length} incidencia${afectadas.length > 1 ? 's' : ''} activa${
-                          afectadas.length > 1 ? 's' : ''
-                        }`
-                      : 'Sin incidencias'}
+                      ? afectadas.length === 1
+                        ? t('estaciones.incidenciaActiva')
+                        : t('estaciones.incidenciasActivas', { n: afectadas.length })
+                      : t('estaciones.sinIncidencias')}
                   </Badge>
                 </div>
                 <Button variant="outline" asChild>
                   <Link to="/mapa">
-                    <Map className="h-4 w-4" aria-hidden="true" /> Ver en el mapa
+                    <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapaBoton')}
                   </Link>
                 </Button>
               </div>
@@ -246,30 +243,36 @@ export function PaginaEstaciones() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1 text-sm">
                     {!detalleListo ? (
-                      <p className="text-muted-foreground">Cargando datos oficiales...</p>
+                      <p className="text-muted-foreground">{t('estaciones.cargandoOficiales')}</p>
                     ) : detalle ? (
                       <dl className="space-y-1">
                         {detalle.direccion ? (
                           <div className="flex gap-2">
-                            <dt className="shrink-0 text-muted-foreground">Dirección</dt>
+                            <dt className="shrink-0 text-muted-foreground">
+                              {t('estaciones.direccion')}
+                            </dt>
                             <dd>{detalle.direccion}</dd>
                           </div>
                         ) : null}
                         {detalle.cp ? (
                           <div className="flex gap-2">
-                            <dt className="shrink-0 text-muted-foreground">CP</dt>
+                            <dt className="shrink-0 text-muted-foreground">{t('estaciones.cp')}</dt>
                             <dd>{detalle.cp}</dd>
                           </div>
                         ) : null}
                         {detalle.poblacion ? (
                           <div className="flex gap-2">
-                            <dt className="shrink-0 text-muted-foreground">Población</dt>
+                            <dt className="shrink-0 text-muted-foreground">
+                              {t('estaciones.poblacion')}
+                            </dt>
                             <dd>{detalle.poblacion}</dd>
                           </div>
                         ) : null}
                         {detalle.provincia ? (
                           <div className="flex gap-2">
-                            <dt className="shrink-0 text-muted-foreground">Provincia</dt>
+                            <dt className="shrink-0 text-muted-foreground">
+                              {t('estaciones.provincia')}
+                            </dt>
                             <dd>{detalle.provincia}</dd>
                           </div>
                         ) : null}
@@ -279,7 +282,8 @@ export function PaginaEstaciones() {
                   {urlMapa ? (
                     <Button variant="outline" size="sm" asChild>
                       <a href={urlMapa} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4" aria-hidden="true" /> Ver en mapa
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" />{' '}
+                        {t('estaciones.verEnMapa')}
                       </a>
                     </Button>
                   ) : null}
@@ -288,15 +292,17 @@ export function PaginaEstaciones() {
                 {aforos && aforos.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-semibold">Datos históricos de aforo (2018)</h3>
-                      <Badge variant="outline">histórico 2018</Badge>
+                      <h3 className="text-sm font-semibold">{t('estaciones.aforoTitulo')}</h3>
+                      <Badge variant="outline">{t('estaciones.aforoBadge')}</Badge>
                     </div>
                     <div className="max-h-64 overflow-y-auto rounded-md border">
                       <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-background">
                           <tr className="border-b text-left text-muted-foreground">
-                            <th className="py-2 pl-3 pr-3 font-medium">Franja</th>
-                            <th className="py-2 pr-3 font-medium text-right">Viajeros</th>
+                            <th className="py-2 pl-3 pr-3 font-medium">{t('estaciones.franja')}</th>
+                            <th className="py-2 pr-3 font-medium text-right">
+                              {t('estaciones.viajeros')}
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -307,17 +313,14 @@ export function PaginaEstaciones() {
                             >
                               <td className="py-1.5 pl-3 pr-3">{aforo.franja}</td>
                               <td className="py-1.5 pr-3 text-right tabular-nums">
-                                {(aforo.subidos + aforo.bajados).toLocaleString('es-ES')}
+                                {(aforo.subidos + aforo.bajados).toLocaleString(locale())}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Viajeros subidos y bajados por franja horaria — fuente: data.renfe.com
-                      («Volumen de Viajeros por Franja Horaria», 2018).
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t('estaciones.aforoNota')}</p>
                   </div>
                 )}
               </div>
@@ -331,7 +334,7 @@ export function PaginaEstaciones() {
             >
               <p className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
                 <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {incidencia.titulo ?? 'Incidencia de servicio'}
+                {incidencia.titulo ?? t('incidencias.tituloFallback')}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {formatoPeriodo(incidencia.desde, incidencia.hasta)}
@@ -339,7 +342,9 @@ export function PaginaEstaciones() {
               {incidencia.mensaje && <p className="mt-2">{incidencia.mensaje}</p>}
               {incidencia.estacionesAfectadas.length > 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Estaciones: {incidencia.estacionesAfectadas.join(', ')}
+                  {t('estaciones.estacionesList', {
+                    lista: incidencia.estacionesAfectadas.join(', '),
+                  })}
                 </p>
               )}
             </div>
@@ -349,17 +354,17 @@ export function PaginaEstaciones() {
             <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
               <div className="space-y-1.5">
                 <CardTitle className="flex items-center gap-2 text-xl">
-                  <TrainFront className="h-5 w-5 text-primary" aria-hidden="true" /> Salidas de hoy
+                  <TrainFront className="h-5 w-5 text-primary" aria-hidden="true" />{' '}
+                  {t('estaciones.salidasTitulo')}
                 </CardTitle>
                 <CardDescription>
-                  {new Date(`${hoy()}T12:00:00Z`).toLocaleDateString('es-ES', {
+                  {new Date(`${hoy()}T12:00:00Z`).toLocaleDateString(locale(), {
                     weekday: 'long',
                     day: 'numeric',
                     month: 'long',
                     timeZone: 'UTC',
                   })}
-                  {' · salidas programadas desde '}
-                  {sel.nombre}
+                  {t('estaciones.salidasDesde', { estacion: sel.nombre })}
                 </CardDescription>
               </div>
               <Button
@@ -367,13 +372,13 @@ export function PaginaEstaciones() {
                 size="sm"
                 onClick={cargar}
                 disabled={cargando}
-                aria-label="Actualizar salidas"
+                aria-label={t('estaciones.actualizarSalidas')}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${cargando ? 'animate-spin' : ''}`}
                   aria-hidden="true"
                 />
-                Actualizar
+                {t('estaciones.actualizar')}
               </Button>
             </CardHeader>
             <CardContent>
@@ -389,17 +394,19 @@ export function PaginaEstaciones() {
                   {error}
                 </div>
               ) : salidas === null || salidas.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">Sin salidas hoy</p>
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t('estaciones.sinSalidas')}
+                </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">Salida</th>
-                        <th className="py-2 pr-3 font-medium">Destino</th>
-                        <th className="py-2 pr-3 font-medium">Tren</th>
-                        <th className="py-2 pr-3 font-medium">Operador</th>
-                        <th className="py-2 font-medium text-right">Duración</th>
+                        <th className="py-2 pr-3 font-medium">{t('tabla.salida')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('tabla.destino')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('tabla.tren')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('tabla.operador')}</th>
+                        <th className="py-2 font-medium text-right">{t('tabla.duracion')}</th>
                       </tr>
                     </thead>
                     <tbody>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, BellOff, CheckCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { locale } from '@/i18n';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +22,7 @@ function urlBase64AUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 export function PaginaNotificaciones() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,41 +43,41 @@ export function PaginaNotificaciones() {
     if (ids.length === 0) return;
     try {
       await api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids } });
-      toast.success('Marcadas como leídas');
+      toast.success(t('notificaciones.marcarOk'));
       cargar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error');
+      toast.error(e instanceof Error ? e.message : t('comunes.error'));
     }
   };
 
   const limpiarLista = async () => {
     if ((notificaciones ?? []).length === 0) return;
-    if (!window.confirm('¿Vaciar la lista de avisos? Se borrarán todos.')) return;
+    if (!window.confirm(t('notificaciones.vaciarConfirm'))) return;
     try {
       await api('/notificaciones', { method: 'DELETE' });
       setNotificaciones([]);
-      toast.success('Lista vaciada');
+      toast.success(t('notificaciones.vaciada'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error');
+      toast.error(e instanceof Error ? e.message : t('comunes.error'));
     }
   };
 
   const activarPush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      toast.error('Tu navegador no soporta notificaciones push');
+      toast.error(t('notificaciones.sinSoporte'));
       return;
     }
     setActivandoPush(true);
     try {
       const permiso = await Notification.requestPermission();
       if (permiso !== 'granted') {
-        toast.error('Permiso de notificaciones denegado');
+        toast.error(t('notificaciones.permisoDenegado'));
         return;
       }
 
       const config = await api<PushConfigResponse>('/notificaciones/push-config');
       if (!config.publicKey) {
-        toast.error('Push no configurado en el servidor (faltan claves VAPID)');
+        toast.error(t('notificaciones.pushNoConfig'));
         return;
       }
 
@@ -90,9 +93,9 @@ export function PaginaNotificaciones() {
         method: 'POST',
         json: suscripcion.toJSON(),
       });
-      toast.success('Notificaciones push activadas');
+      toast.success(t('notificaciones.pushOk'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo activar push');
+      toast.error(e instanceof Error ? e.message : t('notificaciones.pushError'));
     } finally {
       setActivandoPush(false);
     }
@@ -110,27 +113,29 @@ export function PaginaNotificaciones() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Notificaciones</h1>
-          <p className="text-muted-foreground">Avisos de tus alertas y recordatorios</p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
+            {t('cabecera.notificaciones')}
+          </h1>
+          <p className="text-muted-foreground">{t('notificaciones.subtitulo')}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => void activarPush()} disabled={activandoPush}>
             <Bell aria-hidden="true" />
-            {activandoPush ? 'Activando...' : 'Activar push'}
+            {activandoPush ? t('notificaciones.activando') : t('notificaciones.activarPush')}
           </Button>
           <Button variant="secondary" onClick={() => void marcarTodas()}>
-            <CheckCheck aria-hidden="true" /> Marcar leídas
+            <CheckCheck aria-hidden="true" /> {t('notificaciones.marcarLeidas')}
           </Button>
           <Button variant="ghost" onClick={() => void limpiarLista()}>
-            <Trash2 aria-hidden="true" /> Limpiar lista
+            <Trash2 aria-hidden="true" /> {t('notificaciones.limpiarLista')}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Bandeja</CardTitle>
-          <CardDescription>Los avisos push también aparecen aquí</CardDescription>
+          <CardTitle className="text-xl">{t('notificaciones.bandeja')}</CardTitle>
+          <CardDescription>{t('notificaciones.bandejaDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {notificaciones === null ? (
@@ -142,9 +147,7 @@ export function PaginaNotificaciones() {
           ) : notificaciones.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <BellOff className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-              <p className="text-sm text-muted-foreground">
-                No tienes notificaciones todavía. Crea una alerta y aparecerán aquí.
-              </p>
+              <p className="text-sm text-muted-foreground">{t('notificaciones.sinNotifs')}</p>
             </div>
           ) : (
             <ul className="divide-y">
@@ -163,7 +166,7 @@ export function PaginaNotificaciones() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium">{n.titulo}</p>
                       <time className="text-xs text-muted-foreground">
-                        {new Date(n.creadaEn).toLocaleString('es-ES')}
+                        {new Date(n.creadaEn).toLocaleString(locale())}
                       </time>
                     </div>
                     <p className="text-sm text-muted-foreground">{n.cuerpo}</p>

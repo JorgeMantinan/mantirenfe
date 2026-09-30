@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LogOut, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -12,22 +13,25 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { SELECT_CLS } from '@/lib/ui-constants';
+import { aNextTheme, deNextTheme, edicionTemaReciente, marcarEdicionTema } from '@/lib/tema';
+import type { TemaDom } from '@/lib/tema';
 import type { PreferenciasUsuario } from '@mantirenfe/shared-types';
 
 export function PaginaAjustes() {
+  const { t } = useTranslation();
   const { user, salir, authConfigurada } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [preferencias, setPreferencias] = useState<PreferenciasUsuario | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const temaActual = deNextTheme(theme);
 
   useEffect(() => {
     if (!authConfigurada) return;
     api<PreferenciasUsuario>('/auth/preferencias')
       .then((p) => {
         setPreferencias(p);
-        // Aplicar el tema guardado en la cuenta al entrar
-        if (p.tema) setTheme(p.tema);
+        if (p.tema && !edicionTemaReciente()) setTheme(aNextTheme(p.tema));
       })
       .catch(() =>
         setPreferencias({
@@ -41,16 +45,24 @@ export function PaginaAjustes() {
       );
   }, [authConfigurada]);
 
+  const elegirTema = (tema: TemaDom) => {
+    marcarEdicionTema();
+    setTheme(aNextTheme(tema));
+    if (authConfigurada) void guardar({ tema });
+  };
+
   const guardar = async (parcial: Partial<PreferenciasUsuario>) => {
-    if (!preferencias) return;
-    const siguiente = { ...preferencias, ...parcial };
+    const base =
+      preferencias ?? (await api<PreferenciasUsuario>('/auth/preferencias').catch(() => null));
+    if (!base) return;
+    const siguiente = { ...base, tema: temaActual, ...parcial };
     setPreferencias(siguiente);
     setGuardando(true);
     try {
       await api('/auth/preferencias', { method: 'POST', json: siguiente });
-      toast.success('Preferencias guardadas');
+      toast.success(t('ajustes.guardadas'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo guardar');
+      toast.error(e instanceof Error ? e.message : t('ajustes.noGuardar'));
     } finally {
       setGuardando(false);
     }
@@ -66,41 +78,41 @@ export function PaginaAjustes() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Ajustes</h1>
-          <p className="text-muted-foreground">Configuración de la aplicación</p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
+            {t('cabecera.ajustes')}
+          </h1>
+          <p className="text-muted-foreground">{t('ajustes.subtituloApp')}</p>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Tema</CardTitle>
-            <CardDescription>Apariencia clara u oscura</CardDescription>
+            <CardTitle className="text-xl">{t('ajustes.temaTitulo')}</CardTitle>
+            <CardDescription>{t('ajustes.temaDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Button
-              variant={theme === 'claro' ? 'default' : 'outline'}
+              variant={temaActual === 'claro' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setTheme('claro')}
+              onClick={() => elegirTema('claro')}
             >
-              <Sun aria-hidden="true" /> Claro
+              <Sun aria-hidden="true" /> {t('cabecera.temaClaro')}
             </Button>
             <Button
-              variant={theme === 'oscuro' ? 'default' : 'outline'}
+              variant={temaActual === 'oscuro' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setTheme('oscuro')}
+              onClick={() => elegirTema('oscuro')}
             >
-              <Moon aria-hidden="true" /> Oscuro
+              <Moon aria-hidden="true" /> {t('cabecera.temaOscuro')}
             </Button>
             <Button
-              variant={theme === 'sistema' ? 'default' : 'outline'}
+              variant={temaActual === 'sistema' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setTheme('sistema')}
+              onClick={() => elegirTema('sistema')}
             >
-              Sistema
+              {t('cabecera.temaSistema')}
             </Button>
           </CardContent>
         </Card>
-        <p className="text-sm text-muted-foreground">
-          Configura Supabase para desbloquear el perfil, las alertas y las notificaciones.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('ajustes.supabaseInfo')}</p>
       </div>
     );
   }
@@ -108,20 +120,20 @@ export function PaginaAjustes() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Ajustes</h1>
-        <p className="text-muted-foreground">Tu perfil y notificaciones</p>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{t('cabecera.ajustes')}</h1>
+        <p className="text-muted-foreground">{t('ajustes.subtitulo')}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Cuenta</CardTitle>
-          <CardDescription>Datos de tu sesión</CardDescription>
+          <CardTitle className="text-xl">{t('ajustes.cuentaTitulo')}</CardTitle>
+          <CardDescription>{t('ajustes.cuentaDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="text-sm">
             <p className="font-medium">{user?.email}</p>
             <p className="text-muted-foreground">
-              Proveedor: {user?.app_metadata?.provider ?? 'email'}
+              {t('ajustes.proveedor', { proveedor: user?.app_metadata?.provider ?? 'email' })}
             </p>
           </div>
           <Separator />
@@ -130,21 +142,21 @@ export function PaginaAjustes() {
             className="text-destructive"
             onClick={() => void cerrarSesion()}
           >
-            <LogOut aria-hidden="true" /> Cerrar sesión
+            <LogOut aria-hidden="true" /> {t('cabecera.cerrarSesion')}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Notificaciones</CardTitle>
-          <CardDescription>Cómo quieres recibir los avisos</CardDescription>
+          <CardTitle className="text-xl">{t('ajustes.notificacionesTitulo')}</CardTitle>
+          <CardDescription>{t('ajustes.notificacionesDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="push">Notificaciones push</Label>
-              <p className="text-sm text-muted-foreground">Avisos al navegador o a la PWA</p>
+              <Label htmlFor="push">{t('ajustes.pushLabel')}</Label>
+              <p className="text-sm text-muted-foreground">{t('ajustes.pushDesc')}</p>
             </div>
             <Switch
               id="push"
@@ -155,8 +167,8 @@ export function PaginaAjustes() {
           </div>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="email">Notificaciones por email</Label>
-              <p className="text-sm text-muted-foreground">Resumen cuando haya plaza</p>
+              <Label htmlFor="email">{t('ajustes.emailLabel')}</Label>
+              <p className="text-sm text-muted-foreground">{t('ajustes.emailDesc')}</p>
             </div>
             <Switch
               id="email"
@@ -167,8 +179,8 @@ export function PaginaAjustes() {
           </div>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="recordatorio">Cuenta atrás a la salida</Label>
-              <p className="text-sm text-muted-foreground">«Te faltan X minutos para tu tren»</p>
+              <Label htmlFor="recordatorio">{t('ajustes.recordatorioLabel')}</Label>
+              <p className="text-sm text-muted-foreground">{t('ajustes.recordatorioDesc')}</p>
             </div>
             <Switch
               id="recordatorio"
@@ -179,10 +191,8 @@ export function PaginaAjustes() {
           </div>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="resumen">Resumen del viaje</Label>
-              <p className="text-sm text-muted-foreground">
-                Por la mañana del día del viaje: horario, tren y retraso
-              </p>
+              <Label htmlFor="resumen">{t('ajustes.resumenLabel')}</Label>
+              <p className="text-sm text-muted-foreground">{t('ajustes.resumenDesc')}</p>
             </div>
             <Switch
               id="resumen"
@@ -192,7 +202,7 @@ export function PaginaAjustes() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="minutos">Avisarme con antelación</Label>
+            <Label htmlFor="minutos">{t('ajustes.antelacionLabel')}</Label>
             <select
               id="minutos"
               className={SELECT_CLS}
@@ -202,7 +212,7 @@ export function PaginaAjustes() {
             >
               {[15, 30, 45, 50, 60, 90].map((m) => (
                 <option key={m} value={m}>
-                  {m} minutos antes
+                  {t('ajustes.antelacionOpcion', { min: m })}
                 </option>
               ))}
             </select>
@@ -212,39 +222,30 @@ export function PaginaAjustes() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Apariencia</CardTitle>
-          <CardDescription>Tema de la aplicación</CardDescription>
+          <CardTitle className="text-xl">{t('ajustes.aparienciaTitulo')}</CardTitle>
+          <CardDescription>{t('ajustes.aparienciaDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2">
           <Button
-            variant={theme === 'claro' ? 'default' : 'outline'}
+            variant={temaActual === 'claro' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => {
-              setTheme('claro');
-              void guardar({ tema: 'claro' });
-            }}
+            onClick={() => elegirTema('claro')}
           >
-            <Sun aria-hidden="true" /> Claro
+            <Sun aria-hidden="true" /> {t('cabecera.temaClaro')}
           </Button>
           <Button
-            variant={theme === 'oscuro' ? 'default' : 'outline'}
+            variant={temaActual === 'oscuro' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => {
-              setTheme('oscuro');
-              void guardar({ tema: 'oscuro' });
-            }}
+            onClick={() => elegirTema('oscuro')}
           >
-            <Moon aria-hidden="true" /> Oscuro
+            <Moon aria-hidden="true" /> {t('cabecera.temaOscuro')}
           </Button>
           <Button
-            variant={theme === 'sistema' ? 'default' : 'outline'}
+            variant={temaActual === 'sistema' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => {
-              setTheme('sistema');
-              void guardar({ tema: 'sistema' });
-            }}
+            onClick={() => elegirTema('sistema')}
           >
-            Sistema
+            {t('cabecera.temaSistema')}
           </Button>
         </CardContent>
       </Card>

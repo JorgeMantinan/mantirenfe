@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   BellRing,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { locale } from '@/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,13 +40,14 @@ import {
   type EstadoSerializado,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
+import type { TFunction } from 'i18next';
 
-/** "hace X min" si es reciente; si no, fecha legible en español. */
-function haceCuanto(iso: string): string {
+/** "hace X min" si es reciente; si no, fecha legible en el idioma activo. */
+function haceCuanto(iso: string, t: TFunction): string {
   const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (minutos < 1) return 'hace un momento';
-  if (minutos < 60) return `hace ${minutos} min`;
-  return new Date(iso).toLocaleString('es-ES');
+  if (minutos < 1) return t('detalleAlerta.haceMomento');
+  if (minutos < 60) return t('detalleAlerta.haceMin', { min: minutos });
+  return new Date(iso).toLocaleString(locale());
 }
 
 /**
@@ -55,30 +58,33 @@ function haceCuanto(iso: string): string {
  * (y se distingue de «todavía no se ha sondeado»). El resto de criterios
  * mantienen su mensaje habitual.
  */
-function mensajeEstadoVacio(alerta: AlertaResponse): string {
+function mensajeEstadoVacio(alerta: AlertaResponse, t: TFunction): string {
   const franja =
     alerta.horaDesde || alerta.horaHasta
       ? `${alerta.horaDesde ?? '00:00'}–${alerta.horaHasta ?? '23:59'}`
       : null;
   if (alerta.criterio === 'RETRASO') {
     if (!alerta.ultimoSondeoEn) {
-      return `Todavía no se ha sondeado esta alerta — se consulta cada ${alerta.intervaloSondeoMin} min`;
+      return t('detalleAlerta.vacioRetrasoSinSondeo', { min: alerta.intervaloSondeoMin });
     }
-    const donde = franja ? `en tu franja (${franja})` : 'en tu ruta';
+    const donde = franja
+      ? t('detalleAlerta.vacioRetrasoFranja', { franja })
+      : t('detalleAlerta.vacioRetrasoRuta');
     // N solo es conocible si se vigila un tren concreto
-    const vigilancia = alerta.numeroTren ? ' — vigilamos 1 tren' : '';
-    return `Sin retrasos ahora mismo ${donde}${vigilancia}`;
+    const vigilancia = alerta.numeroTren ? t('detalleAlerta.vigilanciaTren') : '';
+    return `${donde}${vigilancia}`;
   }
   if (alerta.criterio === 'PRECIO') {
-    return `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    return t('detalleAlerta.vacioPrecio', { min: alerta.intervaloSondeoMin });
   }
   if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA') {
-    return `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    return t('detalleAlerta.vacioPlazas', { min: alerta.intervaloSondeoMin });
   }
-  return 'Solo para alertas de disponibilidad';
+  return t('detalleAlerta.vacioSoloDisponibilidad');
 }
 
 export function PaginaDetalleAlerta() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
   const [avisos, setAvisos] = useState<AvisoAlertaResponse[]>([]);
@@ -134,9 +140,9 @@ export function PaginaDetalleAlerta() {
     )}&destino=${encodeURIComponent(alerta.destinoNombre)}&fecha=${alerta.fechaViaje}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Enlace copiado');
+      toast.success(t('detalleAlerta.enlaceCopiado'));
     } catch {
-      window.prompt('Copia el enlace para compartir este trayecto', url);
+      window.prompt(t('detalleAlerta.promptCompartir'), url);
     }
   };
 
@@ -144,9 +150,9 @@ export function PaginaDetalleAlerta() {
     if (!alerta) return;
     try {
       descargarIcs(nombreFicheroIcs(alerta), construirIcs(alerta));
-      toast.success('Evento descargado: ábrelo para añadirlo a tu calendario');
+      toast.success(t('detalleAlerta.eventoDescargado'));
     } catch {
-      toast.error('No se ha podido descargar el archivo de calendario');
+      toast.error(t('detalleAlerta.errorIcs'));
     }
   };
 
@@ -155,10 +161,12 @@ export function PaginaDetalleAlerta() {
       <div className="space-y-1">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link to="/alertas">
-            <ArrowLeft aria-hidden="true" /> Volver a mis alertas
+            <ArrowLeft aria-hidden="true" /> {t('detalleAlerta.volver')}
           </Link>
         </Button>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Detalle de la alerta</h1>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">
+          {t('detalleAlerta.titulo')}
+        </h1>
       </div>
 
       {error && (
@@ -179,18 +187,22 @@ export function PaginaDetalleAlerta() {
               <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
                 <p className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
                   <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Incidencia de servicio que puede afectar a esta ruta
+                  {t('detalleAlerta.incidenciaTitulo')}
                 </p>
                 <ul className="mt-2 space-y-3">
                   {incidencias.map((incidencia) => (
                     <li key={incidencia.id} className="space-y-1">
-                      <p className="font-medium">{incidencia.titulo ?? 'Incidencia de servicio'}</p>
+                      <p className="font-medium">
+                        {incidencia.titulo ?? t('incidencias.tituloFallback')}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {formatoPeriodo(incidencia.desde, incidencia.hasta)}
                       </p>
                       {incidencia.estacionesAfectadas.length > 0 && (
                         <p className="text-xs text-muted-foreground">
-                          Estaciones: {incidencia.estacionesAfectadas.join(', ')}
+                          {t('estaciones.estacionesList', {
+                            lista: incidencia.estacionesAfectadas.join(', '),
+                          })}
                         </p>
                       )}
                       {incidencia.mensaje && (
@@ -200,7 +212,7 @@ export function PaginaDetalleAlerta() {
                   ))}
                 </ul>
                 <Link to="/incidencias" className="mt-2 inline-block font-medium underline">
-                  Ver todas las incidencias
+                  {t('detalleAlerta.verTodas')}
                 </Link>
               </div>
             )}
@@ -215,7 +227,7 @@ export function PaginaDetalleAlerta() {
                   {alerta.fechaViaje} ·{' '}
                   {alerta.horaDesde || alerta.horaHasta
                     ? `${alerta.horaDesde ?? '00:00'} – ${alerta.horaHasta ?? '23:59'}`
-                    : 'todo el día'}
+                    : t('comunes.todoElDia')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2 text-sm">
@@ -229,10 +241,10 @@ export function PaginaDetalleAlerta() {
                   }
                 >
                   {alerta.estado === 'ACTIVA'
-                    ? 'Activa'
+                    ? t('alertas.estadoActiva')
                     : alerta.estado === 'PAUSA'
-                      ? 'En pausa'
-                      : 'Completada'}
+                      ? t('alertas.estadoPausa')
+                      : t('alertas.completada')}
                 </Badge>
                 <Badge variant="outline">{alerta.criterio}</Badge>
                 {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null && (
@@ -240,30 +252,39 @@ export function PaginaDetalleAlerta() {
                 )}
                 {alerta.recurrente && (
                   <Badge variant="aviso">
-                    {alerta.soloLaborables ? 'L-V: Cada día laborable' : 'Cada día'}
+                    {alerta.soloLaborables
+                      ? t('alertas.recurrenteLaborables')
+                      : t('nuevaAlerta.resumenCadaDia')}
                   </Badge>
                 )}
-                <Badge variant="outline">cada {alerta.intervaloSondeoMin} min</Badge>
+                <Badge variant="outline">
+                  {t('alertas.cadaMin', { min: alerta.intervaloSondeoMin })}
+                </Badge>
                 <Badge variant="outline">{alerta.bono}</Badge>
-                {alerta.numeroTren && <Badge variant="outline">tren {alerta.numeroTren}</Badge>}
+                {alerta.numeroTren && (
+                  <Badge variant="outline">
+                    {t('dashboard.trenNumero', { numero: alerta.numeroTren })}
+                  </Badge>
+                )}
                 <span className="text-muted-foreground">
-                  Último sondeo:{' '}
-                  {alerta.ultimoSondeoEn
-                    ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
-                    : 'ninguno'}
+                  {t('alertas.ultimoSondeo', {
+                    fecha: alerta.ultimoSondeoEn
+                      ? new Date(alerta.ultimoSondeoEn).toLocaleString(locale())
+                      : t('detalleAlerta.sondeoNinguno'),
+                  })}
                 </span>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <Button variant="outline" size="sm" onClick={compartir}>
-                    <Share2 aria-hidden="true" /> Compartir
+                    <Share2 aria-hidden="true" /> {t('detalleAlerta.compartir')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={anadirAlCalendario}>
-                    <CalendarPlus aria-hidden="true" /> Añadir al calendario
+                    <CalendarPlus aria-hidden="true" /> {t('detalleAlerta.calendario')}
                   </Button>
                 </div>
               </CardContent>
               {alerta.notas && (
                 <CardContent className="pt-0 text-sm text-muted-foreground">
-                  Notas: {alerta.notas}
+                  {t('detalleAlerta.notas', { texto: alerta.notas })}
                 </CardContent>
               )}
             </Card>
@@ -273,16 +294,20 @@ export function PaginaDetalleAlerta() {
                 <div className="space-y-1.5">
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Train className="h-5 w-5 text-primary" aria-hidden="true" />
-                    {alerta.criterio === 'RETRASO' ? 'Retrasos de hoy' : 'Plazas de hoy'}
+                    {alerta.criterio === 'RETRASO'
+                      ? t('detalleAlerta.retrasosHoy')
+                      : t('detalleAlerta.plazasHoy')}
                   </CardTitle>
                   <CardDescription>
                     {alerta.ultimoSondeoEn
-                      ? `Último sondeo: ${haceCuanto(alerta.ultimoSondeoEn)}`
-                      : 'Todavía no se ha sondeado esta alerta'}
+                      ? t('detalleAlerta.sondeoHace', {
+                          hace: haceCuanto(alerta.ultimoSondeoEn, t),
+                        })
+                      : t('detalleAlerta.sondeoSinDatos')}
                   </CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={cargar} disabled={cargando}>
-                  <RefreshCw aria-hidden="true" /> Actualizar
+                  <RefreshCw aria-hidden="true" /> {t('estaciones.actualizar')}
                 </Button>
               </CardHeader>
               <CardContent>
@@ -291,11 +316,13 @@ export function PaginaDetalleAlerta() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b text-left text-muted-foreground">
-                          <th className="py-2 pr-3 font-medium">Hora</th>
-                          <th className="py-2 pr-3 font-medium">Tren</th>
-                          <th className="py-2 pr-3 font-medium">Llegada</th>
-                          <th className="py-2 pr-3 font-medium">Plazas</th>
-                          <th className="py-2 font-medium text-right">Precio desde</th>
+                          <th className="py-2 pr-3 font-medium">{t('detalleAlerta.colHora')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('tabla.tren')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('tabla.llegada')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('detalleAlerta.colPlazas')}</th>
+                          <th className="py-2 font-medium text-right">
+                            {t('detalleAlerta.colPrecioDesde')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -330,15 +357,17 @@ export function PaginaDetalleAlerta() {
                             </td>
                             <td className="py-2 pr-3">
                               {tren.cancelado ? (
-                                <Badge variant="destructive">Cancelado</Badge>
+                                <Badge variant="destructive">{t('estados.cancelado')}</Badge>
                               ) : (
                                 <Badge variant={tren.disponible ? 'exito' : 'secondary'}>
-                                  {tren.disponible ? 'Hay plazas' : 'Completo'}
+                                  {tren.disponible ? t('estados.hayPlazas') : t('estados.completo')}
                                 </Badge>
                               )}
                               {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 && (
                                 <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                                  No para en: {tren.paradasSuprimidas.join(', ')}
+                                  {t('detalleAlerta.noParaEn', {
+                                    lista: tren.paradasSuprimidas.join(', '),
+                                  })}
                                 </p>
                               )}
                             </td>
@@ -356,7 +385,7 @@ export function PaginaDetalleAlerta() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">{mensajeEstadoVacio(alerta)}</p>
+                  <p className="text-sm text-muted-foreground">{mensajeEstadoVacio(alerta, t)}</p>
                 )}
               </CardContent>
             </Card>
@@ -368,17 +397,14 @@ export function PaginaDetalleAlerta() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Coins className="h-5 w-5 text-primary" aria-hidden="true" />
-                    Evolución de precio
+                    {t('detalleAlerta.precioEvolucion')}
                   </CardTitle>
-                  <CardDescription>
-                    ¿Compro ahora o espero? Puntos registrados en cada sondeo
-                  </CardDescription>
+                  <CardDescription>{t('detalleAlerta.precioEvolucionDesc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {seriesPrecios.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      Todavía no hay histórico de precios — se apunta cuando cambia el precio o
-                      aparecen plazas.
+                      {t('detalleAlerta.precioSinHistorico')}
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -402,7 +428,9 @@ export function PaginaDetalleAlerta() {
                             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                               <span className="font-medium">
                                 {horaGtfs(serie.salida)}
-                                {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+                                {serie.numeroTren
+                                  ? t('precios.serieTren', { tren: serie.numeroTren })
+                                  : ''}
                               </span>
                               <span className="text-xs tabular-nums text-muted-foreground">
                                 {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
@@ -413,7 +441,18 @@ export function PaginaDetalleAlerta() {
                                 <li
                                   key={`${grupo.registradoEn}-${indice}`}
                                   className="flex items-center gap-2"
-                                  title={`${new Date(grupo.registradoEn).toLocaleString('es-ES')} · ${formatearPrecio(grupo.precioMin)} · ${grupo.cantidad} sondeo${grupo.cantidad === 1 ? '' : 's'} · ${grupo.disponible ? 'disponible' : 'completo'}`}
+                                  title={[
+                                    new Date(grupo.registradoEn).toLocaleString(locale()),
+                                    formatearPrecio(grupo.precioMin),
+                                    grupo.cantidad === 1
+                                      ? t('detalleAlerta.tooltipSondeo1')
+                                      : t('detalleAlerta.tooltipSondeoN', {
+                                          n: grupo.cantidad,
+                                        }),
+                                    grupo.disponible
+                                      ? t('detalleAlerta.tooltipDisponible')
+                                      : t('detalleAlerta.tooltipCompleto'),
+                                  ].join(' · ')}
                                 >
                                   <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                                     <span
@@ -452,8 +491,7 @@ export function PaginaDetalleAlerta() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Basado en nuestros sondeos cada {alerta.intervaloSondeoMin} min; precio
-                    orientativo de venta
+                    {t('detalleAlerta.precioBase', { min: alerta.intervaloSondeoMin })}
                   </p>
                 </CardContent>
               </Card>
@@ -461,25 +499,25 @@ export function PaginaDetalleAlerta() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Avisos de esta alerta</CardTitle>
-                <CardDescription>Historial de notificaciones que hemos enviado</CardDescription>
+                <CardTitle className="text-lg">{t('detalleAlerta.avisoTitulo')}</CardTitle>
+                <CardDescription>{t('detalleAlerta.avisoDesc')}</CardDescription>
               </CardHeader>
               <CardContent>
                 {avisos.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Todavía no hemos enviado avisos para esta alerta.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t('detalleAlerta.sinAvisos')}</p>
                 ) : (
                   <ul className="divide-y">
                     {avisos.map((aviso) => (
                       <li key={aviso.id} className="space-y-1 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="font-medium">{aviso.titulo}</p>
-                          {!aviso.leida && <Badge variant="destructive">Nuevo</Badge>}
+                          {!aviso.leida && (
+                            <Badge variant="destructive">{t('detalleAlerta.nuevo')}</Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">{aviso.cuerpo}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(aviso.creadaEn).toLocaleString('es-ES')}
+                          {new Date(aviso.creadaEn).toLocaleString(locale())}
                         </p>
                       </li>
                     ))}

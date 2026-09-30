@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CircleDot, RefreshCw, Search } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from '@/lib/api';
+import { locale } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -53,6 +55,7 @@ function Actualizador({ posiciones }: { posiciones: PosicionTrenResponse[] }) {
 }
 
 export function PaginaMapa() {
+  const { t } = useTranslation();
   const [trenes, setTrenes] = useState<PosicionTrenResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -92,7 +95,7 @@ export function PaginaMapa() {
       setTrenes(datos.trenes);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudieron cargar las posiciones');
+      setError(e instanceof Error ? e.message : t('mapa.errorCarga'));
     } finally {
       setCargando(false);
     }
@@ -122,10 +125,8 @@ export function PaginaMapa() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Mapa en tiempo real</h1>
-          <p className="text-muted-foreground">
-            Posiciones GTFS-RT de Cercanías y Larga Distancia · actualización cada 30 s
-          </p>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">{t('mapa.titulo')}</h1>
+          <p className="text-muted-foreground">{t('mapa.subtitulo')}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -136,44 +137,44 @@ export function PaginaMapa() {
             <Input
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Filtrar trenes..."
+              placeholder={t('mapa.placeholder')}
               className="w-48 pl-8"
-              aria-label="Filtrar trenes del mapa"
+              aria-label={t('mapa.filtrarAria')}
             />
           </div>
           <span className="text-sm text-muted-foreground">
             {trenes
               ? q
-                ? `${visibles.length} / ${trenes.length} trenes`
-                : `${trenes.length} trenes`
+                ? t('mapa.recuentoFiltrado', { visibles: visibles.length, total: trenes.length })
+                : t('mapa.recuento', { total: trenes.length })
               : '—'}
           </span>
           <Button variant="outline" size="sm" onClick={() => void cargar()} disabled={cargando}>
-            <RefreshCw className={cargando ? 'animate-spin' : ''} aria-hidden="true" /> Actualizar
+            <RefreshCw className={cargando ? 'animate-spin' : ''} aria-hidden="true" />{' '}
+            {t('mapa.actualizar')}
           </Button>
         </div>
       </div>
 
       {error && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          {error} — comprueba la API o la URL de GTFS-RT en <code>.env</code>.
+          {error}
+          {t('mapa.errorApiAntes')}
+          <code>.env</code>
+          {t('mapa.errorApiDespues')}
         </div>
       )}
 
       {trenes !== null && q && visibles.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Ningún tren coincide con «{filtro}». Borra el filtro para verlos todos.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('mapa.sinCoincidencias', { filtro })}</p>
       )}
 
       <Card className="overflow-hidden">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <CircleDot className="h-4 w-4 text-primary" aria-hidden="true" /> Red ferroviaria
+            <CircleDot className="h-4 w-4 text-primary" aria-hidden="true" /> {t('mapa.redTitulo')}
           </CardTitle>
-          <CardDescription>
-            Datos: Renfe Operadora (open data CC-BY 4.0) · Cartografía © OpenStreetMap
-          </CardDescription>
+          <CardDescription>{t('mapa.redDatos')}</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {cargando && trenes === null ? (
@@ -205,7 +206,7 @@ export function PaginaMapa() {
                     <Popup>
                       <div className="space-y-1 text-sm">
                         <strong>
-                          {tren.numeroTren ?? 'Tren'}
+                          {tren.numeroTren ?? t('mapa.tren')}
                           {tren.operador ? ` · ${tren.operador}` : ''}
                         </strong>
                         {tren.origenNombre && tren.destinoNombre && (
@@ -215,26 +216,32 @@ export function PaginaMapa() {
                         )}
                         {tren.salida && (
                           <p>
-                            Salida {horaGtfs(tren.salida)}
-                            {tren.llegada ? ` · Llegada ${horaGtfs(tren.llegada)}` : ''}
+                            {t('mapa.salida', { hora: horaGtfs(tren.salida) })}
+                            {tren.llegada
+                              ? t('mapa.llegada', { hora: horaGtfs(tren.llegada) })
+                              : ''}
                           </p>
                         )}
-                        {tren.cancelado && <p className="font-semibold text-red-600">Cancelado</p>}
+                        {tren.cancelado && (
+                          <p className="font-semibold text-red-600">{t('estados.cancelado')}</p>
+                        )}
                         {tren.velocidadKmh != null && <p>{tren.velocidadKmh} km/h</p>}
                         {tren.retrasoSeg != null && (
                           <p className={tren.retrasoSeg >= 300 ? 'font-semibold text-red-600' : ''}>
                             {tren.retrasoSeg > 0
-                              ? `Retraso +${Math.round(tren.retrasoSeg / 60)} min`
-                              : 'A tiempo'}
+                              ? t('estados.retraso', { min: Math.round(tren.retrasoSeg / 60) })
+                              : t('estados.aTiempo')}
                           </p>
                         )}
                         {indemnizacion && (
                           <p className="font-semibold text-red-600">
-                            Compromiso de Renfe: {indemnizacion.descripcion}
+                            {t('mapa.compromiso', { texto: indemnizacion.descripcion })}
                           </p>
                         )}
                         <p className="text-xs text-gray-500">
-                          Actualizado {new Date(tren.actualizadaEn).toLocaleTimeString('es-ES')}
+                          {t('mapa.actualizado', {
+                            hora: new Date(tren.actualizadaEn).toLocaleTimeString(locale()),
+                          })}
                         </p>
                         <Button
                           variant="outline"
@@ -243,16 +250,13 @@ export function PaginaMapa() {
                           onClick={() => void alternarTraza(tren.id, tren.tripId)}
                         >
                           {cargandoTraza && traza?.vehiculo !== tren.id
-                            ? 'Cargando...'
+                            ? t('mapa.cargando')
                             : traza?.vehiculo === tren.id
-                              ? 'Ocultar traza'
-                              : 'Ver traza (24 h)'}
+                              ? t('mapa.ocultarTraza')
+                              : t('mapa.verTraza')}
                         </Button>
                         {traza?.vehiculo === tren.id && traza.puntos.length <= 1 && (
-                          <p className="text-xs text-amber-600">
-                            Solo 1 punto registrado (muestreo cada 10 min) — vuelve a pulsar en un
-                            rato.
-                          </p>
+                          <p className="text-xs text-amber-600">{t('mapa.soloPunto')}</p>
                         )}
                       </div>
                     </Popup>
@@ -280,11 +284,7 @@ export function PaginaMapa() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground">
-        Compromiso de Puntualidad de Renfe (fuente: renfe.com, consulta 27/09/2026) · solo
-        informativo: el porcentaje de devolución real depende del tipo de servicio y de las
-        exclusiones aplicables.
-      </p>
+      <p className="text-xs text-muted-foreground">{t('mapa.pie')}</p>
     </div>
   );
 }
