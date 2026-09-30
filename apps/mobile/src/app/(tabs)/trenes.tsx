@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import {
   esOuigo,
   funcionIndemnizacion,
@@ -28,6 +29,7 @@ import {
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
+import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
@@ -43,14 +45,13 @@ type FranjaSalida = 'todo' | 'manana' | 'tarde' | 'noche';
  */
 const FRANJAS_SALIDA: Array<{
   id: FranjaSalida;
-  etiqueta: string;
   desde: string | null;
   hasta: string | null;
 }> = [
-  { id: 'todo', etiqueta: 'Todo', desde: null, hasta: null },
-  { id: 'manana', etiqueta: 'Mañana (06-12)', desde: '06:00', hasta: '12:00' },
-  { id: 'tarde', etiqueta: 'Tarde (12-20)', desde: '12:00', hasta: '20:00' },
-  { id: 'noche', etiqueta: 'Noche (20-24)', desde: '20:00', hasta: '24:00' },
+  { id: 'todo', desde: null, hasta: null },
+  { id: 'manana', desde: '06:00', hasta: '12:00' },
+  { id: 'tarde', desde: '12:00', hasta: '20:00' },
+  { id: 'noche', desde: '20:00', hasta: '24:00' },
 ];
 
 /** Tope del bloque «Salidas de X hoy»: así la lista de estaciones de debajo sigue viéndose. */
@@ -69,7 +70,7 @@ function cambiarMes(mes: string, delta: number): string {
 }
 
 function nombreMes(mes: string): string {
-  return new Date(`${mes}-02T00:00:00Z`).toLocaleDateString('es-ES', {
+  return new Date(`${mes}-02T00:00:00Z`).toLocaleDateString(locale(), {
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
@@ -128,7 +129,29 @@ export default function Trenes() {
   const [errorImpuntuales, setErrorImpuntuales] = useState<string | null>(null);
 
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
+
+  const etiquetasModo: Record<Modo, string> = {
+    estaciones: t('trenes.modo.estaciones'),
+    horarios: t('trenes.modo.horarios'),
+    posiciones: t('trenes.modo.posiciones'),
+    impuntuales: t('trenes.modo.impuntuales'),
+  };
+  const etiquetasFranja: Record<FranjaSalida, string> = {
+    todo: t('trenes.franja.todo'),
+    manana: t('trenes.franja.manana'),
+    tarde: t('trenes.franja.tarde'),
+    noche: t('trenes.franja.noche'),
+  };
+  const etiquetasOrden: Record<OrdenImpuntuales, string> = {
+    veces: t('trenes.orden.veces'),
+    impuntualidad: t('trenes.orden.retraso'),
+  };
+  const vistas: Array<['lista' | 'mapa', 'list' | 'map', string]> = [
+    ['lista', 'list', t('trenes.vistaLista')],
+    ['mapa', 'map', t('trenes.vistaMapa')],
+  ];
 
   const posicionesVisibles = useMemo(() => {
     const q = normalizarTexto(filtroPos);
@@ -340,7 +363,7 @@ export default function Trenes() {
       setMotivoHorarios(datos.motivo ?? null);
       setSinEstacion(datos.estacionesNoEncontradas ?? []);
     } catch (e) {
-      setErrorHorarios(e instanceof Error ? e.message : 'Error en la búsqueda');
+      setErrorHorarios(e instanceof Error ? e.message : t('trenes.errorBusqueda'));
       setHorarios(null);
     } finally {
       setCargando(false);
@@ -370,22 +393,15 @@ export default function Trenes() {
   return (
     <View style={s.pantalla}>
       <View style={s.encabezado}>
-        <Text style={s.titulo}>Trenes</Text>
+        <Text style={s.titulo}>{t('pestanas.trenes')}</Text>
         <View style={s.modos}>
-          {(
-            [
-              ['estaciones', 'Estaciones'],
-              ['horarios', 'Horarios'],
-              ['posiciones', 'Tiempo real'],
-              ['impuntuales', 'Impuntuales'],
-            ] as Array<[Modo, string]>
-          ).map(([valor, etiqueta]) => (
+          {(['estaciones', 'horarios', 'posiciones', 'impuntuales'] as Array<Modo>).map((valor) => (
             <Text
               key={valor}
               style={[s.modo, modo === valor && s.modoActivo]}
               onPress={() => setModo(valor)}
             >
-              {etiqueta}
+              {etiquetasModo[valor]}
             </Text>
           ))}
         </View>
@@ -410,18 +426,13 @@ export default function Trenes() {
               </Text>
             </View>
             <View style={s.modos}>
-              {(
-                [
-                  ['veces', 'Más veces'],
-                  ['impuntualidad', 'Mayor retraso'],
-                ] as Array<[OrdenImpuntuales, string]>
-              ).map(([valor, etiqueta]) => (
+              {(['veces', 'impuntualidad'] as Array<OrdenImpuntuales>).map((valor) => (
                 <Text
                   key={valor}
                   style={[s.modo, orden === valor && s.modoActivo]}
                   onPress={() => setOrden(valor)}
                 >
-                  {etiqueta}
+                  {etiquetasOrden[valor]}
                 </Text>
               ))}
             </View>
@@ -431,7 +442,7 @@ export default function Trenes() {
         {modo === 'estaciones' && (
           <TextInput
             style={s.campo}
-            placeholder="Buscar estación..."
+            placeholder={t('trenes.placeholderBuscar')}
             placeholderTextColor={paleta.textoSecundario}
             value={buscar}
             onChangeText={(v) => {
@@ -444,7 +455,7 @@ export default function Trenes() {
         {modo === 'posiciones' && (
           <TextInput
             style={s.campo}
-            placeholder="Filtrar trenes (nº, origen, destino)..."
+            placeholder={t('trenes.placeholderFiltrar')}
             placeholderTextColor={paleta.textoSecundario}
             value={filtroPos}
             onChangeText={setFiltroPos}
@@ -453,12 +464,7 @@ export default function Trenes() {
 
         {modo === 'posiciones' && (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-            {(
-              [
-                ['lista', 'list', 'Lista'],
-                ['mapa', 'map', 'Mapa'],
-              ] as const
-            ).map(([valor, icono, etiqueta]) => (
+            {vistas.map(([valor, icono, etiqueta]) => (
               <Pressable
                 key={valor}
                 onPress={() => setVistaPos(valor)}
@@ -495,7 +501,7 @@ export default function Trenes() {
           <View style={s.formulario}>
             <TextInput
               style={s.campo}
-              placeholder="Origen (ej. Madrid)"
+              placeholder={t('trenes.placeholderOrigen')}
               placeholderTextColor={paleta.textoSecundario}
               value={origen}
               onChangeText={(v) => {
@@ -517,7 +523,7 @@ export default function Trenes() {
             ))}
             <TextInput
               style={s.campo}
-              placeholder="Destino (ej. Sevilla)"
+              placeholder={t('trenes.placeholderDestino')}
               placeholderTextColor={paleta.textoSecundario}
               value={destino}
               onChangeText={(v) => {
@@ -546,7 +552,7 @@ export default function Trenes() {
               onChangeText={setFecha}
             />
             <Boton
-              titulo={cargando ? 'Buscando...' : 'Buscar horarios'}
+              titulo={cargando ? t('trenes.buscando') : t('trenes.buscarHorarios')}
               onPress={() => void buscarHorarios()}
               cargando={cargando}
             />
@@ -558,21 +564,23 @@ export default function Trenes() {
         <Tarjeta style={{ borderColor: paleta.primario, marginHorizontal: espaciado.md }}>
           <View style={s.fila}>
             <Text style={s.nombre}>
-              {cargandoSalidas ? 'Cargando salidas...' : `Salidas de ${estacionSel} hoy`}
+              {cargandoSalidas
+                ? t('trenes.cargandoSalidas')
+                : t('trenes.salidasDe', { estacion: estacionSel })}
             </Text>
             <Text style={{ color: paleta.primario, fontWeight: '600' }} onPress={cerrarSalidas}>
-              Cerrar
+              {t('comunes.cerrar')}
             </Text>
           </View>
           {!cargandoSalidas && !detalleListo ? (
-            <Text style={s.meta}>Cargando datos de la estación…</Text>
+            <Text style={s.meta}>{t('trenes.cargandoEstacion')}</Text>
           ) : detalle ? (
             <View style={s.ficha}>
               {detalle.direccion ? <Text style={s.meta}>{detalle.direccion}</Text> : null}
               {lineaFicha ? <Text style={s.meta}>{lineaFicha}</Text> : null}
               {urlMapa ? (
                 <Boton
-                  titulo="Ver en mapa"
+                  titulo={t('trenes.verMapa')}
                   variante="contorno"
                   onPress={() => {
                     void Linking.openURL(urlMapa).catch(() => undefined);
@@ -582,11 +590,13 @@ export default function Trenes() {
               ) : null}
               {aforos.length > 0 ? (
                 <View style={s.aforos}>
-                  <Text style={s.nombre}>Aforo histórico (2018)</Text>
+                  <Text style={s.nombre}>{t('trenes.aforo')}</Text>
                   {aforos.map((aforo) => (
                     <Text key={aforo.franja} style={s.meta}>
-                      {aforo.franja} · {(aforo.subidos + aforo.bajados).toLocaleString('es-ES')}{' '}
-                      viajeros
+                      {aforo.franja} ·{' '}
+                      {t('trenes.viajeros', {
+                        n: (aforo.subidos + aforo.bajados).toLocaleString(locale()),
+                      })}
                     </Text>
                   ))}
                 </View>
@@ -594,7 +604,7 @@ export default function Trenes() {
             </View>
           ) : null}
           {!cargandoSalidas && (salidas ?? []).length === 0 ? (
-            <Text style={s.meta}>Sin salidas registradas hoy</Text>
+            <Text style={s.meta}>{t('trenes.sinSalidas')}</Text>
           ) : (
             <ScrollView style={s.salidasScroll} nestedScrollEnabled>
               {(salidas ?? []).map((salida, i) => (
@@ -626,13 +636,14 @@ export default function Trenes() {
               <Pressable onPress={() => cargarSalidas(item.nombre, item)}>
                 <Text style={s.nombre}>{item.nombre}</Text>
                 <Text style={s.meta}>
-                  {item.codigo}
-                  {item.ciudad ? ` · ${item.ciudad}` : ''} — toca para ver salidas
+                  {t('trenes.tocaSalidas', {
+                    meta: `${item.codigo}${item.ciudad ? ` · ${item.ciudad}` : ''}`,
+                  })}
                 </Text>
               </Pressable>
             </Tarjeta>
           )}
-          ListEmptyComponent={<Text style={s.vacio}>No se encontraron estaciones</Text>}
+          ListEmptyComponent={<Text style={s.vacio}>{t('trenes.noEstaciones')}</Text>}
         />
       )}
 
@@ -651,21 +662,22 @@ export default function Trenes() {
               <Tarjeta>
                 <Text style={s.nombre}>
                   {motivoHorarios === 'estaciones'
-                    ? 'Estación no encontrada'
-                    : 'Sin trenes con esa ruta'}
+                    ? t('trenes.estacionNoEncontrada')
+                    : t('trenes.sinTrenesRuta')}
                 </Text>
                 <Text style={[s.meta, { marginTop: 4 }]}>
                   {motivoHorarios === 'estaciones'
-                    ? `No encontramos la estación ${
-                        sinEstacion.length > 0
-                          ? sinEstacion.map((n) => `«${n}»`).join(' y ')
-                          : 'indicada'
-                      }. Revisa el nombre (tildes, «La Coruña» = «A Coruña»).`
-                    : `Sin trenes directos ni con conexión de ${origen} a ${destino} para el ${fecha}. Prueba otro día o divide el viaje en dos tramos.`}
+                    ? t('trenes.noEncontramos', {
+                        lista:
+                          sinEstacion.length > 0
+                            ? sinEstacion.map((n) => `«${n}»`).join(t('comunes.y'))
+                            : t('trenes.indicada'),
+                      })
+                    : t('trenes.sinDirectos', { origen, destino, fecha })}
                 </Text>
                 {motivoHorarios === 'estaciones' ? null : (
                   <Boton
-                    titulo="Crear alerta de disponibilidad"
+                    titulo={t('trenes.crearAlerta')}
                     onPress={() =>
                       router.push({
                         pathname: '/alertas/nueva',
@@ -686,18 +698,21 @@ export default function Trenes() {
                       onPress={() => setFranjaSalida(f.id)}
                       suppressHighlighting
                     >
-                      {f.etiqueta}
+                      {etiquetasFranja[f.id]}
                     </Text>
                   ))}
                 </View>
                 <Text style={s.meta}>
-                  Mostrando {horariosVisibles.length} de {horarios.length} salidas
+                  {t('trenes.mostrando', {
+                    visibles: horariosVisibles.length,
+                    total: horarios.length,
+                  })}
                 </Text>
                 {horariosVisibles.length === 0 ? (
                   <Tarjeta>
-                    <Text style={s.nombre}>Ninguna salida en esa franja</Text>
+                    <Text style={s.nombre}>{t('trenes.sinSalidasFranja')}</Text>
                     <Text style={[s.meta, { marginTop: 4 }]}>
-                      Prueba otra franja o vuelve a «Todo».
+                      {t('trenes.pruebaFranja', { todo: etiquetasFranja.todo })}
                     </Text>
                   </Tarjeta>
                 ) : null}
@@ -726,20 +741,22 @@ export default function Trenes() {
               ) : null}
               {item.transbordo ? (
                 <View style={{ marginTop: 4, gap: 2 }}>
-                  <Etiqueta tono="primario">Transbordo en {item.transbordo.estacion}</Etiqueta>
+                  <Etiqueta tono="primario">
+                    {t('trenes.transbordo', { estacion: item.transbordo.estacion })}
+                  </Etiqueta>
                   <Text style={s.meta}>
-                    {item.transbordo.trenPrimera} llega a las{' '}
-                    {horaGtfs(item.transbordo.llegadaPrimera)}
-                    {' · espera '}
-                    {item.transbordo.esperaMin} min
-                    {' · '}
-                    {item.transbordo.trenSegunda} sale a las{' '}
-                    {horaGtfs(item.transbordo.salidaSegunda)}
+                    {t('trenes.transbordoDetalle', {
+                      tren1: item.transbordo.trenPrimera,
+                      hora1: horaGtfs(item.transbordo.llegadaPrimera),
+                      espera: item.transbordo.esperaMin,
+                      tren2: item.transbordo.trenSegunda,
+                      hora2: horaGtfs(item.transbordo.salidaSegunda),
+                    })}
                   </Text>
                 </View>
               ) : null}
               <Boton
-                titulo="+ Alerta"
+                titulo={t('trenes.masAlerta')}
                 variante="contorno"
                 onPress={() =>
                   router.push({
@@ -784,9 +801,9 @@ export default function Trenes() {
                 <Text style={{ color: paleta.error }}>{errorPosiciones}</Text>
               </Tarjeta>
             ) : posiciones.length === 0 ? (
-              <Text style={s.vacio}>Sin posiciones GTFS-RT ahora mismo</Text>
+              <Text style={s.vacio}>{t('trenes.sinPosiciones')}</Text>
             ) : posicionesVisibles.length === 0 ? (
-              <Text style={s.vacio}>Sin trenes que coincidan con «{filtroPos}»</Text>
+              <Text style={s.vacio}>{t('trenes.sinCoincidencias', { filtro: filtroPos })}</Text>
             ) : null
           }
           renderItem={({ item }) => {
@@ -796,7 +813,9 @@ export default function Trenes() {
               <Tarjeta>
                 <View style={s.fila}>
                   <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
-                  {item.cancelado ? <Etiqueta tono="error">Cancelado</Etiqueta> : null}
+                  {item.cancelado ? (
+                    <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta>
+                  ) : null}
                   {item.velocidadKmh != null ? (
                     <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
                   ) : null}
@@ -804,7 +823,7 @@ export default function Trenes() {
                     <Etiqueta tono={item.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
                       {item.retrasoSeg > 0
                         ? `+${Math.round(item.retrasoSeg / 60)} min`
-                        : 'A tiempo'}
+                        : t('trenes.aTiempo')}
                     </Etiqueta>
                   ) : null}
                 </View>
@@ -815,9 +834,9 @@ export default function Trenes() {
                 ) : null}
                 {item.salida || item.llegada ? (
                   <Text style={s.meta}>
-                    {item.salida ? `Salida ${horaGtfs(item.salida)}` : ''}
+                    {item.salida ? t('trenes.salidaHora', { hora: horaGtfs(item.salida) }) : ''}
                     {item.salida && item.llegada ? ' · ' : ''}
-                    {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
+                    {item.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(item.llegada) }) : ''}
                   </Text>
                 ) : null}
                 {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
@@ -828,7 +847,7 @@ export default function Trenes() {
                 ) : null}
                 {indemnizacion ? (
                   <Text style={s.indemnizacion}>
-                    Compromiso de Renfe: {indemnizacion.descripcion}
+                    {t('trenes.compromiso', { texto: indemnizacion.descripcion })}
                   </Text>
                 ) : null}
               </Tarjeta>
@@ -853,7 +872,7 @@ export default function Trenes() {
           ListEmptyComponent={
             errorImpuntuales ? null : (
               <Text style={s.vacio}>
-                {cargando ? 'Cargando impuntualidad…' : 'Aún sin datos de impuntualidad este mes'}
+                {cargando ? t('trenes.cargandoImpuntualidad') : t('trenes.sinImpuntualidad')}
               </Text>
             )
           }
@@ -861,11 +880,13 @@ export default function Trenes() {
             <Tarjeta>
               <View style={s.fila}>
                 <Text style={s.nombre}>{item.numeroTren ?? item.vehiculoId}</Text>
-                <Etiqueta tono="aviso">{item.vecesImpuntuales} veces</Etiqueta>
+                <Etiqueta tono="aviso">{t('trenes.veces', { n: item.vecesImpuntuales })}</Etiqueta>
               </View>
               <Text style={s.meta}>
-                Retraso medio {formatMinutos(item.retrasoMedioSeg)} · Peor{' '}
-                {formatMinutos(item.retrasoMaxSeg)}
+                {t('trenes.retrasoMedio', {
+                  medio: formatMinutos(item.retrasoMedioSeg),
+                  peor: formatMinutos(item.retrasoMaxSeg),
+                })}
               </Text>
               {item.origenNombre && item.destinoNombre ? (
                 <Text style={s.meta}>
@@ -874,16 +895,18 @@ export default function Trenes() {
               ) : null}
               {item.salida ? (
                 <Text style={s.meta}>
-                  Salida {horaGtfs(item.salida)}
+                  {t('trenes.salidaHora', { hora: horaGtfs(item.salida) })}
                   {item.fecha ? ` · ${item.fecha}` : ''}
                 </Text>
               ) : null}
               {item.llegada || item.llegadaEstimada ? (
                 <Text style={s.meta}>
-                  {item.llegada ? `Llegada ${horaGtfs(item.llegada)}` : ''}
+                  {item.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(item.llegada) }) : ''}
                   {item.llegada && item.llegadaEstimada ? ' · ' : ''}
                   {item.llegadaEstimada
-                    ? `estimada ${horaGtfs(item.llegadaEstimada)} (máx. retraso)`
+                    ? t('trenes.llegadaEstimada', {
+                        hora: horaGtfs(item.llegadaEstimada),
+                      })
                     : ''}
                 </Text>
               ) : null}

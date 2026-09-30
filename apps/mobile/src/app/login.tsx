@@ -1,8 +1,9 @@
 import { Link, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
-import { traducirErrorAuth } from '@mantirenfe/shared-types';
+import { useTranslation } from 'react-i18next';
 import { Boton } from '@/components/Boton';
+import { errorAuth } from '@/i18n/errores-auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
@@ -10,6 +11,7 @@ import { espaciado, radio, type Paleta } from '@/lib/tema';
 export default function Login() {
   const { entrar, authConfigurada } = useAuth();
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -17,7 +19,7 @@ export default function Login() {
 
   const enviar = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Faltan datos', 'Introduce email y contraseña');
+      Alert.alert(t('login.faltanTitulo'), t('login.faltanCuerpo'));
       return;
     }
     setEnviando(true);
@@ -26,8 +28,8 @@ export default function Login() {
       router.replace('/(tabs)');
     } catch (error) {
       Alert.alert(
-        'Error',
-        error instanceof Error ? traducirErrorAuth(error.message) : 'No se pudo iniciar sesión',
+        t('comunes.error'),
+        error instanceof Error ? errorAuth(error.message) : t('login.errorGenerico'),
       );
     } finally {
       setEnviando(false);
@@ -38,13 +40,11 @@ export default function Login() {
     <View style={s.pantalla}>
       {!authConfigurada ? (
         <View style={s.aviso}>
-          <Text style={s.avisoTexto}>
-            Falta configurar EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY en .env
-          </Text>
+          <Text style={s.avisoTexto}>{t('comunes.avisoConfig')}</Text>
         </View>
       ) : (
         <View style={s.formulario}>
-          <Text style={s.etiqueta}>Email</Text>
+          <Text style={s.etiqueta}>{t('comunes.email')}</Text>
           <TextInput
             style={s.campo}
             autoCapitalize="none"
@@ -55,7 +55,7 @@ export default function Login() {
             value={email}
             onChangeText={setEmail}
           />
-          <Text style={s.etiqueta}>Contraseña</Text>
+          <Text style={s.etiqueta}>{t('comunes.contrasena')}</Text>
           <TextInput
             style={s.campo}
             autoCapitalize="none"
@@ -67,14 +67,14 @@ export default function Login() {
             onChangeText={setPassword}
           />
           <Boton
-            titulo={enviando ? 'Entrando...' : 'Entrar'}
+            titulo={enviando ? t('login.entrando') : t('login.entrar')}
             onPress={() => void enviar()}
             cargando={enviando}
           />
         </View>
       )}
       <Link href="/registro" style={s.enlace}>
-        ¿Aún no tienes cuenta? Regístrate
+        {t('login.sinCuenta')}
       </Link>
     </View>
   );

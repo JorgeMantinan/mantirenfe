@@ -1,6 +1,7 @@
-import Constants from 'expo-constants';
+﻿import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { t } from '../i18n';
 import { api } from './api';
 
 export interface ResultadoRegistroPush {
@@ -12,10 +13,7 @@ export interface ResultadoRegistroPush {
 function traducirErrorPush(error: unknown): string {
   const mensaje = error instanceof Error ? error.message : String(error);
   if (/Firebase/i.test(mensaje)) {
-    return (
-      'Push no disponible en esta build: faltan las credenciales de Firebase (FCM). ' +
-      'Configúralas con "npx eas credentials" → Android → Push notifications y vuelve a compilar el APK.'
-    );
+    return t('push.sinFirebase');
   }
   return mensaje;
 }
@@ -35,7 +33,7 @@ export async function desregistrarPushMovil(): Promise<ResultadoRegistroPush> {
     if (!projectId) {
       return {
         ok: false,
-        error: 'Falta el projectId de EAS: ejecuta "npx eas-cli init" en apps/mobile',
+        error: t('push.sinProjectId'),
       };
     }
     const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
@@ -52,14 +50,14 @@ export async function desregistrarPushMovil(): Promise<ResultadoRegistroPush> {
  */
 export async function registrarPushMovil(): Promise<ResultadoRegistroPush> {
   if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
-    return { ok: false, error: 'Los avisos push solo funcionan en iOS y Android' };
+    return { ok: false, error: t('push.soloMovil') };
   }
 
   try {
     if (Platform.OS === 'android') {
       // En Android 13+ no aparece el diálogo de permisos sin un canal creado.
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'Avisos de trenes',
+        name: t('push.canal'),
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#75258c',
@@ -73,14 +71,14 @@ export async function registrarPushMovil(): Promise<ResultadoRegistroPush> {
       concedido = solicitud.granted;
     }
     if (!concedido) {
-      return { ok: false, error: 'Permiso de notificaciones denegado' };
+      return { ok: false, error: t('push.permisoDenegado') };
     }
 
     const projectId = projectIdEas();
     if (!projectId) {
       return {
         ok: false,
-        error: 'Falta el projectId de EAS: ejecuta "npx eas-cli init" en apps/mobile',
+        error: t('push.sinProjectId'),
       };
     }
 

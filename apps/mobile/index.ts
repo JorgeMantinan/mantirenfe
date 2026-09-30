@@ -1,4 +1,6 @@
 import 'expo-router/entry';
+import './src/lib/supabase'; // instala el localStorage de expo-sqlite (i18n lo lee al arrancar)
+import './src/i18n';
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
 import { widgetTaskHandler } from './src/widget/tareaWidget';
 

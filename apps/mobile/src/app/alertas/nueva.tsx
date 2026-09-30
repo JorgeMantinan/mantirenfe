@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import {
   BONOS,
   INTERVALOS_SONDEO_MIN,
@@ -10,6 +11,7 @@ import {
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
+import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import { etiquetaBono, validarAlerta } from '@/lib/alertas';
 import { fechaCorta } from '@/lib/proximoViaje';
@@ -32,7 +34,28 @@ export default function NuevaAlerta() {
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
+
+  const etiquetasCriterio: Record<Criterio, string> = {
+    DISPONIBILIDAD: t('nueva.criterio.disponibilidad'),
+    RETRASO: t('nueva.criterio.retraso'),
+    HORARIO: t('nueva.criterio.horario'),
+    APERTURA_VENTA: t('nueva.criterio.aperturaVenta'),
+    PRECIO: t('nueva.criterio.precio'),
+  };
+  const descripcionesCriterio: Record<Criterio, string> = {
+    DISPONIBILIDAD: t('nueva.desc.disponibilidad'),
+    RETRASO: t('nueva.desc.retraso'),
+    HORARIO: t('nueva.desc.horario'),
+    APERTURA_VENTA: t('nueva.desc.aperturaVenta'),
+    PRECIO: t('nueva.desc.precio'),
+  };
+  const etiquetasFrecuencia: Record<Frecuencia, string> = {
+    fecha: t('nueva.frecuencia.fecha'),
+    diaria: t('nueva.frecuencia.diaria'),
+    laborables: t('nueva.frecuencia.laborables'),
+  };
 
   const params = useLocalSearchParams<{
     origen?: string;
@@ -86,7 +109,7 @@ export default function NuevaAlerta() {
         setCriterio(a.criterio);
         setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
       })
-      .catch(() => Alert.alert('Error', 'No se pudo cargar la alerta'));
+      .catch(() => Alert.alert(t('comunes.error'), t('nueva.errorCargar')));
   }, [params, editandoId]);
 
   // Los3 próximos trenes de la ruta
@@ -105,7 +128,7 @@ export default function NuevaAlerta() {
       )
         .then((d) => {
           if (peticionTrenes.current !== id) return;
-          const horaAhora = new Intl.DateTimeFormat('es-ES', {
+          const horaAhora = new Intl.DateTimeFormat(locale(), {
             timeZone: 'Europe/Madrid',
             hour: '2-digit',
             minute: '2-digit',
@@ -164,14 +187,14 @@ export default function NuevaAlerta() {
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (tarjeta + aviso final).
-  const criterioEtiqueta = CRITERIOS.find(([valor]) => valor === criterio)?.[1] ?? criterio;
+  const criterioEtiqueta = etiquetasCriterio[criterio];
   const resumenFecha = recurrente
     ? frecuencia === 'laborables'
-      ? 'L-V'
-      : 'Cada día'
+      ? t('nueva.resumenLaborables')
+      : t('nueva.frecuencia.diaria')
     : fecha.trim()
       ? fechaCorta(fecha.trim())
-      : 'Sin fecha';
+      : t('nueva.sinFecha');
   const resumenFranja =
     horaDesde.trim() || horaHasta.trim()
       ? `${horaDesde.trim() || '00:00'}–${horaHasta.trim() || '23:59'}`
@@ -179,7 +202,7 @@ export default function NuevaAlerta() {
   const resumenCriterio = [
     criterioEtiqueta,
     criterio === 'PRECIO' && precioObjetivo.trim() ? `≤ ${precioObjetivo.trim()} €` : null,
-    `cada ${intervalo} min`,
+    t('nueva.cadaMin', { min: intervalo }),
   ]
     .filter(Boolean)
     .join(' ');
@@ -214,7 +237,10 @@ export default function NuevaAlerta() {
 
     const validacion = validarAlerta(datos);
     if (!validacion.success) {
-      Alert.alert('Revisa los campos', validacion.error.issues[0]?.message ?? 'Datos inválidos');
+      Alert.alert(
+        t('nueva.revisaCampos'),
+        validacion.error.issues[0]?.message ?? t('nueva.datosInvalidos'),
+      );
       return;
     }
 
@@ -225,16 +251,14 @@ export default function NuevaAlerta() {
         json: validacion.data,
       });
       Alert.alert(
-        editandoId ? 'Alerta actualizada' : 'Alerta creada',
-        editandoId
-          ? `${resumen}\n\nLos cambios ya están aplicados.`
-          : `${resumen}\n\nEmpezamos a vigilar este trayecto.`,
+        editandoId ? t('nueva.actualizadaTitulo') : t('nueva.creadaTitulo'),
+        t(editandoId ? 'nueva.actualizadaCuerpo' : 'nueva.creadaCuerpo', { resumen }),
         editandoId
           ? undefined
           : [
-              { text: 'Ahora no', style: 'cancel' },
+              { text: t('nueva.ahoraNo'), style: 'cancel' },
               {
-                text: 'Crear la vuelta',
+                text: t('nueva.crearVuelta'),
                 onPress: () =>
                   router.push(
                     `/alertas/nueva?origen=${encodeURIComponent(
@@ -248,7 +272,7 @@ export default function NuevaAlerta() {
       );
       router.back();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar la alerta');
+      Alert.alert(t('comunes.error'), e instanceof Error ? e.message : t('nueva.errorGuardar'));
     } finally {
       setEnviando(false);
     }
@@ -256,31 +280,29 @@ export default function NuevaAlerta() {
 
   return (
     <ScrollView style={s.pantalla} contentContainerStyle={s.contenido}>
-      <Text style={s.titulo}>{editandoId ? 'Editar alerta' : 'Nueva alerta'}</Text>
-      <Text style={s.subtitulo}>
-        {editandoId ? 'Modifica cualquier dato; reiniciaremos los avisos si cambia la ruta' : ''}
-      </Text>
+      <Text style={s.titulo}>{editandoId ? t('nueva.editarTitulo') : t('nueva.titulo')}</Text>
+      <Text style={s.subtitulo}>{editandoId ? t('nueva.editarSubtitulo') : ''}</Text>
 
-      <Text style={s.etiqueta}>Tipo de aviso</Text>
+      <Text style={s.etiqueta}>{t('nueva.tipoAviso')}</Text>
       <View style={s.chips}>
-        {CRITERIOS.map(([valor, etiqueta]) => (
+        {CRITERIOS.map((valor) => (
           <Text
             key={valor}
             style={[s.chip, criterio === valor && s.chipActivo]}
             onPress={() => setCriterio(valor)}
           >
-            {etiqueta}
+            {etiquetasCriterio[valor]}
           </Text>
         ))}
       </View>
-      <Text style={s.pista}>{DESCRIPCIONES[criterio]}</Text>
+      <Text style={s.pista}>{descripcionesCriterio[criterio]}</Text>
 
       {criterio === 'PRECIO' ? (
         <>
-          <Text style={s.etiqueta}>Avisarme si baja de X €</Text>
+          <Text style={s.etiqueta}>{t('nueva.precioObjetivo')}</Text>
           <TextInput
             style={s.campo}
-            placeholder="Ej.: 30"
+            placeholder={t('nueva.placeholderPrecio')}
             placeholderTextColor={paleta.textoSecundario}
             keyboardType="decimal-pad"
             value={precioObjetivo}
@@ -289,10 +311,10 @@ export default function NuevaAlerta() {
         </>
       ) : null}
 
-      <Text style={s.etiqueta}>Origen</Text>
+      <Text style={s.etiqueta}>{t('comunes.origen')}</Text>
       <TextInput
         style={s.campo}
-        placeholder="Estación de origen"
+        placeholder={t('nueva.placeholderOrigen')}
         placeholderTextColor={paleta.textoSecundario}
         value={origen}
         onChangeText={(v) => {
@@ -315,10 +337,10 @@ export default function NuevaAlerta() {
           </Text>
         ))}
 
-      <Text style={s.etiqueta}>Destino</Text>
+      <Text style={s.etiqueta}>{t('comunes.destino')}</Text>
       <TextInput
         style={s.campo}
-        placeholder="Estación de destino"
+        placeholder={t('nueva.placeholderDestino')}
         placeholderTextColor={paleta.textoSecundario}
         value={destino}
         onChangeText={(v) => {
@@ -341,28 +363,29 @@ export default function NuevaAlerta() {
           </Text>
         ))}
 
-      <Text style={s.etiqueta}>¿Cuándo viajas?</Text>
+      <Text style={s.etiqueta}>{t('nueva.cuando')}</Text>
       <View style={s.chips}>
-        {FRECUENCIAS.map(([valor, etiqueta]) => (
+        {FRECUENCIAS.map((valor) => (
           <Text
             key={valor}
             style={[s.chip, frecuencia === valor && s.chipActivo]}
             onPress={() => setFrecuencia(valor)}
           >
-            {etiqueta}
+            {etiquetasFrecuencia[valor]}
           </Text>
         ))}
       </View>
       {recurrente ? (
         <Text style={s.pista}>
-          Trayecto cotidiano: te avisaremos cada día
-          {frecuencia === 'laborables' ? ', de lunes a viernes' : ''}. No hace falta indicar fecha.
+          {frecuencia === 'laborables'
+            ? t('nueva.cotidianoLaborables')
+            : t('nueva.cotidianoDiaria')}
         </Text>
       ) : null}
 
       {recurrente ? null : (
         <>
-          <Text style={s.etiqueta}>Fecha del viaje</Text>
+          <Text style={s.etiqueta}>{t('nueva.fechaViaje')}</Text>
           <TextInput
             style={s.campo}
             placeholder="YYYY-MM-DD"
@@ -374,15 +397,15 @@ export default function NuevaAlerta() {
               setNumeroTren(''); // el tren elegido es de otra fecha
             }}
           />
-          <Text style={s.pista}>Mínimo: {fechaMin}</Text>
+          <Text style={s.pista}>{t('nueva.minimo', { fecha: fechaMin })}</Text>
         </>
       )}
 
-      <Text style={s.etiqueta}>Franja horaria (opcional)</Text>
+      <Text style={s.etiqueta}>{t('nueva.franja')}</Text>
       <View style={{ flexDirection: 'row', gap: espaciado.sm }}>
         <TextInput
           style={[s.campo, { flex: 1 }]}
-          placeholder="Desde HH:MM"
+          placeholder={t('nueva.desdeHora')}
           placeholderTextColor={paleta.textoSecundario}
           keyboardType="numbers-and-punctuation"
           maxLength={5}
@@ -391,7 +414,7 @@ export default function NuevaAlerta() {
         />
         <TextInput
           style={[s.campo, { flex: 1 }]}
-          placeholder="Hasta HH:MM"
+          placeholder={t('nueva.hastaHora')}
           placeholderTextColor={paleta.textoSecundario}
           keyboardType="numbers-and-punctuation"
           maxLength={5}
@@ -399,12 +422,12 @@ export default function NuevaAlerta() {
           onChangeText={setHoraHasta}
         />
       </View>
-      <Text style={s.pista}>Solo avisaremos de salidas dentro de esa franja</Text>
+      <Text style={s.pista}>{t('nueva.soloFranja')}</Text>
 
-      <Text style={s.etiqueta}>Tren concreto (opcional)</Text>
+      <Text style={s.etiqueta}>{t('nueva.trenConcreto')}</Text>
       <TextInput
         style={s.campo}
-        placeholder="Ej.: 03311 — vacío = todos los trenes"
+        placeholder={t('nueva.placeholderTren')}
         placeholderTextColor={paleta.textoSecundario}
         value={numeroTren}
         onChangeText={setNumeroTren}
@@ -412,7 +435,7 @@ export default function NuevaAlerta() {
       />
       {trenesSugeridos.length > 0 && !numeroTren.trim() && (
         <>
-          <Text style={s.pista}>Próximos trenes (toca para elegir):</Text>
+          <Text style={s.pista}>{t('nueva.proximosTrenes')}</Text>
           <View style={s.chips}>
             {trenesSugeridos.map((t) => (
               <Text
@@ -427,7 +450,7 @@ export default function NuevaAlerta() {
         </>
       )}
 
-      <Text style={s.etiqueta}>Intervalo de sondeo</Text>
+      <Text style={s.etiqueta}>{t('nueva.intervalo')}</Text>
       <View style={s.chips}>
         {INTERVALOS_SONDEO_MIN.map((min) => (
           <Text
@@ -440,7 +463,7 @@ export default function NuevaAlerta() {
         ))}
       </View>
 
-      <Text style={s.etiqueta}>Bono</Text>
+      <Text style={s.etiqueta}>{t('nueva.bono')}</Text>
       <View style={s.chips}>
         {BONOS.map((b) => (
           <Text key={b} style={[s.chip, bono === b && s.chipActivo]} onPress={() => setBono(b)}>
@@ -448,15 +471,12 @@ export default function NuevaAlerta() {
           </Text>
         ))}
       </View>
-      <Text style={{ fontSize: 12, color: paleta.textoSecundario }}>
-        Guardamos tu perfil para personalizar los avisos. Renfe no publica las plazas por cupo de
-        bono/abono: los avisos de disponibilidad se calculan sobre las tarifas generales.
-      </Text>
+      <Text style={{ fontSize: 12, color: paleta.textoSecundario }}>{t('nueva.avisoBono')}</Text>
 
-      <Text style={s.etiqueta}>Notas (opcional)</Text>
+      <Text style={s.etiqueta}>{t('nueva.notas')}</Text>
       <TextInput
         style={[s.campo, s.notas]}
-        placeholder="Ej. asiento junto a ventanilla..."
+        placeholder={t('nueva.placeholderNotas')}
         placeholderTextColor={paleta.textoSecundario}
         multiline
         value={notas}
@@ -464,7 +484,7 @@ export default function NuevaAlerta() {
       />
 
       <Tarjeta style={{ marginTop: espaciado.sm }}>
-        <Text style={s.resumenTitulo}>Resumen de la alerta</Text>
+        <Text style={s.resumenTitulo}>{t('nueva.resumenTitulo')}</Text>
         <Text style={s.resumenRuta}>
           {origen.trim() || '—'} <Text style={{ color: paleta.primario }}>→</Text>{' '}
           {destino.trim() || '—'}
@@ -473,12 +493,14 @@ export default function NuevaAlerta() {
           {[resumenFecha, resumenFranja, resumenCriterio].filter(Boolean).join(' · ')}
         </Text>
         {salidasResumen.length > 0 ? (
-          <Text style={s.pista}>Próximas salidas: {salidasResumen.join(', ')}</Text>
+          <Text style={s.pista}>
+            {t('nueva.proximasSalidas', { salidas: salidasResumen.join(', ') })}
+          </Text>
         ) : null}
       </Tarjeta>
 
       <Boton
-        titulo={enviando ? 'Creando...' : 'Crear alerta'}
+        titulo={enviando ? t('nueva.creando') : t('nueva.crear')}
         onPress={() => void enviar()}
         cargando={enviando}
         style={{ marginTop: espaciado.sm }}
@@ -487,36 +509,18 @@ export default function NuevaAlerta() {
   );
 }
 
-const CRITERIOS = [
-  ['DISPONIBILIDAD', 'Plazas libres'],
-  ['RETRASO', 'Retraso'],
-  ['HORARIO', 'Horario'],
-  ['APERTURA_VENTA', 'Apertura de venta'],
-  ['PRECIO', 'Precio'],
-] as const;
+const CRITERIOS = ['DISPONIBILIDAD', 'RETRASO', 'HORARIO', 'APERTURA_VENTA', 'PRECIO'] as const;
 
-type Criterio = (typeof CRITERIOS)[number][0];
+type Criterio = (typeof CRITERIOS)[number];
 
-const FRECUENCIAS = [
-  ['fecha', 'Una fecha'],
-  ['diaria', 'Cada día'],
-  ['laborables', 'Lunes a viernes'],
-] as const;
+const FRECUENCIAS = ['fecha', 'diaria', 'laborables'] as const;
 
-type Frecuencia = (typeof FRECUENCIAS)[number][0];
+type Frecuencia = (typeof FRECUENCIAS)[number];
 
 function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia {
   if (!recurrente) return 'fecha';
   return soloLaborables ? 'laborables' : 'diaria';
 }
-
-const DESCRIPCIONES: Record<Criterio, string> = {
-  DISPONIBILIDAD: 'Te avisaremos cuando haya plazas libres en este trayecto',
-  RETRASO: 'Te avisaremos cuando tus trenes vayan con retraso (5+ min)',
-  HORARIO: 'Te avisaremos si cambian los horarios programados',
-  APERTURA_VENTA: 'Te avisaremos cuando se abra la venta de billetes',
-  PRECIO: 'Te avisaremos si el precio baja de tu objetivo',
-};
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({

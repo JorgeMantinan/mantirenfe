@@ -1,24 +1,24 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import type { PreferenciasUsuario } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { useAuth } from '@/hooks/useAuth';
+import { cambiarIdioma, IDIOMAS, type Idioma } from '@/i18n';
 import { api } from '@/lib/api';
 import { desregistrarPushMovil, registrarPushMovil } from '@/lib/push';
 import { useTema, type ModoTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
+import { repintarWidget } from '@/widget/actualizarWidget';
 
-const MODOS_TEMA: Array<[ModoTema, string]> = [
-  ['claro', 'Claro'],
-  ['oscuro', 'Oscuro'],
-  ['sistema', 'Sistema'],
-];
+const MODOS_TEMA: readonly ModoTema[] = ['claro', 'oscuro', 'sistema'];
 
 export default function Ajustes() {
   const { user, salir, authConfigurada } = useAuth();
   const { modo, setModo, paleta } = useTema();
+  const { t, i18n } = useTranslation();
   const [pref, setPref] = useState<PreferenciasUsuario | null>(null);
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
@@ -26,6 +26,13 @@ export default function Ajustes() {
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
   const s = useMemo(() => estilos(paleta), [paleta]);
+
+  const idiomaActual: Idioma = i18n.language === 'en' ? 'en' : 'es';
+  const etiquetasModo: Record<ModoTema, string> = {
+    claro: t('ajustes.temaClaro'),
+    oscuro: t('ajustes.temaOscuro'),
+    sistema: t('ajustes.temaSistema'),
+  };
 
   useEffect(() => {
     if (!authConfigurada) return;
@@ -47,9 +54,9 @@ export default function Ajustes() {
     setEstadoPush(
       resultado.ok
         ? activo
-          ? 'Avisos push activados en este dispositivo'
-          : 'Avisos push desactivados en este dispositivo'
-        : (resultado.error ?? 'No se pudo actualizar el registro push'),
+          ? t('ajustes.pushOk')
+          : t('ajustes.pushKo')
+        : (resultado.error ?? t('ajustes.pushError')),
     );
     if (!resultado.ok && activo) setPush(false);
     void guardar({ notificacionesPush: activo && resultado.ok });
@@ -78,33 +85,52 @@ export default function Ajustes() {
 
   return (
     <View style={s.pantalla}>
-      <Text style={s.titulo}>Ajustes</Text>
+      <Text style={s.titulo}>{t('pestanas.ajustes')}</Text>
 
       <Tarjeta>
-        <Text style={s.seccion}>Cuenta</Text>
-        <Text style={s.valor}>{user?.email ?? 'Sin sesión'}</Text>
-        {!authConfigurada && <Text style={s.aviso}>Supabase sin configurar en este entorno</Text>}
+        <Text style={s.seccion}>{t('ajustes.cuenta')}</Text>
+        <Text style={s.valor}>{user?.email ?? t('ajustes.sinSesion')}</Text>
+        {!authConfigurada && <Text style={s.aviso}>{t('ajustes.supabaseSinConfig')}</Text>}
       </Tarjeta>
 
       <Tarjeta>
-        <Text style={s.seccion}>Apariencia</Text>
+        <Text style={s.seccion}>{t('ajustes.apariencia')}</Text>
         <View style={s.modos}>
-          {MODOS_TEMA.map(([valor, etiqueta]) => (
+          {MODOS_TEMA.map((valor) => (
             <Text
               key={valor}
               style={[s.modo, modo === valor && s.modoActivo]}
               onPress={() => setModo(valor)}
             >
-              {etiqueta}
+              {etiquetasModo[valor]}
             </Text>
           ))}
         </View>
       </Tarjeta>
 
       <Tarjeta>
-        <Text style={s.seccion}>Notificaciones</Text>
+        <Text style={s.seccion}>{t('ajustes.idioma')}</Text>
+        <View style={s.modos}>
+          {IDIOMAS.map((idioma) => (
+            <Text
+              key={idioma}
+              accessibilityRole="button"
+              accessibilityLabel={idioma === 'es' ? 'Español' : 'English'}
+              style={[s.modo, idiomaActual === idioma && s.modoActivo]}
+              onPress={() => {
+                void cambiarIdioma(idioma).then(() => repintarWidget());
+              }}
+            >
+              {idioma.toUpperCase()}
+            </Text>
+          ))}
+        </View>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Text style={s.seccion}>{t('ajustes.notificaciones')}</Text>
         <View style={s.fila}>
-          <Text style={s.etiqueta}>Push de disponibilidad</Text>
+          <Text style={s.etiqueta}>{t('ajustes.pushDisponibilidad')}</Text>
           <Switch
             value={push}
             onValueChange={(v) => {
@@ -116,7 +142,7 @@ export default function Ajustes() {
         </View>
         {estadoPush ? <Text style={s.pie}>{estadoPush}</Text> : null}
         <View style={s.fila}>
-          <Text style={s.etiqueta}>Recordatorio de salida (50 min)</Text>
+          <Text style={s.etiqueta}>{t('ajustes.recordatorio')}</Text>
           <Switch
             value={recordatorio}
             onValueChange={(v) => {
@@ -128,7 +154,7 @@ export default function Ajustes() {
           />
         </View>
         <View style={s.fila}>
-          <Text style={s.etiqueta}>Resumen del viaje (mañana del día)</Text>
+          <Text style={s.etiqueta}>{t('ajustes.resumen')}</Text>
           <Switch
             value={resumen}
             onValueChange={(v) => {
@@ -139,11 +165,11 @@ export default function Ajustes() {
             thumbColor="#fff"
           />
         </View>
-        {guardando ? <Text style={s.pie}>Guardando...</Text> : null}
+        {guardando ? <Text style={s.pie}>{t('ajustes.guardando')}</Text> : null}
       </Tarjeta>
 
       <Boton
-        titulo="Cerrar sesión"
+        titulo={t('ajustes.cerrarSesion')}
         variante="destructivo"
         onPress={() => {
           void cerrarSesion();

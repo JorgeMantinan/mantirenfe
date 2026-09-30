@@ -1,9 +1,12 @@
+import '@/lib/supabase'; // instala el localStorage de expo-sqlite (i18n lo lee al arrancar)
+import '@/i18n';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
+import { useTranslation } from 'react-i18next';
 import { AuthProvider } from '@/hooks/useAuth';
 import { destinoDeNotificacion } from '@/lib/notificaciones';
 import { TemaProvider, useTema } from '@/lib/tema-contexto';
@@ -79,6 +82,7 @@ function Atras({ color }: { color?: string }) {
 
 function Aplicacion() {
   const { paleta, oscuro } = useTema();
+  const { t } = useTranslation();
 
   return (
     <AuthProvider>
@@ -92,24 +96,28 @@ function Aplicacion() {
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ title: 'Iniciar sesión' }} />
-        <Stack.Screen name="registro" options={{ title: 'Crear cuenta' }} />
+        <Stack.Screen name="login" options={{ title: t('comunes.iniciarSesion') }} />
+        <Stack.Screen name="registro" options={{ title: t('comunes.crearCuenta') }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="alertas/nueva"
-          options={{ title: 'Nueva alerta', presentation: 'modal', headerLeft: () => <Atras /> }}
+          options={{
+            title: t('nueva.titulo'),
+            presentation: 'modal',
+            headerLeft: () => <Atras />,
+          }}
         />
         <Stack.Screen
           name="alertas/[id]"
-          options={{ title: 'Alerta', headerLeft: () => <Atras /> }}
+          options={{ title: t('detalle.titulo'), headerLeft: () => <Atras /> }}
         />
         <Stack.Screen
           name="incidencias"
-          options={{ title: 'Incidencias', headerLeft: () => <Atras /> }}
+          options={{ title: t('comunes.incidencias'), headerLeft: () => <Atras /> }}
         />
         <Stack.Screen
           name="suprimidos"
-          options={{ title: 'Suprimidos', headerLeft: () => <Atras /> }}
+          options={{ title: t('comunes.suprimidos'), headerLeft: () => <Atras /> }}
         />
       </Stack>
     </AuthProvider>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { formatoPeriodo, type IncidenciaResponse } from '@/lib/incidencias';
@@ -12,6 +13,7 @@ export default function Incidencias() {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
@@ -43,10 +45,8 @@ export default function Incidencias() {
         contentContainerStyle={s.lista}
         ListHeaderComponent={
           <View style={s.intro}>
-            <Text style={s.titulo}>Incidencias de servicio</Text>
-            <Text style={s.subtitulo}>
-              Avisos y incidencias de cercanías publicados por Renfe en tiempo real
-            </Text>
+            <Text style={s.titulo}>{t('incidencias.titulo')}</Text>
+            <Text style={s.subtitulo}>{t('incidencias.subtitulo')}</Text>
           </View>
         }
         ListEmptyComponent={
@@ -54,10 +54,8 @@ export default function Incidencias() {
             <ActivityIndicator color={paleta.primario} style={{ marginTop: espaciado.xl }} />
           ) : error ? null : (
             <Tarjeta>
-              <Text style={s.vacioTitulo}>Sin incidencias activas ahora mismo</Text>
-              <Text style={s.vacioTexto}>
-                Si aparece alguna, la verás aquí en cuanto el feed de Renfe la publique.
-              </Text>
+              <Text style={s.vacioTitulo}>{t('incidencias.vacioTitulo')}</Text>
+              <Text style={s.vacioTexto}>{t('incidencias.vacioTexto')}</Text>
             </Tarjeta>
           )
         }
@@ -72,7 +70,9 @@ export default function Incidencias() {
           <Tarjeta style={{ borderColor: paleta.aviso }}>
             <View style={s.filaTitulo}>
               <Ionicons name="warning-outline" size={20} color={paleta.aviso} />
-              <Text style={s.tituloIncidencia}>{item.titulo ?? 'Incidencia de servicio'}</Text>
+              <Text style={s.tituloIncidencia}>
+                {item.titulo ?? t('incidencias.fallbackTitulo')}
+              </Text>
             </View>
             <Text style={s.periodo}>{formatoPeriodo(item.desde, item.hasta)}</Text>
             <View style={s.badges}>
@@ -83,9 +83,7 @@ export default function Incidencias() {
                   </Etiqueta>
                 ))
               ) : (
-                <Text style={s.meta}>
-                  Afecta a líneas del servicio, sin estación concreta indicada
-                </Text>
+                <Text style={s.meta}>{t('incidencias.sinEstacion')}</Text>
               )}
               {item.causa ? <Etiqueta tono="primario">{item.causa}</Etiqueta> : null}
             </View>

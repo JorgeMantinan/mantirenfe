@@ -1,32 +1,67 @@
 import { crearAlertaSchema } from '@mantirenfe/shared-types';
+import { t } from '../i18n';
 
 export function validarAlerta(datos: unknown) {
   return crearAlertaSchema.safeParse(datos);
 }
 
 export function etiquetaBono(bono: string): string {
-  const etiquetas: Record<string, string> = {
-    GENERAL: 'Sin bono / general',
-    BONO_10: 'Bono 10',
-    BONO_20: 'Bono 20',
-    JUVENIL: 'Bono Joven',
-    ESTUDIANTE: 'Estudiante',
-    DISCAPACIDAD: 'Discapacidad',
-    FAMILIA_NUMEROSA: 'Familia numerosa',
-    MAYOR_60: 'Mayor de 60',
-    OTRO: 'Otro',
-  };
-  return etiquetas[bono] ?? bono;
+  switch (bono) {
+    case 'GENERAL':
+      return t('alertas.bono.GENERAL');
+    case 'BONO_10':
+      return t('alertas.bono.BONO_10');
+    case 'BONO_20':
+      return t('alertas.bono.BONO_20');
+    case 'JUVENIL':
+      return t('alertas.bono.JUVENIL');
+    case 'ESTUDIANTE':
+      return t('alertas.bono.ESTUDIANTE');
+    case 'DISCAPACIDAD':
+      return t('alertas.bono.DISCAPACIDAD');
+    case 'FAMILIA_NUMEROSA':
+      return t('alertas.bono.FAMILIA_NUMEROSA');
+    case 'MAYOR_60':
+      return t('alertas.bono.MAYOR_60');
+    case 'OTRO':
+      return t('alertas.bono.OTRO');
+    default:
+      return bono;
+  }
 }
 
 export function etiquetaEstado(estado: string): string {
-  if (estado === 'ACTIVA') return 'Activa';
-  if (estado === 'PAUSA') return 'En pausa';
-  if (estado === 'COMPLETADA') return 'Completada';
-  return estado;
+  switch (estado) {
+    case 'ACTIVA':
+      return t('alertas.estado.ACTIVA');
+    case 'PAUSA':
+      return t('alertas.estado.PAUSA');
+    case 'COMPLETADA':
+      return t('alertas.estado.COMPLETADA');
+    default:
+      return estado;
+  }
+}
+
+/** Criterio de la alerta en texto legible ("Plazas libres" en vez de "DISPONIBILIDAD"). */
+export function etiquetaCriterio(criterio: string): string {
+  switch (criterio) {
+    case 'DISPONIBILIDAD':
+      return t('alertas.criterio.DISPONIBILIDAD');
+    case 'RETRASO':
+      return t('alertas.criterio.RETRASO');
+    case 'HORARIO':
+      return t('alertas.criterio.HORARIO');
+    case 'APERTURA_VENTA':
+      return t('alertas.criterio.APERTURA_VENTA');
+    case 'PRECIO':
+      return t('alertas.criterio.PRECIO');
+    default:
+      return criterio;
+  }
 }
 
 /** Recuento histórico de la alerta: "3 avisos" (singular con 1). */
 export function etiquetaAvisos(total: number): string {
-  return `${total} ${total === 1 ? 'aviso' : 'avisos'}`;
+  return `${total} ${total === 1 ? t('alertas.aviso') : t('alertas.avisos')}`;
 }

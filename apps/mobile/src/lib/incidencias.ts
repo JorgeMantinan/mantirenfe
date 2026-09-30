@@ -1,3 +1,5 @@
+import { locale, t } from '../i18n';
+
 /** Incidencia activa de `GET /incidencias` (mismo shape que la tabla `Incidencia`). */
 export interface IncidenciaResponse {
   id: string;
@@ -12,7 +14,7 @@ export interface IncidenciaResponse {
 }
 
 function formatoFecha(valor: string): string {
-  return new Date(valor).toLocaleString('es-ES', {
+  return new Date(valor).toLocaleString(locale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -23,7 +25,7 @@ function formatoFecha(valor: string): string {
 
 export function formatoPeriodo(desde: string | null, hasta: string | null): string {
   if (desde && hasta) return `${formatoFecha(desde)} – ${formatoFecha(hasta)}`;
-  if (desde) return `Desde el ${formatoFecha(desde)}`;
-  if (hasta) return `Hasta el ${formatoFecha(hasta)}`;
-  return 'Periodo no indicado';
+  if (desde) return t('incidencias.desde', { fecha: formatoFecha(desde) });
+  if (hasta) return t('incidencias.hasta', { fecha: formatoFecha(hasta) });
+  return t('incidencias.sinPeriodo');
 }

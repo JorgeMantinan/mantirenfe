@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fechaGtfs, type EstacionResponse, type SuprimidoResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
@@ -37,6 +38,7 @@ export default function Suprimidos() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const fechaValida = esFechaValida(fecha);
@@ -111,9 +113,9 @@ export default function Suprimidos() {
         <Tarjeta>
           <View style={s.filaTitulo}>
             <Ionicons name="remove-circle-outline" size={20} color={paleta.primario} />
-            <Text style={s.titulo}>Consultar supresiones</Text>
+            <Text style={s.titulo}>{t('suprimidos.consultar')}</Text>
           </View>
-          <Text style={s.etiqueta}>Fecha (YYYY-MM-DD)</Text>
+          <Text style={s.etiqueta}>{t('suprimidos.fecha')}</Text>
           <TextInput
             style={s.campo}
             placeholder="YYYY-MM-DD"
@@ -125,11 +127,11 @@ export default function Suprimidos() {
           />
           <Text style={fechaValida ? s.pista : s.pistaError}>
             {fechaValida
-              ? `Histórico disponible: desde el ${fechaMinima}`
-              : `Fecha no válida: usa YYYY-MM-DD entre el ${fechaMinima} y hoy`}
+              ? t('suprimidos.historico', { fecha: fechaMinima })
+              : t('suprimidos.fechaInvalida', { fecha: fechaMinima })}
           </Text>
 
-          <Text style={s.etiqueta}>Estación (opcional)</Text>
+          <Text style={s.etiqueta}>{t('suprimidos.estacion')}</Text>
           <TextInput
             style={s.campo}
             placeholder="Madrid-Atocha"
@@ -153,7 +155,7 @@ export default function Suprimidos() {
           ))}
           {estacion ? (
             <Boton
-              titulo={`Quitar filtro de ${estacion}`}
+              titulo={t('suprimidos.quitarFiltro', { estacion })}
               variante="contorno"
               onPress={() => {
                 setTexto('');
@@ -165,7 +167,7 @@ export default function Suprimidos() {
           ) : null}
 
           <Boton
-            titulo={cargando ? 'Buscando...' : 'Buscar'}
+            titulo={cargando ? t('suprimidos.buscando') : t('suprimidos.buscar')}
             onPress={cargar}
             cargando={cargando}
             disabled={!fechaValida}
@@ -175,13 +177,10 @@ export default function Suprimidos() {
       }
       ListEmptyComponent={
         !fechaValida ? null : cargando ? (
-          <Text style={s.vacio}>Buscando supresiones…</Text>
+          <Text style={s.vacio}>{t('suprimidos.buscandoLista')}</Text>
         ) : (
           <Tarjeta>
-            <Text style={s.vacioTitulo}>
-              Sin trenes suprimidos en esa fecha (cubrimos Larga Distancia; Cercanías cancela rara
-              veces)
-            </Text>
+            <Text style={s.vacioTitulo}>{t('suprimidos.vacio')}</Text>
           </Tarjeta>
         )
       }
@@ -189,16 +188,18 @@ export default function Suprimidos() {
         <Tarjeta>
           <View style={s.fila}>
             <Text style={s.nombre}>
-              {item.salida ?? '--:--'} · {item.numeroTren ? `tren ${item.numeroTren}` : 'tren —'}
+              {item.salida ?? '--:--'} · {t('suprimidos.tren', { tren: item.numeroTren ?? '—' })}
             </Text>
             {!item.origen || !item.destino || !item.salida || !item.llegada ? (
-              <Etiqueta tono="aviso">Sin datos</Etiqueta>
+              <Etiqueta tono="aviso">{t('comunes.sinDatos')}</Etiqueta>
             ) : null}
           </View>
           <Text style={s.meta}>
             {item.origen ?? '—'} → {item.destino ?? '—'}
           </Text>
-          {item.llegada ? <Text style={s.meta}>Llegada {item.llegada}</Text> : null}
+          {item.llegada ? (
+            <Text style={s.meta}>{t('suprimidos.llegada', { hora: item.llegada })}</Text>
+          ) : null}
         </Tarjeta>
       )}
     />

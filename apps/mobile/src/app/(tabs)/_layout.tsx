@@ -1,11 +1,13 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useTema } from '@/lib/tema-contexto';
 
 export default function TabsLayout() {
   const { user, cargando } = useAuth();
   const { paleta } = useTema();
+  const { t } = useTranslation();
 
   if (cargando) return null;
   if (!user) return <Redirect href="/login" />;
@@ -24,7 +26,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Alertas',
+          title: t('pestanas.alertas'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications-outline" size={size} color={color} />
           ),
@@ -33,7 +35,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="trenes"
         options={{
-          title: 'Trenes',
+          title: t('pestanas.trenes'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="train-outline" size={size} color={color} />
           ),
@@ -42,7 +44,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="avisos"
         options={{
-          title: 'Avisos',
+          title: t('pestanas.avisos'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="mail-outline" size={size} color={color} />
           ),
@@ -51,7 +53,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="ajustes"
         options={{
-          title: 'Ajustes',
+          title: t('pestanas.ajustes'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),

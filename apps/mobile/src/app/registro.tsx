@@ -1,8 +1,9 @@
 import { Link, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
-import { traducirErrorAuth } from '@mantirenfe/shared-types';
+import { useTranslation } from 'react-i18next';
 import { Boton } from '@/components/Boton';
+import { errorAuth } from '@/i18n/errores-auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
@@ -10,6 +11,7 @@ import { espaciado, radio, type Paleta } from '@/lib/tema';
 export default function Registro() {
   const { registrarse, authConfigurada } = useAuth();
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,23 +20,21 @@ export default function Registro() {
 
   const enviar = async () => {
     if (!nombre.trim() || !email.trim() || password.length < 6) {
-      Alert.alert('Revisa los datos', 'Nombre, email y contraseña (mín. 6) son obligatorios');
+      Alert.alert(t('registro.revisaTitulo'), t('registro.revisaCuerpo'));
       return;
     }
     setEnviando(true);
     try {
       const pendienteConfirmacion = await registrarse(email.trim(), password, nombre.trim());
       Alert.alert(
-        'Cuenta creada',
-        pendienteConfirmacion
-          ? 'Revisa tu email para confirmar el registro.'
-          : 'Ya estás dentro de la cuenta.',
+        t('registro.creadaTitulo'),
+        pendienteConfirmacion ? t('registro.creadaConfirmacion') : t('registro.creadaDentro'),
       );
       router.replace(pendienteConfirmacion ? '/login' : '/(tabs)');
     } catch (error) {
       Alert.alert(
-        'Error',
-        error instanceof Error ? traducirErrorAuth(error.message) : 'No se pudo registrar',
+        t('comunes.error'),
+        error instanceof Error ? errorAuth(error.message) : t('registro.errorGenerico'),
       );
     } finally {
       setEnviando(false);
@@ -45,22 +45,20 @@ export default function Registro() {
     <View style={s.pantalla}>
       {!authConfigurada ? (
         <View style={s.aviso}>
-          <Text style={s.avisoTexto}>
-            Falta configurar EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY en .env
-          </Text>
+          <Text style={s.avisoTexto}>{t('comunes.avisoConfig')}</Text>
         </View>
       ) : (
         <View style={s.formulario}>
-          <Text style={s.etiqueta}>Nombre</Text>
+          <Text style={s.etiqueta}>{t('comunes.nombre')}</Text>
           <TextInput
             style={s.campo}
             autoComplete="name"
-            placeholder="Tu nombre"
+            placeholder={t('registro.placeholderNombre')}
             placeholderTextColor={paleta.textoSecundario}
             value={nombre}
             onChangeText={setNombre}
           />
-          <Text style={s.etiqueta}>Email</Text>
+          <Text style={s.etiqueta}>{t('comunes.email')}</Text>
           <TextInput
             style={s.campo}
             autoCapitalize="none"
@@ -71,25 +69,25 @@ export default function Registro() {
             value={email}
             onChangeText={setEmail}
           />
-          <Text style={s.etiqueta}>Contraseña</Text>
+          <Text style={s.etiqueta}>{t('comunes.contrasena')}</Text>
           <TextInput
             style={s.campo}
             autoCapitalize="none"
             secureTextEntry
-            placeholder="Mínimo 6 caracteres"
+            placeholder={t('registro.placeholderContrasena')}
             placeholderTextColor={paleta.textoSecundario}
             value={password}
             onChangeText={setPassword}
           />
           <Boton
-            titulo={enviando ? 'Creando...' : 'Crear cuenta'}
+            titulo={enviando ? t('registro.creando') : t('comunes.crearCuenta')}
             onPress={() => void enviar()}
             cargando={enviando}
           />
         </View>
       )}
       <Link href="/login" style={s.enlace}>
-        ¿Ya tienes cuenta? Inicia sesión
+        {t('registro.cuentaExiste')}
       </Link>
     </View>
   );

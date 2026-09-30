@@ -2,9 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import type { NotificacionResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
+import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
@@ -14,6 +16,7 @@ export default function Avisos() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
@@ -40,23 +43,29 @@ export default function Avisos() {
       await api('/notificaciones/marcar-leidas', { method: 'PATCH', json: { ids } });
       cargar();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo actualizar');
+      Alert.alert(
+        t('comunes.error'),
+        e instanceof Error ? e.message : t('comunes.errorActualizar'),
+      );
     }
   };
 
   const limpiarLista = () => {
     if (notificaciones.length === 0) return;
-    Alert.alert('Limpiar avisos', '¿Borrar todos los avisos de la lista?', [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('avisos.limpiarTitulo'), t('avisos.limpiarCuerpo'), [
+      { text: t('comunes.cancelar'), style: 'cancel' },
       {
-        text: 'Borrar',
+        text: t('avisos.borrar'),
         style: 'destructive',
         onPress: async () => {
           try {
             await api('/notificaciones', { method: 'DELETE' });
             setNotificaciones([]);
           } catch (e) {
-            Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo vaciar la lista');
+            Alert.alert(
+              t('comunes.error'),
+              e instanceof Error ? e.message : t('avisos.errorVaciar'),
+            );
           }
         },
       },
@@ -69,17 +78,19 @@ export default function Avisos() {
     <View style={s.pantalla}>
       <View style={s.encabezado}>
         <View style={{ flex: 1 }}>
-          <Text style={s.titulo}>Avisos</Text>
-          <Text style={s.subtitulo}>{noLeidas > 0 ? `${noLeidas} sin leer` : 'Todo al día'}</Text>
+          <Text style={s.titulo}>{t('pestanas.avisos')}</Text>
+          <Text style={s.subtitulo}>
+            {noLeidas > 0 ? t('avisos.sinLeer', { n: noLeidas }) : t('avisos.todoAlDia')}
+          </Text>
         </View>
         <Boton
-          titulo="Marcar leídas"
+          titulo={t('avisos.marcarLeidas')}
           variante="contorno"
           onPress={() => void marcarTodas()}
           style={{ minHeight: 40, paddingVertical: 8, paddingHorizontal: 12 }}
         />
         <Boton
-          titulo="Limpiar"
+          titulo={t('avisos.limpiar')}
           variante="fantasma"
           onPress={limpiarLista}
           style={{ minHeight: 40, paddingVertical: 8, paddingHorizontal: 8 }}
@@ -101,10 +112,8 @@ export default function Avisos() {
           cargando ? null : (
             <View style={s.vacio}>
               <Ionicons name="mail-open-outline" size={40} color={paleta.primario} />
-              <Text style={s.vacioTitulo}>Sin avisos todavía</Text>
-              <Text style={s.vacioTexto}>
-                Cuando una alerta detecte cambios, el aviso aparecerá aquí.
-              </Text>
+              <Text style={s.vacioTitulo}>{t('avisos.vacioTitulo')}</Text>
+              <Text style={s.vacioTexto}>{t('avisos.vacioTexto')}</Text>
             </View>
           )
         }
@@ -112,10 +121,10 @@ export default function Avisos() {
           <Tarjeta style={item.leida ? { opacity: 0.75 } : undefined}>
             <View style={s.fila}>
               <Text style={s.tituloAviso}>{item.titulo}</Text>
-              {!item.leida ? <Etiqueta tono="primario">Nuevo</Etiqueta> : null}
+              {!item.leida ? <Etiqueta tono="primario">{t('comunes.nuevo')}</Etiqueta> : null}
             </View>
             <Text style={s.cuerpo}>{item.cuerpo}</Text>
-            <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
+            <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString(locale())}</Text>
           </Tarjeta>
         )}
       />

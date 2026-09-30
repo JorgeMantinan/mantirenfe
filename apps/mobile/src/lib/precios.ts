@@ -1,4 +1,5 @@
 import { horaGtfs, type PuntoPrecio } from '@mantirenfe/shared-types';
+import { locale, t } from '../i18n';
 
 /** Serie de un tren concreto, agrupada por numeroTren + salida. */
 export interface SeriePrecio {
@@ -25,7 +26,7 @@ export const MAX_GRUPOS_GRAFICA = 8;
 
 export function formatearPrecio(precioMin: number | null): string {
   if (precioMin === null) return '—';
-  return precioMin.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+  return precioMin.toLocaleString(locale(), { style: 'currency', currency: 'EUR' });
 }
 
 export function agruparPrecios(puntos: PuntoPrecio[]): SeriePrecio[] {
@@ -83,10 +84,9 @@ export function esSeriePlana(puntos: PuntoPrecio[]): boolean {
 export function textoSerieCompacta(serie: SeriePrecio): string {
   const sondeos = serie.puntos.length;
   const hora = horaGtfs(serie.salida);
-  const tren = serie.numeroTren ? ` · tren ${serie.numeroTren}` : '';
-  return `${hora}${tren} — ${formatearPrecio(serie.minimo)} (sin cambios · ${sondeos} sondeo${
-    sondeos === 1 ? '' : 's'
-  })`;
+  const tren = serie.numeroTren ? t('precios.tren', { tren: serie.numeroTren }) : '';
+  const resumen = t(sondeos === 1 ? 'precios.sondeosUno' : 'precios.sondeosVarios', { n: sondeos });
+  return t('precios.seriePlana', { hora, tren, precio: formatearPrecio(serie.minimo), resumen });
 }
 
 /**
@@ -110,8 +110,7 @@ export function recortarContagos(contagos: ContagoPrecio[]): {
 /** "…y 37 sondeos anteriores" (singular si solo queda uno fuera). */
 export function textoSondeosOcultos(sondeos: number): string {
   if (sondeos <= 0) return '';
-  if (sondeos === 1) return '…y 1 sondeo anterior';
-  return `…y ${sondeos} sondeos anteriores`;
+  return t(sondeos === 1 ? 'precios.ocultosUno' : 'precios.ocultosVarios', { n: sondeos });
 }
 
 /**
@@ -130,7 +129,7 @@ export function anchoBarra(
 }
 
 function fechaCorta(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
 }
 
 /** Horas redondeadas entre dos marcas de tiempo, con un mínimo de 1 h. */
@@ -148,13 +147,16 @@ export function consejoPrecio(puntos: PuntoPrecio[]): string {
     (p): p is PuntoPrecio & { precioMin: number } => p.precioMin !== null,
   );
   const primero = conPrecio[0];
-  if (!primero) return 'Sin datos de precio todavía';
+  if (!primero) return t('precios.sinDatos');
   const ultimo = conPrecio[conPrecio.length - 1] ?? primero;
 
   const minimo = conPrecio.reduce((m, p) => (p.precioMin < m.precioMin ? p : m), primero);
 
   if (ultimo.precioMin > minimo.precioMin) {
-    return `Sube: el mínimo fue ${formatearPrecio(minimo.precioMin)} el ${fechaCorta(minimo.registradoEn)}`;
+    return t('precios.sube', {
+      minimo: formatearPrecio(minimo.precioMin),
+      fecha: fechaCorta(minimo.registradoEn),
+    });
   }
 
   // El último es el mínimo: si antes hubo algún precio más alto, ya ha bajado
@@ -166,7 +168,7 @@ export function consejoPrecio(puntos: PuntoPrecio[]): string {
     }
   }
   if (maximoAnterior !== null) {
-    return `El precio ha bajado desde ${formatearPrecio(maximoAnterior)} → buen momento`;
+    return t('precios.haBajado', { precio: formatearPrecio(maximoAnterior) });
   }
-  return `Precio estable en las últimas ${horasEntre(primero.registradoEn, ultimo.registradoEn)} h`;
+  return t('precios.estable', { horas: horasEntre(primero.registradoEn, ultimo.registradoEn) });
 }

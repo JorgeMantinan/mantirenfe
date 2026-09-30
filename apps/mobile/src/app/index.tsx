@@ -1,6 +1,7 @@
 import { Redirect, Stack, router } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Boton } from '@/components/Boton';
 import { useAuth } from '@/hooks/useAuth';
 import { useTema } from '@/lib/tema-contexto';
@@ -9,6 +10,7 @@ import { espaciado, type Paleta } from '@/lib/tema';
 export default function Indice() {
   const { user, cargando } = useAuth();
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   if (cargando) {
@@ -31,13 +33,15 @@ export default function Indice() {
           <Text style={s.logoTexto}>M</Text>
         </View>
         <Text style={s.titulo}>MantiRenfe</Text>
-        <Text style={s.subtitulo}>
-          Alertas de disponibilidad, cuenta atrás de tu viaje y trenes en tiempo real
-        </Text>
+        <Text style={s.subtitulo}>{t('inicio.lema')}</Text>
       </View>
       <View style={s.acciones}>
-        <Boton titulo="Iniciar sesión" onPress={() => router.push('/login')} />
-        <Boton titulo="Crear cuenta" variante="contorno" onPress={() => router.push('/registro')} />
+        <Boton titulo={t('comunes.iniciarSesion')} onPress={() => router.push('/login')} />
+        <Boton
+          titulo={t('comunes.crearCuenta')}
+          variante="contorno"
+          onPress={() => router.push('/registro')}
+        />
       </View>
     </View>
   );

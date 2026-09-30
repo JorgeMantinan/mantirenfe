@@ -1,4 +1,5 @@
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
+import { t } from '@/i18n';
 import { resumenWidget, type DatosWidget } from '@/lib/widget';
 
 const FONDO = '#75258c';
@@ -15,7 +16,7 @@ export function ProximoTrenMini({ datos }: { datos: DatosWidget | null }) {
   return (
     <FlexWidget
       clickAction="OPEN_APP"
-      accessibilityLabel="Próximo tren, abre MantiRenfe"
+      accessibilityLabel={t('widget.accesibilidad')}
       style={{
         height: 'match_parent',
         width: 'match_parent',

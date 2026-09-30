@@ -17,8 +17,11 @@
  * interpreta en su huso, que para un tren peninsular es lo esperado. Es copia
  * de `apps/web/src/lib/ics.ts` sin el nombre/descarga del fichero (eso va en
  * web, con `Blob` + `a[download]`): aquí el VEVENT se comparte con `Share` y
- * el sistema decide cómo abrirlo, por eso no importa de ningún otro módulo.
+ * el sistema decide cómo abrirlo, por eso los textos salen del i18n de la app
+ * (mismas claves `ics.*` que en web).
  */
+
+import { t } from '../i18n';
 
 /** Subconjunto de `AlertaResponse` necesario para montar el evento. */
 export interface AlertaParaIcs {
@@ -131,16 +134,19 @@ function selloUtc(ahora: Date): string {
 export function construirIcs(alerta: AlertaParaIcs, ahora: Date = new Date()): string {
   const hora = horaEvento(alerta);
   const ruta = `${alerta.origenNombre} → ${alerta.destinoNombre}`;
-  const resumen = `Aviso: ${ruta}${hora ? ` ${hora}` : ''}${
-    alerta.numeroTren ? ` (tren ${alerta.numeroTren})` : ''
+  const resumen = `${t('ics.aviso', { ruta })}${hora ? ` ${hora}` : ''}${
+    alerta.numeroTren ? t('ics.tren', { tren: alerta.numeroTren }) : ''
   }`;
   const detalle = [
-    `Alerta de MantiRenfe: ${ruta}`,
-    `Fecha: ${alerta.fechaViaje}`,
+    t('ics.alerta', { ruta }),
+    t('ics.fecha', { fecha: alerta.fechaViaje }),
     alerta.horaDesde || alerta.horaHasta
-      ? `Franja: ${alerta.horaDesde ?? '00:00'} – ${alerta.horaHasta ?? '23:59'}`
+      ? t('ics.franja', {
+          desde: alerta.horaDesde ?? '00:00',
+          hasta: alerta.horaHasta ?? '23:59',
+        })
       : null,
-    alerta.numeroTren ? `Tren ${alerta.numeroTren}` : null,
+    alerta.numeroTren ? t('ics.trenLinea', { tren: alerta.numeroTren }) : null,
   ]
     .filter((linea): linea is string => linea !== null)
     .join('\n');
@@ -166,7 +172,7 @@ export function construirIcs(alerta: AlertaParaIcs, ahora: Date = new Date()): s
     ...(recurrencia ? [`RRULE:${recurrencia}`] : []),
     'BEGIN:VALARM',
     'ACTION:DISPLAY',
-    `DESCRIPTION:${escaparTexto(`Recordatorio de salida: ${ruta}`)}`,
+    `DESCRIPTION:${escaparTexto(t('ics.recordatorio', { ruta }))}`,
     `TRIGGER:-PT${MINUTOS_AVISO_ICS}M`,
     'END:VALARM',
     'END:VEVENT',

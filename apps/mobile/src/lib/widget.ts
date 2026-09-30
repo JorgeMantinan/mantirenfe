@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { horaGtfs, type AlertaResponse } from '@mantirenfe/shared-types';
+import { locale, t } from '../i18n';
 
 /** Nombre del widget; debe coincidir con `widgets[].name` de app.json. */
 export const NOMBRE_WIDGET = 'ProximoTren';
@@ -41,13 +42,32 @@ const DIAS_SEMANA = [
   'domingo',
   'lunes',
   'martes',
-  'miércoles',
+  'miercoles',
   'jueves',
   'viernes',
-  'sábado',
+  'sabado',
 ] as const;
 
-const MESES = [
+type ClaveDia =
+  | 'semana.domingo'
+  | 'semana.lunes'
+  | 'semana.martes'
+  | 'semana.miercoles'
+  | 'semana.jueves'
+  | 'semana.viernes'
+  | 'semana.sabado';
+
+const CLAVES_DIAS: Record<(typeof DIAS_SEMANA)[number], ClaveDia> = {
+  domingo: 'semana.domingo',
+  lunes: 'semana.lunes',
+  martes: 'semana.martes',
+  miercoles: 'semana.miercoles',
+  jueves: 'semana.jueves',
+  viernes: 'semana.viernes',
+  sabado: 'semana.sabado',
+};
+
+const MESES_ES = [
   'ene',
   'feb',
   'mar',
@@ -60,6 +80,21 @@ const MESES = [
   'oct',
   'nov',
   'dic',
+] as const;
+
+const MESES_EN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ] as const;
 
 export function fechaLocal(d: Date): string {
@@ -84,16 +119,19 @@ export function sumarDias(fecha: string, dias: number): string {
 export function etiquetaDia(fecha: string, hoy: Date = new Date()): string | null {
   const hoyIso = fechaLocal(hoy);
   if (!fecha || fecha <= hoyIso) return null;
-  if (fecha === sumarDias(hoyIso, 1)) return 'mañana';
+  if (fecha === sumarDias(hoyIso, 1)) return t('widget.manana');
   const [anio, mes, dia] = fecha.split('-').map(Number);
   const dow = new Date(anio ?? 1970, (mes ?? 1) - 1, dia ?? 1).getDay();
-  return `${DIAS_SEMANA[dow] ?? ''} ${dia ?? ''}`.trim();
+  const claveDia = DIAS_SEMANA[dow];
+  const nombre = claveDia ? t(CLAVES_DIAS[claveDia]) : '';
+  return `${nombre} ${dia ?? ''}`.trim();
 }
 
 /** Fecha corta para el widget ("3 oct"). */
 export function fechaCorta(fecha: string): string {
   const [, mes, dia] = fecha.split('-').map(Number);
-  return `${dia ?? ''} ${MESES[(mes ?? 1) - 1] ?? ''}`.trim();
+  const meses = locale().startsWith('en') ? MESES_EN : MESES_ES;
+  return `${dia ?? ''} ${meses[(mes ?? 1) - 1] ?? ''}`.trim();
 }
 
 /** ¿La alerta se vigila en esa fecha? (las recurrentes no caducan; soloLaborables = lun-vie). */
@@ -228,7 +266,9 @@ export function resumenWidget(datos: DatosWidget | null, hoy: Date = new Date())
       numeroTren: null,
       ruta: null,
       dia: null,
-      vacio: proximo ? `Próximo viaje: ${fechaCorta(proximo)}` : 'Sin salidas',
+      vacio: proximo
+        ? t('widget.proximoViaje', { fecha: fechaCorta(proximo) })
+        : t('widget.sinSalidasCorto'),
     };
   }
   const fecha = salida.fecha ?? datos?.fecha ?? '';

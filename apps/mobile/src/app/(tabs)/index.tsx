@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import type { AlertaResponse } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
@@ -30,6 +31,7 @@ export default function Alertas() {
   const [listo, setListo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
@@ -57,32 +59,42 @@ export default function Alertas() {
       await api(`/alertas/${alerta.id}`, { method: 'PATCH', json: { estado: nuevo } });
       cargar();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo actualizar');
+      Alert.alert(
+        t('comunes.error'),
+        e instanceof Error ? e.message : t('comunes.errorActualizar'),
+      );
     }
   };
 
   const eliminar = (alerta: AlertaResponse) => {
-    Alert.alert('Eliminar alerta', `¿Vigilar ${alerta.origenNombre} → ${alerta.destinoNombre}?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: () => {
-          void api(`/alertas/${alerta.id}`, { method: 'DELETE' })
-            .then(cargar)
-            .catch((e: Error) => Alert.alert('Error', e.message));
+    Alert.alert(
+      t('lista.eliminarTitulo'),
+      t('lista.eliminarCuerpo', {
+        origen: alerta.origenNombre,
+        destino: alerta.destinoNombre,
+      }),
+      [
+        { text: t('comunes.cancelar'), style: 'cancel' },
+        {
+          text: t('comunes.eliminar'),
+          style: 'destructive',
+          onPress: () => {
+            void api(`/alertas/${alerta.id}`, { method: 'DELETE' })
+              .then(cargar)
+              .catch((e: Error) => Alert.alert(t('comunes.error'), e.message));
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
     <View style={s.pantalla}>
       <View style={s.encabezado}>
         <View style={s.filaEncabezado}>
-          <Text style={s.titulo}>Mis alertas</Text>
+          <Text style={s.titulo}>{t('lista.titulo')}</Text>
           <Boton
-            titulo="+ Nueva"
+            titulo={t('lista.nueva')}
             onPress={() => router.push('/alertas/nueva')}
             style={s.botonNueva}
           />
@@ -94,7 +106,7 @@ export default function Alertas() {
             style={s.acceso}
           >
             <Ionicons name="warning-outline" size={14} color={paleta.primario} />
-            <Text style={s.accesoTexto}>Incidencias</Text>
+            <Text style={s.accesoTexto}>{t('comunes.incidencias')}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="link"
@@ -102,7 +114,7 @@ export default function Alertas() {
             style={s.acceso}
           >
             <Ionicons name="remove-circle-outline" size={14} color={paleta.primario} />
-            <Text style={s.accesoTexto}>Suprimidos</Text>
+            <Text style={s.accesoTexto}>{t('comunes.suprimidos')}</Text>
           </Pressable>
         </View>
       </View>
@@ -123,19 +135,23 @@ export default function Alertas() {
           cargando ? null : (
             <View style={s.vacio}>
               <Ionicons name="notifications-off-outline" size={40} color={paleta.primario} />
-              <Text style={s.vacioTitulo}>Aún no tienes alertas</Text>
-              <Text style={s.vacioTexto}>
-                Crea una para tu próximo viaje y te avisaremos si se libera plaza.
-              </Text>
-              <Boton titulo="Crear la primera" onPress={() => router.push('/alertas/nueva')} />
+              <Text style={s.vacioTitulo}>{t('lista.vacioTitulo')}</Text>
+              <Text style={s.vacioTexto}>{t('lista.vacioTexto')}</Text>
+              <Boton
+                titulo={t('lista.crearPrimera')}
+                onPress={() => router.push('/alertas/nueva')}
+              />
             </View>
           )
         }
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Ver detalle de ${item.origenNombre} a ${item.destinoNombre}`}
-            accessibilityHint="Muestra las plazas, la evolución del precio y los avisos"
+            accessibilityLabel={t('lista.a11yVer', {
+              origen: item.origenNombre,
+              destino: item.destinoNombre,
+            })}
+            accessibilityHint={t('lista.a11yPista')}
             onPress={() => router.push(`/alertas/${item.id}`)}
             style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
           >
@@ -147,7 +163,11 @@ export default function Alertas() {
                     {item.destinoNombre}
                   </Text>
                   <Text style={s.detalle}>
-                    {item.fechaViaje} · cada {item.intervaloSondeoMin} min · {item.bono}
+                    {t('lista.metaAlerta', {
+                      fecha: item.fechaViaje,
+                      min: item.intervaloSondeoMin,
+                      bono: item.bono,
+                    })}
                   </Text>
                   <View style={s.filaAvisos}>
                     <Ionicons
@@ -175,13 +195,13 @@ export default function Alertas() {
               </View>
               <View style={s.acciones}>
                 <Boton
-                  titulo={item.estado === 'ACTIVA' ? 'Pausar' : 'Reanudar'}
+                  titulo={item.estado === 'ACTIVA' ? t('lista.pausar') : t('lista.reanudar')}
                   variante="contorno"
                   onPress={() => void alternar(item)}
                   style={s.botonAccion}
                 />
                 <Boton
-                  titulo="Editar"
+                  titulo={t('comunes.editar')}
                   variante="contorno"
                   onPress={() =>
                     router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
@@ -189,7 +209,7 @@ export default function Alertas() {
                   style={s.botonAccion}
                 />
                 <Boton
-                  titulo="Eliminar"
+                  titulo={t('comunes.eliminar')}
                   variante="fantasma"
                   onPress={() => eliminar(item)}
                   style={s.botonAccion}
@@ -205,20 +225,6 @@ export default function Alertas() {
 
 /** Cuántas salidas enseña la tarjeta: la próxima + dos filas compactas. */
 const MAXIMO_SALIDAS = 3;
-
-/** Badge corto de las filas compactas: "Plazas" en vez de "Hay plazas desde …". */
-function textoPlazasCorto(estado: EstadoPlazas): string {
-  switch (estado) {
-    case 'cancelado':
-      return 'Cancelado';
-    case 'plazas':
-      return 'Plazas';
-    case 'completo':
-      return 'Completo';
-    default:
-      return 'Sin datos';
-  }
-}
 
 /**
  * Inicio de una fila compacta: "08:00" si sale hoy, "Mañana 08:00" si cae otro
@@ -239,7 +245,22 @@ function inicioFila(salida: ProximaSalida, hoy: string): string {
 function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) {
   const [ahora, setAhora] = useState(() => new Date());
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
+
+  /** Badge corto de las filas compactas: "Plazas" en vez de "Hay plazas desde …". */
+  const textoPlazasCorto = (estado: EstadoPlazas): string => {
+    switch (estado) {
+      case 'cancelado':
+        return t('comunes.cancelado');
+      case 'plazas':
+        return t('comunes.plazas');
+      case 'completo':
+        return t('comunes.completo');
+      default:
+        return t('comunes.sinDatos');
+    }
+  };
 
   useEffect(() => {
     const id = setInterval(() => setAhora(new Date()), INTERVALO_CUENTA_ATRAS_MS);
@@ -255,29 +276,32 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
   if (!salida) {
     return (
       <Tarjeta>
-        <Text style={s.viajeTitulo}>Tu próximo viaje</Text>
-        <Text style={s.viajeVacio}>Aún no hay ninguna salida en camino</Text>
+        <Text style={s.viajeTitulo}>{t('viaje.titulo')}</Text>
+        <Text style={s.viajeVacio}>{t('viaje.vacio')}</Text>
       </Tarjeta>
     );
   }
 
   const hoy = relojPeninsular(ahora).fecha;
   const etiqueta = etiquetaDia(salida.fecha, hoy);
-  const detalles = [salida.salida ?? 'hora por confirmar'];
-  if (salida.numeroTren) detalles.push(`tren ${salida.numeroTren}`);
+  const detalles = [salida.salida ?? t('viaje.horaPorConfirmar')];
+  if (salida.numeroTren) detalles.push(t('viaje.tren', { tren: salida.numeroTren }));
   const linea = salida.salida ? `${etiqueta} · ${detalles.join(' · ')}` : detalles.join(' · ');
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${salida.origenNombre} a ${salida.destinoNombre}`}
-      accessibilityHint="Abre el detalle de la alerta"
+      accessibilityLabel={t('viaje.a11yRuta', {
+        origen: salida.origenNombre,
+        destino: salida.destinoNombre,
+      })}
+      accessibilityHint={t('viaje.a11yPista')}
       onPress={() => router.push(`/alertas/${salida.alertaId}`)}
       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >
       <Tarjeta style={{ borderColor: paleta.primario }}>
         <View style={s.viajeFila}>
-          <Text style={s.viajeTitulo}>Tu próximo viaje</Text>
+          <Text style={s.viajeTitulo}>{t('viaje.titulo')}</Text>
           <Etiqueta tono={tonoPlazas(salida.estado)}>{textoPlazas(salida)}</Etiqueta>
         </View>
         <Text style={s.viajeRuta}>
@@ -290,19 +314,23 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
         <Text style={s.viajeLinea}>{linea}</Text>
         {salida.estado === 'sin-datos' ? (
           <Text style={s.viajeNota}>
-            Aún no sabemos las plazas: comprobamos cada {salida.intervaloSondeoMin} min
+            {t('viaje.sinPlazas', { min: salida.intervaloSondeoMin })}
           </Text>
         ) : null}
         {siguientes.length > 0 ? (
           <View style={s.viajeSiguientes}>
             <View style={s.viajeSeparador} />
-            <Text style={s.viajeSiguientesTitulo}>Y también:</Text>
+            <Text style={s.viajeSiguientesTitulo}>{t('viaje.tambien')}</Text>
             {siguientes.map((siguiente) => (
               <Pressable
                 key={siguiente.alertaId}
                 accessibilityRole="button"
-                accessibilityLabel={`${inicioFila(siguiente, hoy)} de ${siguiente.origenNombre} a ${siguiente.destinoNombre}`}
-                accessibilityHint="Abre el detalle de la alerta"
+                accessibilityLabel={t('viaje.a11yFila', {
+                  fila: inicioFila(siguiente, hoy),
+                  origen: siguiente.origenNombre,
+                  destino: siguiente.destinoNombre,
+                })}
+                accessibilityHint={t('viaje.a11yPista')}
                 onPress={() => router.push(`/alertas/${siguiente.alertaId}`)}
                 style={({ pressed }) => [s.viajeSiguienteFila, { opacity: pressed ? 0.6 : 1 }]}
               >

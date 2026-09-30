@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import {
   duracionCorta,
   horaGtfs,
@@ -12,8 +13,9 @@ import {
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
+import { locale } from '@/i18n';
 import { api } from '@/lib/api';
-import { etiquetaEstado } from '@/lib/alertas';
+import { etiquetaCriterio, etiquetaEstado } from '@/lib/alertas';
 import { construirIcs } from '@/lib/ics';
 import {
   agruparContagos,
@@ -29,12 +31,15 @@ import {
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 
-/** "hace X min" si es reciente; si no, fecha legible en español. */
-function haceCuanto(iso: string): string {
+/** Traductor que usan los ayudantes de este módulo (se pasa desde el render). */
+type Traductor = ReturnType<typeof useTranslation>['t'];
+
+/** "hace X min" si es reciente; si no, fecha legible en el idioma activo. */
+function haceCuanto(iso: string, t: Traductor): string {
   const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (minutos < 1) return 'hace un momento';
-  if (minutos < 60) return `hace ${minutos} min`;
-  return new Date(iso).toLocaleString('es-ES');
+  if (minutos < 1) return t('detalle.haceMomento');
+  if (minutos < 60) return t('detalle.haceMin', { min: minutos });
+  return new Date(iso).toLocaleString(locale());
 }
 
 /**
@@ -45,34 +50,34 @@ function haceCuanto(iso: string): string {
  * (y se distingue de «todavía no se ha sondeado»). El resto de criterios
  * mantienen su mensaje habitual.
  */
-function mensajeEstadoVacio(alerta: AlertaResponse): string {
+function mensajeEstadoVacio(alerta: AlertaResponse, t: Traductor): string {
   const franja =
     alerta.horaDesde || alerta.horaHasta
       ? `${alerta.horaDesde ?? '00:00'}–${alerta.horaHasta ?? '23:59'}`
       : null;
   if (alerta.criterio === 'RETRASO') {
     if (!alerta.ultimoSondeoEn) {
-      return `Todavía no se ha sondeado esta alerta — se consulta cada ${alerta.intervaloSondeoMin} min`;
+      return t('detalle.sinSondeo', { min: alerta.intervaloSondeoMin });
     }
-    const donde = franja ? `en tu franja (${franja})` : 'en tu ruta';
+    const donde = franja ? t('detalle.enFranja', { franja }) : t('detalle.enRuta');
     // N solo es conocible si se vigila un tren concreto
-    const vigilancia = alerta.numeroTren ? ' — vigilamos 1 tren' : '';
-    return `Sin retrasos ahora mismo ${donde}${vigilancia}`;
+    const vigilancia = alerta.numeroTren ? t('detalle.vigilamos1') : '';
+    return t('detalle.sinRetrasos', { donde, vigilancia });
   }
   if (alerta.criterio === 'PRECIO') {
-    return `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    return t('detalle.sinPrecio', { min: alerta.intervaloSondeoMin });
   }
   if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA') {
-    return `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    return t('detalle.sinPlazas', { min: alerta.intervaloSondeoMin });
   }
-  return 'Solo para alertas de disponibilidad';
+  return t('detalle.soloDisponibilidad');
 }
 
 /** "AVE · llega 09:48 · 3h48": lo que diferencia dos filas de la tabla. */
-function detalleFila(tren: EstadoSerializado): string {
+function detalleFila(tren: EstadoSerializado, t: Traductor): string {
   return [
     tren.tipoTren,
-    tren.horaLlegada ? `llega ${tren.horaLlegada}` : null,
+    tren.horaLlegada ? t('detalle.llega', { hora: tren.horaLlegada }) : null,
     typeof tren.duracionMin === 'number' ? duracionCorta(tren.duracionMin) : null,
   ]
     .filter((texto): texto is string => Boolean(texto))
@@ -87,6 +92,7 @@ export default function DetalleAlerta() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { paleta } = useTema();
+  const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const cargar = useCallback(() => {
@@ -135,7 +141,7 @@ export default function DetalleAlerta() {
     try {
       await Share.share({ message: url });
     } catch {
-      Alert.alert('Compartir alerta', url);
+      Alert.alert(t('detalle.compartirTitulo'), url);
     }
   };
 
@@ -143,12 +149,12 @@ export default function DetalleAlerta() {
   const anadirAlCalendario = async () => {
     if (!alerta) return;
     try {
-      await Share.share({ message: construirIcs(alerta), title: 'Añadir al calendario' });
+      await Share.share({
+        message: construirIcs(alerta),
+        title: t('detalle.calendarioTitulo'),
+      });
     } catch {
-      Alert.alert(
-        'Añadir al calendario',
-        'No se ha podido compartir el evento. Vuelve a intentarlo o entra en MantiRenfe desde el navegador para descargar el archivo .ics.',
-      );
+      Alert.alert(t('detalle.calendarioTitulo'), t('detalle.calendarioError'));
     }
   };
 
@@ -181,38 +187,51 @@ export default function DetalleAlerta() {
               </Etiqueta>
               {alerta.recurrente ? (
                 <Etiqueta tono="primario">
-                  {alerta.soloLaborables ? 'L-V: Cada día laborable' : 'Cada día'}
+                  {alerta.soloLaborables ? t('detalle.laborables') : t('detalle.cadaDia')}
                 </Etiqueta>
               ) : null}
             </View>
           </View>
           <Text style={s.detalle}>
-            {alerta.fechaViaje} · {alerta.criterio} · cada {alerta.intervaloSondeoMin} min ·{' '}
-            {alerta.bono}
+            {t('detalle.metaAlerta', {
+              fecha: alerta.fechaViaje,
+              criterio: etiquetaCriterio(alerta.criterio),
+              min: alerta.intervaloSondeoMin,
+              bono: alerta.bono,
+            })}
           </Text>
           {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null ? (
             <Text style={s.detalle}>
-              Objetivo: avisar si baja de {formatearPrecio(alerta.precioObjetivo)}
+              {t('detalle.objetivo', { precio: formatearPrecio(alerta.precioObjetivo) })}
             </Text>
           ) : null}
           {alerta.horaDesde || alerta.horaHasta ? (
             <Text style={s.detalle}>
-              Franja: {alerta.horaDesde ?? '00:00'} – {alerta.horaHasta ?? '23:59'}
-              {alerta.numeroTren ? ` · tren ${alerta.numeroTren}` : ''}
+              {t('detalle.franja', {
+                desde: alerta.horaDesde ?? '00:00',
+                hasta: alerta.horaHasta ?? '23:59',
+              })}
+              {alerta.numeroTren ? t('detalle.trenSufijo', { tren: alerta.numeroTren }) : ''}
             </Text>
           ) : alerta.numeroTren ? (
-            <Text style={s.detalle}>Tren {alerta.numeroTren}</Text>
+            <Text style={s.detalle}>{t('detalle.tren', { tren: alerta.numeroTren })}</Text>
           ) : null}
           <Text style={s.detalle}>
-            Último sondeo:{' '}
-            {alerta.ultimoSondeoEn
-              ? new Date(alerta.ultimoSondeoEn).toLocaleString('es-ES')
-              : 'todavía ninguno'}
+            {t('detalle.ultimoSondeo', {
+              valor: alerta.ultimoSondeoEn
+                ? new Date(alerta.ultimoSondeoEn).toLocaleString(locale())
+                : t('detalle.ninguno'),
+            })}
           </Text>
           <View style={s.acciones}>
-            <Boton titulo="Compartir" variante="contorno" onPress={compartir} style={s.compartir} />
             <Boton
-              titulo="Añadir al calendario"
+              titulo={t('comunes.compartir')}
+              variante="contorno"
+              onPress={compartir}
+              style={s.compartir}
+            />
+            <Boton
+              titulo={t('detalle.calendarioTitulo')}
               variante="contorno"
               onPress={anadirAlCalendario}
               style={s.compartir}
@@ -224,12 +243,12 @@ export default function DetalleAlerta() {
       {alerta ? (
         <>
           <Text style={s.subtitulo}>
-            {alerta.criterio === 'RETRASO' ? 'Retrasos de hoy' : 'Plazas de hoy'}
+            {alerta.criterio === 'RETRASO' ? t('detalle.hoyRetrasos') : t('detalle.hoyPlazas')}
           </Text>
           <Tarjeta>
             {trenes.length > 0 ? (
               trenes.map((tren) => {
-                const extras = detalleFila(tren);
+                const extras = detalleFila(tren, t);
                 return (
                   <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
                     <View style={s.plazaInfo}>
@@ -242,21 +261,21 @@ export default function DetalleAlerta() {
                       ) : null}
                       {tren.precioMin !== null ? (
                         <Text style={s.precio}>
-                          Desde {formatearPrecio(tren.precioMin)}
+                          {t('detalle.desde', { precio: formatearPrecio(tren.precioMin) })}
                           {tren.tarifa ? ` · ${tren.tarifa}` : ''}
                         </Text>
                       ) : null}
                       {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
                         <Text style={s.noPara}>
-                          No para en: {tren.paradasSuprimidas.join(', ')}
+                          {t('detalle.noPara', { lista: tren.paradasSuprimidas.join(', ') })}
                         </Text>
                       ) : null}
                     </View>
                     {tren.cancelado ? (
-                      <Etiqueta tono="error">Cancelado</Etiqueta>
+                      <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta>
                     ) : (
                       <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
-                        {tren.disponible ? 'Hay plazas' : 'Completo'}
+                        {tren.disponible ? t('comunes.hayPlazas') : t('comunes.completo')}
                       </Etiqueta>
                     )}
                   </View>
@@ -264,9 +283,11 @@ export default function DetalleAlerta() {
               })
             ) : (
               <>
-                <Text style={s.detalle}>{mensajeEstadoVacio(alerta)}</Text>
+                <Text style={s.detalle}>{mensajeEstadoVacio(alerta, t)}</Text>
                 {alerta.ultimoSondeoEn ? (
-                  <Text style={s.fecha}>Último sondeo: {haceCuanto(alerta.ultimoSondeoEn)}</Text>
+                  <Text style={s.fecha}>
+                    {t('detalle.ultimoSondeo', { valor: haceCuanto(alerta.ultimoSondeoEn, t) })}
+                  </Text>
                 ) : null}
               </>
             )}
@@ -276,11 +297,11 @@ export default function DetalleAlerta() {
 
       {alerta && verEvolucion ? (
         <>
-          <Text style={s.subtitulo}>Evolución de precio</Text>
+          <Text style={s.subtitulo}>{t('detalle.evolucionTitulo')}</Text>
           <Tarjeta>
-            <Text style={s.detalle}>¿Compro ahora o espero? Puntos de cada sondeo</Text>
+            <Text style={s.detalle}>{t('detalle.evolucionSubtitulo')}</Text>
             {seriesPrecios.length === 0 ? (
-              <Text style={s.detalle}>Aún no hay evolución de precios</Text>
+              <Text style={s.detalle}>{t('detalle.sinEvolucion')}</Text>
             ) : (
               seriesPrecios.map((serie) => {
                 const plana = esSeriePlana(serie.puntos);
@@ -301,7 +322,9 @@ export default function DetalleAlerta() {
                     <View style={s.serieCabecera}>
                       <Text style={s.plazaTren}>
                         {horaGtfs(serie.salida)}
-                        {serie.numeroTren ? ` · tren ${serie.numeroTren}` : ''}
+                        {serie.numeroTren
+                          ? t('detalle.trenSufijo', { tren: serie.numeroTren })
+                          : ''}
                       </Text>
                       <Text style={s.fecha}>
                         {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
@@ -347,7 +370,7 @@ export default function DetalleAlerta() {
         </>
       ) : null}
 
-      <Text style={s.subtitulo}>Avisos de esta alerta</Text>
+      <Text style={s.subtitulo}>{t('detalle.avisosTitulo')}</Text>
     </View>
   );
 
@@ -360,16 +383,16 @@ export default function DetalleAlerta() {
       contentContainerStyle={s.lista}
       ListHeaderComponent={cabecera}
       ListEmptyComponent={
-        cargando || error ? null : <Text style={s.vacio}>Sin avisos todavía para esta alerta.</Text>
+        cargando || error ? null : <Text style={s.vacio}>{t('detalle.sinAvisos')}</Text>
       }
       renderItem={({ item }) => (
         <Tarjeta>
           <View style={s.fila}>
             <Text style={s.notiTitulo}>{item.titulo}</Text>
-            {!item.leida ? <Etiqueta tono="primario">Nuevo</Etiqueta> : null}
+            {!item.leida ? <Etiqueta tono="primario">{t('comunes.nuevo')}</Etiqueta> : null}
           </View>
           <Text style={s.detalle}>{item.cuerpo}</Text>
-          <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString('es-ES')}</Text>
+          <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString(locale())}</Text>
         </Tarjeta>
       )}
     />

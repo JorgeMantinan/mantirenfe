@@ -1,4 +1,5 @@
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
+import { t } from '@/i18n';
 import { etiquetaDia, fechaCorta, type DatosWidget } from '@/lib/widget';
 
 const FONDO = '#75258c';
@@ -12,7 +13,7 @@ export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
   return (
     <FlexWidget
       clickAction="OPEN_APP"
-      accessibilityLabel="Próximo tren, abre MantiRenfe"
+      accessibilityLabel={t('widget.accesibilidad')}
       style={{
         height: 'match_parent',
         width: 'match_parent',
@@ -24,15 +25,15 @@ export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
       }}
     >
       <TextWidget
-        text="PRÓXIMO TREN"
+        text={t('widget.titulo')}
         style={{ color: BLANCO, fontSize: 12, fontWeight: '800', letterSpacing: 1 }}
       />
       {salidas.length === 0 ? (
         <TextWidget
           text={
             datos?.proximoViaje
-              ? `Próximo viaje: ${fechaCorta(datos.proximoViaje)}`
-              : 'Sin salidas de hoy. Abre MantiRenfe para refrescar tus alertas.'
+              ? t('widget.proximoViaje', { fecha: fechaCorta(datos.proximoViaje) })
+              : t('widget.sinSalidas')
           }
           style={{ color: BLANCO_SUAVE, fontSize: 13 }}
           maxLines={3}

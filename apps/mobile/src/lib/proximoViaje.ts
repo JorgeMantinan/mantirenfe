@@ -1,4 +1,5 @@
 import { fechaGtfs, type AlertaResponse, type EstadoSerializado } from '@mantirenfe/shared-types';
+import { locale, t } from '../i18n';
 import { formatearPrecio } from './precios';
 
 /** Días que miramos hacia delante cuando una alerta recurrente no tiene trenes hoy. */
@@ -270,28 +271,50 @@ export function instantePeninsular(fecha: string, hora: string): number {
 
 /** "faltan 3 h 25 min" (o "ha salido") a partir de los milisegundos restantes. */
 export function cuentaAtras(milisegundos: number): string {
-  if (milisegundos <= 0) return 'ha salido';
+  if (milisegundos <= 0) return t('proximo.haSalido');
   const minutos = Math.floor(milisegundos / 60_000);
-  if (minutos === 0) return 'faltan menos de 1 min';
+  if (minutos === 0) return t('proximo.menosDeMin');
   const dias = Math.floor(minutos / 1440);
   const horas = Math.floor((minutos % 1440) / 60);
   const resto = minutos % 60;
-  if (dias > 0) return `faltan ${dias} d ${horas} h`;
-  if (horas > 0) return resto === 0 ? `faltan ${horas} h` : `faltan ${horas} h ${resto} min`;
-  return `faltan ${minutos} min`;
+  if (dias > 0) return t('proximo.diasHoras', { dias, horas });
+  if (horas > 0)
+    return resto === 0
+      ? t('proximo.horas', { horas })
+      : t('proximo.horasMin', { horas, min: resto });
+  return t('proximo.minutos', { minutos });
 }
 
 const DIAS_SEMANA = [
   'domingo',
   'lunes',
   'martes',
-  'miércoles',
+  'miercoles',
   'jueves',
   'viernes',
-  'sábado',
+  'sabado',
 ] as const;
 
-const MESES = [
+type ClaveDia =
+  | 'semana.domingo'
+  | 'semana.lunes'
+  | 'semana.martes'
+  | 'semana.miercoles'
+  | 'semana.jueves'
+  | 'semana.viernes'
+  | 'semana.sabado';
+
+const CLAVES_DIAS: Record<(typeof DIAS_SEMANA)[number], ClaveDia> = {
+  domingo: 'semana.domingo',
+  lunes: 'semana.lunes',
+  martes: 'semana.martes',
+  miercoles: 'semana.miercoles',
+  jueves: 'semana.jueves',
+  viernes: 'semana.viernes',
+  sabado: 'semana.sabado',
+};
+
+const MESES_ES = [
   'ene',
   'feb',
   'mar',
@@ -306,10 +329,26 @@ const MESES = [
   'dic',
 ] as const;
 
+const MESES_EN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
 /** Fecha corta ("3 oct") para la tarjeta. */
 export function fechaCorta(fecha: string): string {
   const { mes, dia } = aFecha(fecha);
-  return `${dia} ${MESES[mes - 1] ?? ''}`.trim();
+  const meses = locale().startsWith('en') ? MESES_EN : MESES_ES;
+  return `${dia} ${meses[mes - 1] ?? ''}`.trim();
 }
 
 /**
@@ -317,14 +356,17 @@ export function fechaCorta(fecha: string): string {
  * o "3 oct" si ya queda más de una semana.
  */
 export function etiquetaDia(fecha: string, hoy: string): string {
-  if (fecha <= hoy) return 'Hoy';
+  if (fecha <= hoy) return t('proximo.hoy');
   const manana = sumarDias(hoy, 1);
-  if (fecha === manana) return 'Mañana';
+  if (fecha === manana) return t('proximo.manana');
   const { dia } = aFecha(fecha);
   const dias = Math.round(
     (Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86_400_000,
   );
-  if (dias <= 7) return `${DIAS_SEMANA[diaSemana(fecha)] ?? ''} ${dia}`.trim();
+  const claveDia = DIAS_SEMANA[diaSemana(fecha)];
+  if (dias <= 7) {
+    return t('proximo.diaNumero', { dia: claveDia ? t(CLAVES_DIAS[claveDia]) : '', n: dia });
+  }
   return fechaCorta(fecha);
 }
 
@@ -332,15 +374,15 @@ export function etiquetaDia(fecha: string, hoy: string): string {
 export function textoPlazas(salida: Pick<ProximaSalida, 'estado' | 'precioMin'>): string {
   switch (salida.estado) {
     case 'cancelado':
-      return 'Cancelado';
+      return t('comunes.cancelado');
     case 'plazas':
       return salida.precioMin === null
-        ? 'Hay plazas'
-        : `Hay plazas desde ${formatearPrecio(salida.precioMin)}`;
+        ? t('comunes.hayPlazas')
+        : t('proximo.hayPlazasDesde', { precio: formatearPrecio(salida.precioMin) });
     case 'completo':
-      return 'Completo';
+      return t('comunes.completo');
     default:
-      return 'Sin datos de plazas aún';
+      return t('proximo.sinPlazas');
   }
 }
 

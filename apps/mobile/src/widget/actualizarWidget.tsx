@@ -4,6 +4,7 @@ import { requestWidgetUpdate } from 'react-native-android-widget';
 import {
   calcularSalidasWidget,
   guardarDatosWidget,
+  leerDatosWidget,
   NOMBRE_WIDGET,
   NOMBRE_WIDGET_MINI,
   type DatosWidget,
@@ -34,6 +35,28 @@ export async function sincronizarWidget(
   } catch {
     // Sin widget en la pantalla de inicio (u error nativo): lo retoma el
     // refresco periódico del propio widget (updatePeriodMillis).
+  }
+}
+
+/**
+ * Vuelve a pintar el widget con lo que ya está en caché, sin consultar la API:
+ * se usa al cambiar el idioma, que el widget no percibe por sí solo (no monta
+ * React ni `useTranslation`).
+ */
+export async function repintarWidget(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  try {
+    const datos = await leerDatosWidget();
+    if (!datos) return;
+    for (const widgetName of [NOMBRE_WIDGET, NOMBRE_WIDGET_MINI]) {
+      await requestWidgetUpdate({
+        widgetName,
+        renderWidget: () => pinta(widgetName, datos),
+      });
+    }
+  } catch {
+    // El refresco periódico del propio widget retoma el resto
   }
 }
 
