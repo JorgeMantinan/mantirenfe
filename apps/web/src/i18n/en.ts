@@ -16,6 +16,8 @@ export const en: MismoArbol<Claves> = {
     crearAlerta: 'Create alert',
     transparencia: 'Transparency',
     cookies: 'Cookies',
+    privacidad: 'Privacy',
+    terminos: 'Terms',
     incidencias: 'Service incidents',
     suprimidos: 'Cancelled trains',
     impuntuales: 'Late trains',
@@ -399,6 +401,53 @@ export const en: MismoArbol<Claves> = {
     s4Titulo: 'How to control or delete what is stored',
     s4Texto:
       'You can delete MantiRenfe’s storage from your browser settings (Clear browsing data → Cookies and site data, or stored app data). You can also block cookies and localStorage per site; if you do, the session and remembered theme will stop working until you sign in again.',
+  },
+
+  // Privacy policy (required by Google OAuth)
+  privacidad: {
+    titulo: 'Privacy policy',
+    entradilla: 'What personal data we process, why, and what rights you have.',
+    s1Titulo: 'Controller and contact',
+    s1Texto:
+      'Jorge Mantiñán is the controller of the personal data processed by this application. For any inquiry or to exercise your rights, write to jorgemantinanmontero@gmail.com.',
+    s2Titulo: 'What data we process',
+    liCuenta:
+      '<strong>Account</strong>: the email and name you provide when signing up (Supabase Auth).',
+    liAlertas:
+      '<strong>Alerts and notices</strong>: watched routes, preferences (theme, language, notifications) and the history of notices sent, linked to your account.',
+    liTecnico:
+      '<strong>Technical data</strong>: push notification tokens of your device and local storage (session, theme, language) in your browser or app.',
+    liEmail:
+      '<strong>Emails</strong>: if you enable email notices, we use your address solely to send the notices you requested.',
+    s3Titulo: 'Purpose and legal basis',
+    s3Texto:
+      'We process your data to provide the service you requested (train alerts and notices), based on your consent when you sign up and enable notifications. We do not build profiles or use your data for our own advertising purposes.',
+    s4Titulo: 'Third parties we work with',
+    liTerceros:
+      '<strong>Supabase</strong> (authentication and database), <strong>Render</strong> (API and workers), <strong>Vercel</strong> (web), <strong>Expo/Google</strong> (push notifications), <strong>GitHub</strong> (CI) and <strong>Google AdSense</strong> (advertising, only with your consent — see the cookies policy).',
+    liRenfe:
+      '<strong>Train data</strong> comes from Renfe Operadora as open data (commercial reuse allowed); we are not affiliated with or endorsed by Renfe.',
+    s5Titulo: 'Retention and your rights',
+    s5Texto:
+      'We keep your data while your account is active; you can delete it at any time by closing your account or contacting us. You have the rights of access, rectification, erasure, objection and portability under the GDPR (EU) 2016/679 and Spanish LOPDGDD.',
+  },
+
+  // Terms of service (Google OAuth)
+  terminos: {
+    titulo: 'Terms of service',
+    entradilla: 'Basic rules for using MantiRenfe.',
+    s1Titulo: 'Use of the service',
+    s1Texto:
+      'MantiRenfe is an independent personal project: you can create alerts, check timetables and receive notices. We do not guarantee continuous availability or accuracy of the data: it comes from public sources of Renfe Operadora that may be updated or interrupted.',
+    s2Titulo: 'Accounts and abusive use',
+    s2Texto:
+      'You are responsible for your account. Intensive automated use (scraping of the platform), impersonation and any use that harms the service are prohibited. We may suspend accounts that breach these terms.',
+    s3Titulo: 'Intellectual property',
+    s3Texto:
+      '<strong>The MantiRenfe software belongs to its author.</strong> Train data belongs to Renfe Operadora (open data with mandatory attribution) and the "Renfe", "Ouigo" or "Iryo" marks to their owners; their use is purely informative without implying endorsement.',
+    s4Titulo: 'Limitation of liability',
+    s4Texto:
+      'The service is provided "as is": we are not liable for decisions taken based on the notices (including ticket purchases), nor for interruptions derived from the data sources. These terms may be updated; continued use implies acceptance.',
   },
 
   // ──────────────────────────────── página de incidencias

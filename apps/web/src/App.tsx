@@ -22,6 +22,8 @@ import { PaginaSuprimidos } from '@/pages/suprimidos/page';
 import { PaginaAjustes } from '@/pages/ajustes/page';
 import { PaginaCookies } from '@/pages/cookies/page';
 import { PaginaTransparencia } from '@/pages/transparencia/page';
+import { PaginaPrivacidad } from '@/pages/privacidad/page';
+import { PaginaTerminos } from '@/pages/terminos/page';
 import { PaginaTrenes } from '@/pages/trenes/page';
 import { PaginaTrayecto, PaginaTrayectos } from '@/pages/trayectos/page';
 
@@ -60,6 +62,8 @@ export default function App() {
       <Route path="/auth/callback" element={<PaginaAuthCallback />} />
       <Route path="/transparencia" element={<PaginaTransparencia />} />
       <Route path="/cookies" element={<PaginaCookies />} />
+      <Route path="/privacidad" element={<PaginaPrivacidad />} />
+      <Route path="/terminos" element={<PaginaTerminos />} />
       <Route element={<AppShell />}>
         <Route
           path="/dashboard"

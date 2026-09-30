@@ -14,6 +14,8 @@ export const es = {
     crearAlerta: 'Crear alerta',
     transparencia: 'Transparencia',
     cookies: 'Cookies',
+    privacidad: 'Privacidad',
+    terminos: 'Terminos',
     incidencias: 'Incidencias',
     suprimidos: 'Suprimidos',
     impuntuales: 'Trenes impuntuales',
@@ -400,6 +402,53 @@ export const es = {
     s4Titulo: 'Cómo controlar o borrar lo guardado',
     s4Texto:
       'Puedes borrar el almacenamiento de MantiRenfe desde la configuración de tu navegador (Borrar datos de navegación → Cookies y datos de sitios web, o datos guardados de aplicaciones). También puedes bloquear cookies y localStorage por sitio; si lo haces, la sesión y el tema recordado dejarán de funcionar hasta que vuelvas a iniciar sesión.',
+  },
+
+  // Politica de privacidad (Google OAuth exige enlace)
+  privacidad: {
+    titulo: 'Política de privacidad',
+    entradilla: 'Qué datos personales tratamos, con qué finalidad y qué derechos tienes.',
+    s1Titulo: 'Responsable y contacto',
+    s1Texto:
+      'Jorge Mantiñán es el responsable del tratamiento de los datos de esta aplicación. Para cualquier consulta o ejercicio de derechos, escribe a jorgemantinanmontero@gmail.com.',
+    s2Titulo: 'Qué datos tratamos',
+    liCuenta:
+      '<strong>Cuenta</strong>: email y nombre que proporcionas al registrarte (Supabase Auth).',
+    liAlertas:
+      '<strong>Alertas y avisos</strong>: trayectos vigilados, preferencias (tema, idioma, notificaciones) y el historial de avisos enviados, asociados a tu cuenta.',
+    liTecnico:
+      '<strong>Datos técnicos</strong>: tokens de notificaciones push de tu dispositivo y almacenamiento local (sesión, tema, idioma) en tu navegador o app.',
+    liEmail:
+      '<strong>Correos</strong>: si activas los avisos por email, usamos tu dirección exclusivamente para enviarte los avisos que hayas solicitado.',
+    s3Titulo: 'Finalidad y base legal',
+    s3Texto:
+      'Tratamos tus datos para prestar el servicio que solicitaste (alertas de trenes y avisos), con tu consentimiento al registrarte y activar las notificaciones. No elaboramos perfiles ni usamos tus datos con fines publicitarios propios.',
+    s4Titulo: 'Terceros con los que trabajamos',
+    liTerceros:
+      '<strong>Supabase</strong> (autenticación y base de datos), <strong>Render</strong> (API y workers), <strong>Vercel</strong> (web), <strong>Expo/Google</strong> (notificaciones push), <strong>GitHub</strong> (integración continua) y <strong>Google AdSense</strong> (publicidad, solo con tu consentimiento — ver la política de cookies).',
+    liRenfe:
+      '<strong>Datos ferroviarios</strong> proceden de Renfe Operadora en régimen de open data (reutilización comercial permitida); no estamos afiliados ni patrocinados por Renfe.',
+    s5Titulo: 'Conservación y derechos',
+    s5Texto:
+      'Conservamos los datos mientras tu cuenta esté activa; puedes eliminarlos en cualquier momento cerrando la cuenta o escribiendo a nuestro correo. Tienes derecho de acceso, rectificación, supresión, oposición y portabilidad conforme al RGPD (UE) 2016/679 y la LOPDGDD.',
+  },
+
+  // Terminos del servicio (Google OAuth)
+  terminos: {
+    titulo: 'Condiciones del servicio',
+    entradilla: 'Reglas básicas de uso de MantiRenfe.',
+    s1Titulo: 'Uso del servicio',
+    s1Texto:
+      'MantiRenfe es un proyecto independiente de uso personal: puedes crear alertas, consultar horarios y recibir avisos. No garantizamos la disponibilidad continua de los datos ni su exactitud: provienen de fuentes públicas de Renfe Operadora que pueden actualizarse o interrumpirse.',
+    s2Titulo: 'Cuentas y usos abusivos',
+    s2Texto:
+      'Eres responsable de tu cuenta. Quedan prohibidos el uso automatizado intensivo (scraping de la plataforma), la suplantación y cualquier uso que perjudique al servicio. Podemos suspender cuentas que incumplan estas condiciones.',
+    s3Titulo: 'Propiedad intelectual',
+    s3Texto:
+      '<strong>El software de MantiRenfe es de su autor.</strong> Los datos ferroviarios pertenecen a Renfe Operadora (open data con atribución obligatoria) y las marcas "Renfe", "Ouigo" o "Iryo" a sus titulares; su uso es meramente informativo sin sugerir patrocinio.',
+    s4Titulo: 'Limitación de responsabilidad',
+    s4Texto:
+      'El servicio se presta "tal cual": no respondemos de decisiones tomadas en base a los avisos (incluidas compras de billetes), ni de interrupciones derivadas de las fuentes de datos. Estas condiciones pueden actualizarse; el uso continuado implica su aceptación.',
   },
 
   // ──────────────────────────────── página de incidencias

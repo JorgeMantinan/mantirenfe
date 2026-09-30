@@ -52,6 +52,12 @@ export function PaginaLegal({
           <Link to="/cookies" className="hover:text-foreground">
             {t('comunes.cookies')}
           </Link>
+          <Link to="/privacidad" className="hover:text-foreground">
+            {t('comunes.privacidad')}
+          </Link>
+          <Link to="/terminos" className="hover:text-foreground">
+            {t('comunes.terminos')}
+          </Link>
           <span>{t('legal.copyright')}</span>
         </div>
       </footer>
