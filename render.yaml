@@ -77,15 +77,15 @@ services:
         value: '45'
       - key: RESUMEN_HORA
         value: '07:30'
-      # Env del worker — todas sync:false: se rellenan una vez en el dashboard
-      # del servicio nuevo (copia los valores del panel de "mantirenfe")
+      # Env del worker — solo lo que el worker usa de verdad (verificado con
+      # grep de process.env en apps/worker). sync:false = rellenar una vez en
+      # el dashboard del servicio nuevo copiando del panel de "mantirenfe".
+      # NO necesarias aquí (las usa la API o solo el sync de GitHub Actions):
+      #   API_PORT, SUPABASE_URL, DATABASE_URL_APP, WEB_ORIGIN, SENTRY_DSN,
+      #   GTFS_RT_URLS, GTFS_ZIP_URLS, GTFS_ZIP_URLS_OUIGO, NAP_API_KEY
       - key: REDIS_URL
         sync: false
       - key: DATABASE_URL
-        sync: false
-      - key: DATABASE_URL_APP
-        sync: false
-      - key: SUPABASE_URL
         sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false
@@ -103,17 +103,7 @@ services:
         sync: false
       - key: EMAIL_DESDE
         sync: false
-      - key: GTFS_RT_URLS
-        sync: false
       - key: GTFS_RT_TRIP_UPDATES_URL
         sync: false
       - key: GTFS_RT_ALERTS_URL
-        sync: false
-      - key: GTFS_ZIP_URLS
-        sync: false
-      - key: GTFS_ZIP_URLS_OUIGO
-        sync: false
-      - key: NAP_API_KEY
-        sync: false
-      - key: SENTRY_DSN
         sync: false
