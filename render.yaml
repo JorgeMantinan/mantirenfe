@@ -85,7 +85,7 @@ services:
       #   GTFS_RT_URLS, GTFS_ZIP_URLS, GTFS_ZIP_URLS_OUIGO, NAP_API_KEY
       - key: REDIS_URL
         sync: false
-      - key: DATABASE_URL
+      - key: DATABASE_URL_APP
         sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false
