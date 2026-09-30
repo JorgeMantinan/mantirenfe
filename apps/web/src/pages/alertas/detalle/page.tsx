@@ -47,6 +47,37 @@ function haceCuanto(iso: string): string {
   return new Date(iso).toLocaleString('es-ES');
 }
 
+/**
+ * Mensaje de la tarjeta de estado cuando `ultimoEstado` no tiene filas.
+ *
+ * Con criterio RETRASO el estado vacío no significa «no hay trenes»: significa
+ * que ninguno va con retraso ahora mismo, así que se avisa en esos términos
+ * (y se distingue de «todavía no se ha sondeado»). El resto de criterios
+ * mantienen su mensaje habitual.
+ */
+function mensajeEstadoVacio(alerta: AlertaResponse): string {
+  const franja =
+    alerta.horaDesde || alerta.horaHasta
+      ? `${alerta.horaDesde ?? '00:00'}–${alerta.horaHasta ?? '23:59'}`
+      : null;
+  if (alerta.criterio === 'RETRASO') {
+    if (!alerta.ultimoSondeoEn) {
+      return `Todavía no se ha sondeado esta alerta — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    }
+    const donde = franja ? `en tu franja (${franja})` : 'en tu ruta';
+    // N solo es conocible si se vigila un tren concreto
+    const vigilancia = alerta.numeroTren ? ' — vigilamos 1 tren' : '';
+    return `Sin retrasos ahora mismo ${donde}${vigilancia}`;
+  }
+  if (alerta.criterio === 'PRECIO') {
+    return `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`;
+  }
+  if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA') {
+    return `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`;
+  }
+  return 'Solo para alertas de disponibilidad';
+}
+
 export function PaginaDetalleAlerta() {
   const { id } = useParams<{ id: string }>();
   const [alerta, setAlerta] = useState<AlertaResponse | null>(null);
@@ -242,7 +273,7 @@ export function PaginaDetalleAlerta() {
                 <div className="space-y-1.5">
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Train className="h-5 w-5 text-primary" aria-hidden="true" />
-                    Plazas de hoy
+                    {alerta.criterio === 'RETRASO' ? 'Retrasos de hoy' : 'Plazas de hoy'}
                   </CardTitle>
                   <CardDescription>
                     {alerta.ultimoSondeoEn
@@ -325,13 +356,7 @@ export function PaginaDetalleAlerta() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {alerta.criterio === 'PRECIO'
-                      ? `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`
-                      : alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA'
-                        ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
-                        : 'Solo para alertas de disponibilidad'}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{mensajeEstadoVacio(alerta)}</p>
                 )}
               </CardContent>
             </Card>

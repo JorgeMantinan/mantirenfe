@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SELECT_CLS } from '@/lib/ui-constants';
+import { fechaCorta } from '@/lib/proximoViaje';
 import { BONOS, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
 import {
   horaGtfs,
@@ -30,6 +31,15 @@ const ETIQUETAS_BONOS: Record<string, string> = {
 };
 
 type Frecuencia = 'fecha' | 'diaria' | 'laborables';
+
+/** Etiquetas cortas del criterio para el resumen (el select usa textos más largos). */
+const ETIQUETAS_CRITERIO: Record<string, string> = {
+  DISPONIBILIDAD: 'Plazas libres',
+  RETRASO: 'Retraso',
+  HORARIO: 'Horario',
+  APERTURA_VENTA: 'Apertura de venta',
+  PRECIO: 'Precio',
+};
 
 const FRECUENCIAS: Array<{ valor: Frecuencia; etiqueta: string }> = [
   { valor: 'fecha', etiqueta: 'Una fecha' },
@@ -59,7 +69,8 @@ export function PaginaNuevaAlerta() {
   const [numeroTren, setNumeroTren] = useState('');
   const [notas, setNotas] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
+  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
+  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -70,27 +81,58 @@ export function PaginaNuevaAlerta() {
 
   // Búsqueda de estaciones mientras se escribe (con debounce): la lista inicial
   // solo traía las primeras40 alfabéticas y nunca aparecían, p.ej., las de Vigo.
-  const timerBusqueda = useRef<number | undefined>(undefined);
-  const peticionActual = useRef(0);
+  // Una lista por campo (mismo patrón que la página de trenes): así escribir en
+  // Destino no deja a la vista las sugerencias de Origen ni viceversa.
+  const timerOrigen = useRef<number | undefined>(undefined);
+  const timerDestino = useRef<number | undefined>(undefined);
+  const petOrigen = useRef(0);
+  const petDestino = useRef(0);
 
-  const buscarEstaciones = (texto: string) => {
-    window.clearTimeout(timerBusqueda.current);
+  // Cierra los dos desplegables y cancela sus peticiones pendientes: escribir
+  // en un campo (o elegir una opción) no debe dejar a la vista la lista del otro.
+  const limpiarSugerencias = (conservar?: 'origen' | 'destino') => {
+    if (conservar !== 'origen') {
+      petOrigen.current++;
+      window.clearTimeout(timerOrigen.current);
+      setSugOrigen([]);
+    }
+    if (conservar !== 'destino') {
+      petDestino.current++;
+      window.clearTimeout(timerDestino.current);
+      setSugDestino([]);
+    }
+  };
+
+  const sugerir = (campo: 'origen' | 'destino', texto: string) => {
+    const timer = campo === 'origen' ? timerOrigen : timerDestino;
+    const peticion = campo === 'origen' ? petOrigen : petDestino;
+    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
+    limpiarSugerencias(campo);
+    window.clearTimeout(timer.current);
     const q = texto.trim();
     if (q.length < 2) {
-      setEstaciones([]);
+      set([]);
       return;
     }
-    timerBusqueda.current = window.setTimeout(() => {
-      const id = ++peticionActual.current;
+    timer.current = window.setTimeout(() => {
+      const id = ++peticion.current;
       api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=10`)
         .then((r) => {
-          if (peticionActual.current === id) setEstaciones(r);
+          if (peticion.current === id) set(r);
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (peticion.current === id) set([]);
+        });
     }, 250);
   };
 
-  useEffect(() => () => window.clearTimeout(timerBusqueda.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerOrigen.current);
+      window.clearTimeout(timerDestino.current);
+    },
+    [],
+  );
 
   // Precarga desde la búsqueda de trenes (?origen=&destino=&fecha=&numeroTren=)
   // o carga completa al modo edición (?editar=<id>)
@@ -158,6 +200,35 @@ export function PaginaNuevaAlerta() {
     };
   }, [origen, destino, fechaEfectiva, hoyIso]);
 
+  // Resumen de la alerta: se recalcula en cada render con los campos actuales,
+  // para poder distinguir dos alertas de la misma ruta (caja + toast final).
+  const criterioEtiqueta = ETIQUETAS_CRITERIO[criterio] ?? criterio;
+  const resumenFecha = recurrente
+    ? frecuencia === 'laborables'
+      ? 'L-V'
+      : 'Cada día'
+    : fecha
+      ? fechaCorta(fecha)
+      : 'Sin fecha';
+  const resumenFranja =
+    horaDesde || horaHasta ? `${horaDesde || '00:00'}–${horaHasta || '23:59'}` : null;
+  const resumenCriterio = [
+    criterioEtiqueta,
+    criterio === 'PRECIO' && precioObjetivo ? `≤ ${precioObjetivo} €` : null,
+    `cada ${intervalo} min`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const resumen = [
+    `${origen.trim() || '—'} → ${destino.trim() || '—'}`,
+    resumenFecha,
+    resumenFranja,
+    resumenCriterio,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
+
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
     if (origen.trim().length < 2 || destino.trim().length < 2) {
@@ -205,9 +276,9 @@ export function PaginaNuevaAlerta() {
       }
 
       if (editandoId) {
-        toast.success('Alerta actualizada.');
+        toast.success(`Alerta actualizada: ${resumen}.`);
       } else {
-        toast.success('Alerta creada. Empezamos a vigilarla.', {
+        toast.success(`Alerta creada: ${resumen}. Empezamos a vigilarla.`, {
           duration: 8000,
           action: {
             label: 'Crear la vuelta',
@@ -263,11 +334,11 @@ export function PaginaNuevaAlerta() {
                 <Label htmlFor="origen">Origen</Label>
                 <Input
                   id="origen"
-                  list="estaciones"
+                  list="estaciones-origen"
                   value={origen}
                   onChange={(e) => {
                     setOrigen(e.target.value);
-                    buscarEstaciones(e.target.value);
+                    sugerir('origen', e.target.value);
                     setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
                   }}
                   placeholder="Madrid-Atocha"
@@ -279,11 +350,11 @@ export function PaginaNuevaAlerta() {
                 <Label htmlFor="destino">Destino</Label>
                 <Input
                   id="destino"
-                  list="estaciones"
+                  list="estaciones-destino"
                   value={destino}
                   onChange={(e) => {
                     setDestino(e.target.value);
-                    buscarEstaciones(e.target.value);
+                    sugerir('destino', e.target.value);
                     setNumeroTren('');
                   }}
                   placeholder="Barcelona-Sants"
@@ -292,8 +363,15 @@ export function PaginaNuevaAlerta() {
                 />
               </div>
             </div>
-            <datalist id="estaciones">
-              {estaciones.map((e) => (
+            <datalist id="estaciones-origen">
+              {sugOrigen.map((e) => (
+                <option key={e.id} value={e.nombre}>
+                  {e.ciudad}
+                </option>
+              ))}
+            </datalist>
+            <datalist id="estaciones-destino">
+              {sugDestino.map((e) => (
                 <option key={e.id} value={e.nombre}>
                   {e.ciudad}
                 </option>
@@ -480,6 +558,23 @@ export function PaginaNuevaAlerta() {
                 placeholder="Ej.: solo clase Turista, quiero el tren de la tarde..."
                 maxLength={500}
               />
+            </div>
+
+            <div className="space-y-1 rounded-lg border bg-muted/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Resumen de la alerta
+              </p>
+              <p className="text-sm font-medium">
+                {origen.trim() || '—'} → {destino.trim() || '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {[resumenFecha, resumenFranja, resumenCriterio].filter(Boolean).join(' · ')}
+              </p>
+              {salidasResumen.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Próximas salidas: {salidasResumen.join(', ')}
+                </p>
+              ) : null}
             </div>
 
             <Button type="submit" className="w-full" disabled={enviando}>

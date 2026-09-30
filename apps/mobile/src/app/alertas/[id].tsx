@@ -37,6 +37,37 @@ function haceCuanto(iso: string): string {
   return new Date(iso).toLocaleString('es-ES');
 }
 
+/**
+ * Mensaje de la tarjeta de estado cuando `ultimoEstado` no tiene filas.
+ *
+ * Con criterio RETRASO el estado vacío no significa «no hay trenes»: significa
+ * que ninguno va con retraso ahora mismo, así que se avisa en esos términos
+ * (y se distingue de «todavía no se ha sondeado»). El resto de criterios
+ * mantienen su mensaje habitual.
+ */
+function mensajeEstadoVacio(alerta: AlertaResponse): string {
+  const franja =
+    alerta.horaDesde || alerta.horaHasta
+      ? `${alerta.horaDesde ?? '00:00'}–${alerta.horaHasta ?? '23:59'}`
+      : null;
+  if (alerta.criterio === 'RETRASO') {
+    if (!alerta.ultimoSondeoEn) {
+      return `Todavía no se ha sondeado esta alerta — se consulta cada ${alerta.intervaloSondeoMin} min`;
+    }
+    const donde = franja ? `en tu franja (${franja})` : 'en tu ruta';
+    // N solo es conocible si se vigila un tren concreto
+    const vigilancia = alerta.numeroTren ? ' — vigilamos 1 tren' : '';
+    return `Sin retrasos ahora mismo ${donde}${vigilancia}`;
+  }
+  if (alerta.criterio === 'PRECIO') {
+    return `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`;
+  }
+  if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'APERTURA_VENTA') {
+    return `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`;
+  }
+  return 'Solo para alertas de disponibilidad';
+}
+
 /** "AVE · llega 09:48 · 3h48": lo que diferencia dos filas de la tabla. */
 function detalleFila(tren: EstadoSerializado): string {
   return [
@@ -92,8 +123,6 @@ export default function DetalleAlerta() {
   );
 
   const trenes = alerta?.ultimoEstado ?? [];
-  const esDisponibilidad =
-    alerta?.criterio === 'DISPONIBILIDAD' || alerta?.criterio === 'APERTURA_VENTA';
   const seriesPrecios = useMemo(() => agruparPrecios(precios), [precios]);
   /** Igual que en la web: la evolución se enseña en disponibilidad o si hay datos. */
   const verEvolucion = alerta?.criterio === 'DISPONIBILIDAD' || seriesPrecios.length > 0;
@@ -194,7 +223,9 @@ export default function DetalleAlerta() {
 
       {alerta ? (
         <>
-          <Text style={s.subtitulo}>Plazas de hoy</Text>
+          <Text style={s.subtitulo}>
+            {alerta.criterio === 'RETRASO' ? 'Retrasos de hoy' : 'Plazas de hoy'}
+          </Text>
           <Tarjeta>
             {trenes.length > 0 ? (
               trenes.map((tren) => {
@@ -233,13 +264,7 @@ export default function DetalleAlerta() {
               })
             ) : (
               <>
-                <Text style={s.detalle}>
-                  {alerta.criterio === 'PRECIO'
-                    ? `Aún no hay datos de precio — se consulta cada ${alerta.intervaloSondeoMin} min`
-                    : esDisponibilidad
-                      ? `Aún no hay datos de plazas — se consulta cada ${alerta.intervaloSondeoMin} min`
-                      : 'Solo para alertas de disponibilidad'}
-                </Text>
+                <Text style={s.detalle}>{mensajeEstadoVacio(alerta)}</Text>
                 {alerta.ultimoSondeoEn ? (
                   <Text style={s.fecha}>Último sondeo: {haceCuanto(alerta.ultimoSondeoEn)}</Text>
                 ) : null}

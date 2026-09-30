@@ -42,6 +42,24 @@ interface TripUpdates {
   cancelados: Set<string>;
 }
 
+/**
+ * Techo de retraso admisible al registrar impuntualidad: 6 h (21.600 s).
+ *
+ * El feed GTFS-RT emite `delay` absurdos que NO son retrasos de viajeros:
+ *  - viajes de plataforma/mantenimiento, reconocibles por el `numeroTren` con
+ *    `PLATF` (p. ej. `C4a-27318-PLATF.(0)`);
+ *  - cruces de medianoche: un servicio reanudado a la 1:00 arrastra un delay
+ *    de ~24 h desde la salida programada del día anterior.
+ * En septiembre se colaron 1.426 min (23,7 h), 1.074 min y 735 min en el
+ * ranking y lo pintaban con +1000 min imposibles. Cualquier muestra por
+ * encima de este techo se descarta al escribir (el umbral de impuntualidad
+ * sigue siendo PUNTUALIDAD_UMBRAL_SEG = 300 s).
+ */
+const PUNTUALIDAD_RETRASO_MAX_SEG = 21_600;
+
+/** Viajes de plataforma/mantenimiento: no son servicios de viajeros. */
+const PUNTUALIDAD_NUMERO_TREN_PLATAFORMA = 'PLATF';
+
 /** Trayecto (y horario) más repetido de un grupo de impuntualidad. */
 interface TrayectoFrecuente {
   cuenta: number;
@@ -418,7 +436,13 @@ export class TrenesService {
       const hoy = new Date(ahora);
       hoy.setHours(0, 0, 0, 0);
       const impuntuales = datos.filter(
-        (p) => p.tripId && typeof p.retrasoSeg === 'number' && p.retrasoSeg >= umbralSeg,
+        (p) =>
+          p.tripId &&
+          typeof p.retrasoSeg === 'number' &&
+          p.retrasoSeg >= umbralSeg &&
+          // Sanidad de la muestra: nada de artefactos (ver PUNTUALIDAD_RETRASO_MAX_SEG)
+          p.retrasoSeg <= PUNTUALIDAD_RETRASO_MAX_SEG &&
+          !p.numeroTren?.includes(PUNTUALIDAD_NUMERO_TREN_PLATAFORMA),
       );
       if (impuntuales.length > 0) {
         const maxPorViaje = new Map<string, number>();

@@ -9,8 +9,10 @@ import {
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
+import { Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaBono, validarAlerta } from '@/lib/alertas';
+import { fechaCorta } from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
 
@@ -27,7 +29,6 @@ export default function NuevaAlerta() {
   const [bono, setBono] = useState<string>('GENERAL');
   const [notas, setNotas] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
   const { paleta } = useTema();
@@ -122,30 +123,75 @@ export default function NuevaAlerta() {
     return () => clearTimeout(timerTrenes.current);
   }, [origen, destino, fechaEfectiva, hoyIso]);
 
-  // Búsqueda remota con debounce: la lista fija de40 no incluía, p.ej., Vigo
-  const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticionActual = useRef(0);
+  // Una lista de sugerencias por campo (mismo patrón que la pantalla de trenes):
+  // con una sola lista compartida, escribir en Destino pintaba también las
+  // sugerencias debajo de Origen y viceversa.
+  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
+  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
+  const timerSugerencias = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peticionSugerencias = useRef(0);
 
-  const buscarEstaciones = (texto: string) => {
-    clearTimeout(timerBusqueda.current);
+  /** Cierra las dos listas y cancela la petición pendiente (si la hay). */
+  const limpiarSugerencias = () => {
+    peticionSugerencias.current++;
+    clearTimeout(timerSugerencias.current);
+    setSugOrigen([]);
+    setSugDestino([]);
+  };
+
+  const buscarSugerencias = (campo: 'origen' | 'destino', texto: string) => {
+    clearTimeout(timerSugerencias.current);
+    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
+    // Invalida cualquier respuesta pendiente y cierra la lista del otro campo
+    peticionSugerencias.current++;
+    (campo === 'origen' ? setSugDestino : setSugOrigen)([]);
     const q = texto.trim();
     if (q.length < 2) {
-      setEstaciones([]);
+      set([]);
       return;
     }
-    timerBusqueda.current = setTimeout(() => {
-      const id = ++peticionActual.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=8`)
+    timerSugerencias.current = setTimeout(() => {
+      const id = ++peticionSugerencias.current;
+      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=5`)
         .then((r) => {
-          if (peticionActual.current === id) setEstaciones(r);
+          if (peticionSugerencias.current === id) set(r);
         })
         .catch(() => undefined);
     }, 250);
   };
 
-  useEffect(() => () => clearTimeout(timerBusqueda.current), []);
+  useEffect(() => () => clearTimeout(timerSugerencias.current), []);
 
-  const sugerencias = () => estaciones.slice(0, 5);
+  // Resumen de la alerta: se recalcula en cada render con los campos actuales,
+  // para poder distinguir dos alertas de la misma ruta (tarjeta + aviso final).
+  const criterioEtiqueta = CRITERIOS.find(([valor]) => valor === criterio)?.[1] ?? criterio;
+  const resumenFecha = recurrente
+    ? frecuencia === 'laborables'
+      ? 'L-V'
+      : 'Cada día'
+    : fecha.trim()
+      ? fechaCorta(fecha.trim())
+      : 'Sin fecha';
+  const resumenFranja =
+    horaDesde.trim() || horaHasta.trim()
+      ? `${horaDesde.trim() || '00:00'}–${horaHasta.trim() || '23:59'}`
+      : null;
+  const resumenCriterio = [
+    criterioEtiqueta,
+    criterio === 'PRECIO' && precioObjetivo.trim() ? `≤ ${precioObjetivo.trim()} €` : null,
+    `cada ${intervalo} min`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const resumen = [
+    `${origen.trim() || '—'} → ${destino.trim() || '—'}`,
+    resumenFecha,
+    resumenFranja,
+    resumenCriterio,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
 
   const enviar = async () => {
     const datos = {
@@ -180,7 +226,9 @@ export default function NuevaAlerta() {
       });
       Alert.alert(
         editandoId ? 'Alerta actualizada' : 'Alerta creada',
-        editandoId ? 'Los cambios ya están aplicados.' : 'Empezamos a vigilar este trayecto.',
+        editandoId
+          ? `${resumen}\n\nLos cambios ya están aplicados.`
+          : `${resumen}\n\nEmpezamos a vigilar este trayecto.`,
         editandoId
           ? undefined
           : [
@@ -249,13 +297,20 @@ export default function NuevaAlerta() {
         value={origen}
         onChangeText={(v) => {
           setOrigen(v);
-          buscarEstaciones(v);
+          buscarSugerencias('origen', v);
           setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
         }}
       />
       {origen.trim().length >= 2 &&
-        sugerencias().map((e) => (
-          <Text key={e.id} style={s.sugerencia} onPress={() => setOrigen(e.nombre)}>
+        sugOrigen.map((e) => (
+          <Text
+            key={e.id}
+            style={s.sugerencia}
+            onPress={() => {
+              setOrigen(e.nombre);
+              limpiarSugerencias();
+            }}
+          >
             {e.nombre}
           </Text>
         ))}
@@ -268,13 +323,20 @@ export default function NuevaAlerta() {
         value={destino}
         onChangeText={(v) => {
           setDestino(v);
-          buscarEstaciones(v);
+          buscarSugerencias('destino', v);
           setNumeroTren('');
         }}
       />
       {destino.trim().length >= 2 &&
-        sugerencias().map((e) => (
-          <Text key={e.id} style={s.sugerencia} onPress={() => setDestino(e.nombre)}>
+        sugDestino.map((e) => (
+          <Text
+            key={e.id}
+            style={s.sugerencia}
+            onPress={() => {
+              setDestino(e.nombre);
+              limpiarSugerencias();
+            }}
+          >
             {e.nombre}
           </Text>
         ))}
@@ -401,6 +463,20 @@ export default function NuevaAlerta() {
         onChangeText={setNotas}
       />
 
+      <Tarjeta style={{ marginTop: espaciado.sm }}>
+        <Text style={s.resumenTitulo}>Resumen de la alerta</Text>
+        <Text style={s.resumenRuta}>
+          {origen.trim() || '—'} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+          {destino.trim() || '—'}
+        </Text>
+        <Text style={s.pista}>
+          {[resumenFecha, resumenFranja, resumenCriterio].filter(Boolean).join(' · ')}
+        </Text>
+        {salidasResumen.length > 0 ? (
+          <Text style={s.pista}>Próximas salidas: {salidasResumen.join(', ')}</Text>
+        ) : null}
+      </Tarjeta>
+
       <Boton
         titulo={enviando ? 'Creando...' : 'Crear alerta'}
         onPress={() => void enviar()}
@@ -486,6 +562,18 @@ const estilos = (c: Paleta) =>
     pista: {
       fontSize: 12,
       color: c.textoSecundario,
+    },
+    resumenTitulo: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.primario,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    resumenRuta: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.texto,
     },
     sugerencia: {
       fontSize: 14,
