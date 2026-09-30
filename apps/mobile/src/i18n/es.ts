@@ -51,6 +51,9 @@ export const es = {
 
   // ──────────────────────────────── login
   login: {
+    google: 'Continuar con Google',
+    oauthError:
+      'No se pudo iniciar sesión con Google. Asegúrate de que Google está habilitado en Supabase y de que el deep link esté autorizado en Redirect URLs.',
     faltanTitulo: 'Faltan datos',
     faltanCuerpo: 'Introduce email y contraseña',
     errorGenerico: 'No se pudo iniciar sesión',

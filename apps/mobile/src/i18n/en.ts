@@ -1,4 +1,4 @@
-﻿import type { Claves } from './es';
+import type { Claves } from './es';
 
 /**
  * Mismo árbol de claves que `es`, con todas las hojas a `string`: si falta
@@ -52,6 +52,9 @@ export const en: MismoArbol<Claves> = {
 
   // ──────────────────────────────── login
   login: {
+    google: 'Continue with Google',
+    oauthError:
+      'Could not sign in with Google. Make sure Google is enabled in Supabase and the deep link is allowed in Redirect URLs.',
     faltanTitulo: 'Missing details',
     faltanCuerpo: 'Enter your email and password',
     errorGenerico: 'Could not sign in',

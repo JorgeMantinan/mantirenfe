@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Boton } from '@/components/Boton';
 import { errorAuth } from '@/i18n/errores-auth';
 import { useAuth } from '@/hooks/useAuth';
+import { entrarConOAuth } from '@/lib/oauth';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
 
@@ -15,7 +16,24 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [entrandoOAuth, setEntrandoOAuth] = useState(false);
   const s = useMemo(() => estilos(paleta), [paleta]);
+
+  const oauth = async () => {
+    setEntrandoOAuth(true);
+    try {
+      const resultado = await entrarConOAuth('google');
+      if (resultado.ok) {
+        router.replace('/(tabs)');
+        return;
+      }
+      if (resultado.error !== 'cancelado') {
+        Alert.alert(t('comunes.error'), t('login.oauthError'));
+      }
+    } finally {
+      setEntrandoOAuth(false);
+    }
+  };
 
   const enviar = async () => {
     if (!email.trim() || !password) {
@@ -70,6 +88,12 @@ export default function Login() {
             titulo={enviando ? t('login.entrando') : t('login.entrar')}
             onPress={() => void enviar()}
             cargando={enviando}
+          />
+          <Boton
+            titulo={entrandoOAuth ? t('login.entrando') : t('login.google')}
+            variante="contorno"
+            onPress={() => void oauth()}
+            cargando={entrandoOAuth}
           />
         </View>
       )}
