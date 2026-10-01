@@ -15,6 +15,10 @@ export const supabase: SupabaseClient | null =
           autoRefreshToken: true,
           persistSession: true,
           detectSessionInUrl: false,
+          // PKCE es obligatorio para el OAuth con deep link: sin él, la vuelta
+          // de Google trae tokens en el fragmento y login-callback no encuentra
+          // el `code` que intercambia por la sesión.
+          flowType: 'pkce',
         },
       })
     : null;
