@@ -210,6 +210,29 @@ export const es = {
     a11yFila: '{{fila}} de {{origen}} a {{destino}}',
   },
 
+  // ──────────────────────────────── tu actividad ((tabs)/index.tsx)
+  actividad: {
+    titulo: 'Tu actividad',
+    dias: '{{n}} días',
+    aviso1: '1 aviso',
+    avisosN: '{{n}} avisos',
+    activa1: '1 alerta activa',
+    activasN: '{{n}} alertas activas',
+    completada1: '1 completada',
+    completadasN: '{{n}} completadas',
+    desglose: 'Por tipo',
+    tipoAlertas: 'Plazas, horarios y retrasos',
+    tipoCancelacion: 'Cancelaciones',
+    tipoParadaSuprimida: 'Paradas suprimidas',
+    tipoIncidencia: 'Incidencias',
+    tipoRecordatorio: 'Recordatorios de salida',
+    tipoResumenViaje: 'Resúmenes de viaje',
+    tipoPrecio: 'Avisos de precio',
+    tipoDigest: 'Resumen diario por email',
+    tipoSemanal: 'Resumen semanal',
+    tipoOtro: 'Otros',
+  },
+
   // ──────────────────────────────── avisos ((tabs)/avisos.tsx)
   avisos: {
     sinLeer: '{{n}} sin leer',
@@ -290,6 +313,8 @@ export const es = {
 
   // ──────────────────────────────── ajustes ((tabs)/ajustes.tsx)
   ajustes: {
+    antelacion: 'Antelación del recordatorio',
+    antelacionMin: '{{n}} min',
     cuenta: 'Cuenta',
     sinSesion: 'Sin sesión',
     supabaseSinConfig: 'Supabase sin configurar en este entorno',
@@ -416,6 +441,11 @@ export const es = {
     sinSalidasCorto: 'Sin salidas',
     manana: 'mañana',
     accesibilidad: 'Próximo tren, abre MantiRenfe',
+    plazasDesde: 'Plazas desde {{precio}}',
+    plazasCorto: 'Plazas {{precio}}',
+    llega: 'Llega {{hora}}',
+    retraso: '+{{min}} min',
+    sinDatos: '—',
   },
 
   // ──────────────────────────────── evento de calendario (.ics)

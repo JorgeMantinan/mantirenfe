@@ -211,6 +211,29 @@ export const en: MismoArbol<Claves> = {
     a11yFila: '{{fila}} from {{origen}} to {{destino}}',
   },
 
+  // ──────────────────────────────── your activity ((tabs)/index.tsx)
+  actividad: {
+    titulo: 'Your activity',
+    dias: '{{n}} days',
+    aviso1: '1 notice',
+    avisosN: '{{n}} notices',
+    activa1: '1 active alert',
+    activasN: '{{n}} active alerts',
+    completada1: '1 completed alert',
+    completadasN: '{{n}} completed alerts',
+    desglose: 'By type',
+    tipoAlertas: 'Seats, timetables and delays',
+    tipoCancelacion: 'Cancellations',
+    tipoParadaSuprimida: 'Cancelled stops',
+    tipoIncidencia: 'Service incidents',
+    tipoRecordatorio: 'Departure reminders',
+    tipoResumenViaje: 'Trip summaries',
+    tipoPrecio: 'Price alerts',
+    tipoDigest: 'Daily email digest',
+    tipoSemanal: 'Weekly summary',
+    tipoOtro: 'Other',
+  },
+
   // ──────────────────────────────── avisos ((tabs)/avisos.tsx)
   avisos: {
     sinLeer: '{{n}} unread',
@@ -291,6 +314,8 @@ export const en: MismoArbol<Claves> = {
 
   // ──────────────────────────────── ajustes ((tabs)/ajustes.tsx)
   ajustes: {
+    antelacion: 'Reminder lead time',
+    antelacionMin: '{{n}} min',
     cuenta: 'Account',
     sinSesion: 'Signed out',
     supabaseSinConfig: 'Supabase is not configured in this environment',
@@ -417,6 +442,11 @@ export const en: MismoArbol<Claves> = {
     sinSalidasCorto: 'No departures',
     manana: 'tomorrow',
     accesibilidad: 'Next train, open MantiRenfe',
+    plazasDesde: 'Seats from {{precio}}',
+    plazasCorto: 'Seats {{precio}}',
+    llega: 'Arrives {{hora}}',
+    retraso: '+{{min}} min',
+    sinDatos: '—',
   },
 
   // ──────────────────────────────── evento de calendario (.ics)

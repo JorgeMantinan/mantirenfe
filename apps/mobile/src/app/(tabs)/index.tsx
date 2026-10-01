@@ -3,7 +3,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import type { AlertaResponse } from '@mantirenfe/shared-types';
+import type { AlertaResponse, EstadisticasResponse } from '@mantirenfe/shared-types';
+import { TIPO_AVISO_SIN_TIPO } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
@@ -130,7 +131,12 @@ export default function Alertas() {
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
         contentContainerStyle={s.lista}
-        ListHeaderComponent={<TarjetaProximoViaje alertas={listo ? alertas : null} />}
+        ListHeaderComponent={
+          <View style={s.cabeceraLista}>
+            <TarjetaProximoViaje alertas={listo ? alertas : null} />
+            <TarjetaActividad />
+          </View>
+        }
         ListEmptyComponent={
           cargando ? null : (
             <View style={s.vacio}>
@@ -350,8 +356,87 @@ function TarjetaProximoViaje({ alertas }: { alertas: AlertaResponse[] | null }) 
   );
 }
 
+/**
+ * "Tu actividad": avisos de los últimos 30 días con su desglose por tipo y el
+ * estado de las alertas, en una tarjeta compacta bajo «Tu próximo viaje».
+ * Sin datos (carga en curso o error de `GET /estadisticas`) no pinta nada.
+ */
+function TarjetaActividad() {
+  const [datos, setDatos] = useState<EstadisticasResponse | null>(null);
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
+  useEffect(() => {
+    let cancelado = false;
+    api<EstadisticasResponse>('/estadisticas')
+      .then((respuesta) => {
+        if (!cancelado) setDatos(respuesta);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  if (datos === null) return null;
+
+  // Etiquetas ya traducidas: el tipo que llega de la API solo indexa, no es
+  // una clave dinámica de i18n.
+  const etiquetas: Record<string, string> = {
+    [TIPO_AVISO_SIN_TIPO]: t('actividad.tipoAlertas'),
+    cancelacion: t('actividad.tipoCancelacion'),
+    parada_suprimida: t('actividad.tipoParadaSuprimida'),
+    incidencia: t('actividad.tipoIncidencia'),
+    'recordatorio-salida': t('actividad.tipoRecordatorio'),
+    'resumen-viaje': t('actividad.tipoResumenViaje'),
+    precio: t('actividad.tipoPrecio'),
+    'digest-email': t('actividad.tipoDigest'),
+    'resumen-semanal': t('actividad.tipoSemanal'),
+  };
+
+  const avisos = datos.avisos.total;
+  const activas = datos.alertas.activas;
+  const textoAvisos = avisos === 1 ? t('actividad.aviso1') : t('actividad.avisosN', { n: avisos });
+  const textoActivas =
+    activas === 1 ? t('actividad.activa1') : t('actividad.activasN', { n: activas });
+
+  const tipos = Object.entries(datos.avisos.porTipo).sort(([, a], [, b]) => b - a);
+  const lineas: string[] = [];
+  let otros = 0;
+  for (const [tipo, total] of tipos) {
+    const etiqueta = etiquetas[tipo];
+    if (etiqueta) lineas.push(`${etiqueta} ${total}`);
+    else otros += total;
+  }
+  if (otros > 0) lineas.push(`${t('actividad.tipoOtro')} ${otros}`);
+
+  const resumen = [t('actividad.dias', { n: datos.periodoDias }), textoAvisos, textoActivas].join(
+    ' · ',
+  );
+
+  return (
+    <Tarjeta>
+      <View style={s.actividadFila}>
+        <Ionicons name="stats-chart-outline" size={14} color={paleta.primario} />
+        <Text style={s.actividadTitulo}>{t('actividad.titulo')}</Text>
+      </View>
+      <Text style={s.actividadResumen}>{resumen}</Text>
+      {lineas.length > 0 ? (
+        <View style={s.actividadDesglose}>
+          <Text style={s.actividadDesgloseTitulo}>{t('actividad.desglose')}</Text>
+          <Text style={s.actividadDesgloseLinea}>{lineas.join(' · ')}</Text>
+        </View>
+      ) : null}
+    </Tarjeta>
+  );
+}
+
 const estilos = (c: Paleta) =>
   StyleSheet.create({
+    cabeceraLista: {
+      gap: espaciado.sm,
+    },
     pantalla: {
       flex: 1,
       backgroundColor: c.fondoSecundario,
@@ -515,5 +600,33 @@ const estilos = (c: Paleta) =>
     viajeSiguienteBadge: {
       paddingVertical: 2,
       paddingHorizontal: 8,
+    },
+    actividadFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    actividadTitulo: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.primario,
+    },
+    actividadResumen: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.texto,
+    },
+    actividadDesglose: {
+      gap: 2,
+    },
+    actividadDesgloseTitulo: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: c.textoSecundario,
+    },
+    actividadDesgloseLinea: {
+      fontSize: 12,
+      color: c.textoSecundario,
     },
   });

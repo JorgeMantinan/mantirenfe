@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { horaGtfs, type AlertaResponse } from '@mantirenfe/shared-types';
 import { locale, t } from '../i18n';
+import { formatearPrecio } from './precios';
 
 /** Nombre del widget; debe coincidir con `widgets[].name` de app.json. */
 export const NOMBRE_WIDGET = 'ProximoTren';
@@ -21,6 +22,17 @@ export interface SalidaWidget {
   salidaIso: string;
   /** Fecha local (YYYY-MM-DD) de la salida; en cachés antiguas puede faltar. */
   fecha?: string;
+  // ── estado del `ultimoEstado` del tren: opcional, las cachés antiguas no lo traen ──
+  /** ¿Quedan plazas? */
+  disponible?: boolean;
+  /** Precio más barato visto en € (null si aún no hay precio). */
+  precioMin?: number | null;
+  /** Retraso del feed en segundos (null si va a la hora). */
+  retrasoSeg?: number | null;
+  /** El tren no circula (el cálculo lo descarta, pero el campo se conserva). */
+  cancelado?: boolean;
+  /** Llegada programada peninsular (HH:MM) si la venta la conoce. */
+  horaLlegada?: string;
 }
 
 export interface DatosWidget {
@@ -190,6 +202,11 @@ export function calcularSalidasWidget(
           salida: horaGtfs(tren.salida),
           salidaIso: tren.salida,
           fecha: delDia,
+          disponible: tren.disponible,
+          precioMin: tren.precioMin,
+          retrasoSeg: tren.retrasoSeg ?? undefined,
+          cancelado: tren.cancelado ?? undefined,
+          horaLlegada: tren.horaLlegada,
         });
       }
     }
@@ -240,6 +257,55 @@ export function filtrarSalidasVigentes(datos: DatosWidget, ahora: Date = new Dat
     salidas,
     proximoViaje: proximoViaje && proximoViaje >= fecha ? proximoViaje : undefined,
   };
+}
+
+/** Tono del badge de estado de una salida (para colorearlo en los widgets). */
+export type TonoEstadoWidget = 'exito' | 'error' | 'neutro' | 'sinDatos';
+
+export interface EstadoWidget {
+  /** Texto ya traducido del badge. */
+  texto: string;
+  tono: TonoEstadoWidget;
+}
+
+/** Retraso mínimo (segundos) a partir del cual el widget enseña «+N min». */
+export const RETRASO_WIDGET_SEG = 300;
+
+/**
+ * Badge de estado de una salida según su último sondeo: cancelado (rojo),
+ * plazas con precio o sin precio (verde), completo (gris) y «—» si la caché no
+ * guarda los campos de estado (salidas escritas por versiones anteriores).
+ * `corto` usa la fórmula breve del widget mini, que no cabe con «desde».
+ */
+export function estadoSalidaWidget(
+  salida: Pick<SalidaWidget, 'disponible' | 'precioMin' | 'cancelado'> | null | undefined,
+  { corto = false }: { corto?: boolean } = {},
+): EstadoWidget {
+  if (salida?.cancelado) return { texto: t('comunes.cancelado'), tono: 'error' };
+  if (typeof salida?.disponible !== 'boolean') {
+    return { texto: t('widget.sinDatos'), tono: 'sinDatos' };
+  }
+  if (!salida.disponible) return { texto: t('comunes.completo'), tono: 'neutro' };
+  if (salida.precioMin === null || salida.precioMin === undefined) {
+    return { texto: t('comunes.hayPlazas'), tono: 'exito' };
+  }
+  const precio = formatearPrecio(salida.precioMin);
+  return {
+    texto: t(corto ? 'widget.plazasCorto' : 'widget.plazasDesde', { precio }),
+    tono: 'exito',
+  };
+}
+
+/**
+ * Minutos de retraso a pintar en rojo junto a la salida, o null si el tren
+ * no lleva `RETRASO_WIDGET_SEG` o más de retraso (por debajo no se molesta).
+ */
+export function retrasoWidget(
+  salida: Pick<SalidaWidget, 'retrasoSeg'> | null | undefined,
+): number | null {
+  const seg = salida?.retrasoSeg;
+  if (typeof seg !== 'number' || seg < RETRASO_WIDGET_SEG) return null;
+  return Math.round(seg / 60);
 }
 
 export interface ResumenWidget {

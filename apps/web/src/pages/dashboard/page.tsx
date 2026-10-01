@@ -9,13 +9,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { TarjetaProximoViaje } from '@/pages/dashboard/TarjetaProximoViaje';
-import type { AlertaResponse, NotificacionResponse } from '@mantirenfe/shared-types';
+import { TarjetaActividad } from '@/pages/dashboard/TarjetaActividad';
+import type {
+  AlertaResponse,
+  EstadisticasResponse,
+  NotificacionResponse,
+} from '@mantirenfe/shared-types';
 
 export function PaginaDashboard() {
   const { t } = useTranslation();
   const { user, authConfigurada } = useAuth();
   const [alertas, setAlertas] = useState<AlertaResponse[] | null>(null);
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[] | null>(null);
+  const [estadisticas, setEstadisticas] = useState<EstadisticasResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +42,21 @@ export function PaginaDashboard() {
         setNotificaciones(n);
       })
       .catch((e: Error) => setError(e.message));
+  }, [user, authConfigurada]);
+
+  // «Tu actividad» es secundaria: si la llamada falla, la tarjeta no se pinta
+  // y el resto del panel sigue en pie (por eso va aparte del Promise.all).
+  useEffect(() => {
+    if (!authConfigurada || !user) return;
+    let cancelado = false;
+    api<EstadisticasResponse>('/estadisticas')
+      .then((datos) => {
+        if (!cancelado) setEstadisticas(datos);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelado = true;
+    };
   }, [user, authConfigurada]);
 
   if (error) {
@@ -97,6 +118,8 @@ export function PaginaDashboard() {
           </CardHeader>
         </Card>
       </div>
+
+      <TarjetaActividad datos={estadisticas} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

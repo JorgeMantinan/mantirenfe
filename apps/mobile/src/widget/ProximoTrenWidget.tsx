@@ -1,11 +1,36 @@
-import { FlexWidget, TextWidget } from 'react-native-android-widget';
+import { FlexWidget, TextWidget, type ColorProp } from 'react-native-android-widget';
 import { t } from '@/i18n';
-import { etiquetaDia, fechaCorta, type DatosWidget } from '@/lib/widget';
+import {
+  estadoSalidaWidget,
+  etiquetaDia,
+  fechaCorta,
+  retrasoWidget,
+  type DatosWidget,
+  type TonoEstadoWidget,
+} from '@/lib/widget';
 
 const FONDO = '#75258c';
 const BLANCO = '#ffffff';
 const BLANCO_SUAVE = 'rgba(255, 255, 255, 0.75)';
+/** Badges de estado sobre el morado: misma gama clara que la app en oscuro. */
+const VERDE = '#4ade80';
+const ROJO = '#fca5a5';
+const GRIS = 'rgba(255, 255, 255, 0.55)';
 
+const COLOR_ESTADO = {
+  exito: VERDE,
+  error: ROJO,
+  neutro: GRIS,
+  sinDatos: GRIS,
+} satisfies Record<TonoEstadoWidget, ColorProp>;
+
+/**
+ * Widget grande (4×2): hasta tres salidas, cada una en su línea con la hora,
+ * el tren y la ruta, más el badge de estado (color), la llegada y el retraso.
+ * El texto principal va en un contenedor `width: 0 + flex: 1` para que se
+ * quede con el ancho que sobra tras los badges y se trunque por el final
+ * (`maxLines={1}`: una línea por salida, el tamaño del widget no crece).
+ */
 export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
   const salidas = datos?.salidas ?? [];
   const hoy = new Date();
@@ -41,14 +66,50 @@ export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
       ) : (
         salidas.map((salida) => {
           const dia = etiquetaDia(salida.fecha ?? datos?.fecha ?? '', hoy);
+          const estado = estadoSalidaWidget(salida);
+          const llega = salida.horaLlegada ? t('widget.llega', { hora: salida.horaLlegada }) : null;
+          const retraso = retrasoWidget(salida);
           return (
-            <TextWidget
+            <FlexWidget
               key={`${salida.salidaIso}-${salida.numeroTren}`}
-              text={`${dia ? `${dia} · ` : ''}${salida.salida} · ${salida.numeroTren} · ${salida.origen} → ${salida.destino}`}
-              style={{ color: BLANCO, fontSize: 14, fontWeight: '600' }}
-              truncate="END"
-              maxLines={2}
-            />
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <FlexWidget style={{ flex: 1, width: 0 }}>
+                <TextWidget
+                  text={`${dia ? `${dia} · ` : ''}${salida.salida} · ${salida.numeroTren} · ${salida.origen} → ${salida.destino}`}
+                  style={{ color: BLANCO, fontSize: 14, fontWeight: '600' }}
+                  truncate="END"
+                  maxLines={1}
+                />
+              </FlexWidget>
+              <TextWidget
+                text={estado.texto}
+                style={{
+                  color: COLOR_ESTADO[estado.tono],
+                  fontSize: 11,
+                  fontWeight: '700',
+                  marginLeft: 6,
+                }}
+                truncate="END"
+                maxLines={1}
+              />
+              {llega ? (
+                <TextWidget
+                  text={llega}
+                  style={{ color: BLANCO_SUAVE, fontSize: 11, marginLeft: 6 }}
+                  truncate="END"
+                  maxLines={1}
+                />
+              ) : null}
+              {retraso !== null ? (
+                <TextWidget
+                  text={t('widget.retraso', { min: retraso })}
+                  style={{ color: ROJO, fontSize: 11, fontWeight: '700', marginLeft: 6 }}
+                  truncate="END"
+                  maxLines={1}
+                />
+              ) : null}
+            </FlexWidget>
           );
         })
       )}

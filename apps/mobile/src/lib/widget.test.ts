@@ -1,13 +1,17 @@
 import type { AlertaResponse, EstadoSerializado } from '@mantirenfe/shared-types';
 import { describe, expect, it } from 'vitest';
+import { formatearPrecio } from './precios';
 import {
   alertaAplicaHoy,
   calcularSalidasWidget,
+  estadoSalidaWidget,
   etiquetaDia,
   fechaCorta,
   filtrarSalidasVigentes,
   MAX_SALIDAS_WIDGET,
   resumenWidget,
+  retrasoWidget,
+  type DatosWidget,
 } from './widget';
 
 const AHORA = new Date(2026, 8, 28, 9, 30); // lunes 28-09-2026, 09:30 (hora local)
@@ -350,5 +354,130 @@ describe('resumenWidget (widget mini)', () => {
       AHORA,
     );
     expect(resumenWidget(conViaje, AHORA).vacio).toBe('Próximo viaje: 12 oct');
+  });
+});
+
+describe('calcularSalidasWidget (estado del último sondeo)', () => {
+  it('copia a cada salida disponible, precio, retraso y llegada', () => {
+    const conEstado: EstadoSerializado[] = [
+      {
+        trenId: 't2',
+        numeroTren: '01256A',
+        salida: '2026-09-28T10:15:00',
+        disponible: true,
+        precioMin: 25,
+        retrasoSeg: 600,
+        horaLlegada: '12:30',
+      },
+      {
+        trenId: 't3',
+        numeroTren: '01290A',
+        salida: '2026-09-28T14:45:00',
+        disponible: false,
+        precioMin: null,
+        retrasoSeg: 0,
+      },
+    ];
+    const datos = calcularSalidasWidget([alerta({ ultimoEstado: conEstado })], AHORA);
+
+    expect(datos.salidas[0]).toMatchObject({
+      numeroTren: '01256A',
+      disponible: true,
+      precioMin: 25,
+      retrasoSeg: 600,
+      horaLlegada: '12:30',
+    });
+    expect(datos.salidas[1]).toMatchObject({
+      numeroTren: '01290A',
+      disponible: false,
+      precioMin: null,
+      retrasoSeg: 0,
+    });
+    expect(datos.salidas[1]?.horaLlegada).toBeUndefined();
+  });
+
+  it('conserva el estado al filtrar las salidas vigentes', () => {
+    const datos = calcularSalidasWidget([alerta()], AHORA);
+    const vigentes = filtrarSalidasVigentes(datos, new Date(2026, 8, 28, 11, 0));
+
+    expect(vigentes.salidas.map((s) => s.salida)).toEqual(['14:45']);
+    expect(vigentes.salidas[0]).toMatchObject({ disponible: false, precioMin: null });
+  });
+
+  it('una caché sin campos de estado sigue pintando la salida', () => {
+    const antigua: DatosWidget = {
+      fecha: HOY,
+      actualizadoEn: AHORA.toISOString(),
+      salidas: [
+        {
+          numeroTren: '01256A',
+          origen: 'Madrid-Chamartín',
+          destino: 'Valladolid-Campo Grande',
+          salida: '10:15',
+          salidaIso: `${HOY}T10:15:00`,
+        },
+      ],
+    };
+    const vigentes = filtrarSalidasVigentes(antigua, AHORA);
+
+    expect(vigentes.salidas).toHaveLength(1);
+    expect(estadoSalidaWidget(vigentes.salidas[0])).toEqual({ texto: '—', tono: 'sinDatos' });
+    expect(retrasoWidget(vigentes.salidas[0])).toBeNull();
+    expect(resumenWidget(vigentes, AHORA)).toMatchObject({ hora: '10:15', vacio: null });
+  });
+});
+
+describe('estadoSalidaWidget', () => {
+  it('cancelado en rojo, completo en gris y plazas en verde', () => {
+    expect(estadoSalidaWidget({ cancelado: true, disponible: true, precioMin: 32 })).toEqual({
+      texto: 'Cancelado',
+      tono: 'error',
+    });
+    expect(estadoSalidaWidget({ disponible: false, precioMin: null })).toEqual({
+      texto: 'Completo',
+      tono: 'neutro',
+    });
+    expect(estadoSalidaWidget({ disponible: true, precioMin: null })).toEqual({
+      texto: 'Hay plazas',
+      tono: 'exito',
+    });
+    expect(estadoSalidaWidget({ disponible: true, precioMin: 32.5 })).toEqual({
+      texto: `Plazas desde ${formatearPrecio(32.5)}`,
+      tono: 'exito',
+    });
+  });
+
+  it('usa el sondeo de la salida calculada', () => {
+    const datos = calcularSalidasWidget([alerta()], AHORA);
+
+    expect(estadoSalidaWidget(datos.salidas[0])).toEqual({
+      texto: `Plazas desde ${formatearPrecio(25)}`,
+      tono: 'exito',
+    });
+    expect(estadoSalidaWidget(datos.salidas[1])).toEqual({ texto: 'Completo', tono: 'neutro' });
+  });
+
+  it('la variante corta del mini es más breve', () => {
+    expect(estadoSalidaWidget({ disponible: true, precioMin: 32.5 }, { corto: true })).toEqual({
+      texto: `Plazas ${formatearPrecio(32.5)}`,
+      tono: 'exito',
+    });
+  });
+
+  it('sin datos de estado (caché antigua) devuelve «—»', () => {
+    expect(estadoSalidaWidget({})).toEqual({ texto: '—', tono: 'sinDatos' });
+    expect(estadoSalidaWidget(null)).toEqual({ texto: '—', tono: 'sinDatos' });
+    expect(estadoSalidaWidget(undefined)).toEqual({ texto: '—', tono: 'sinDatos' });
+  });
+});
+
+describe('retrasoWidget', () => {
+  it('solo enseña el retraso a partir de 5 minutos', () => {
+    expect(retrasoWidget({ retrasoSeg: null })).toBeNull();
+    expect(retrasoWidget({ retrasoSeg: 120 })).toBeNull();
+    expect(retrasoWidget({})).toBeNull();
+    expect(retrasoWidget(undefined)).toBeNull();
+    expect(retrasoWidget({ retrasoSeg: 300 })).toBe(5);
+    expect(retrasoWidget({ retrasoSeg: 420 })).toBe(7);
   });
 });

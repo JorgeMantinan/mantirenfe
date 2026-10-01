@@ -15,6 +15,8 @@ import { repintarWidget } from '@/widget/actualizarWidget';
 
 const MODOS_TEMA: readonly ModoTema[] = ['claro', 'oscuro', 'sistema'];
 
+const MINUTOS_RECORDATORIO = [15, 30, 50, 60, 90, 120, 180] as const;
+
 export default function Ajustes() {
   const { user, salir, authConfigurada } = useAuth();
   const { modo, setModo, paleta } = useTema();
@@ -22,6 +24,7 @@ export default function Ajustes() {
   const [pref, setPref] = useState<PreferenciasUsuario | null>(null);
   const [push, setPush] = useState(true);
   const [recordatorio, setRecordatorio] = useState(true);
+  const [minutos, setMinutos] = useState(50);
   const [resumen, setResumen] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
@@ -41,6 +44,7 @@ export default function Ajustes() {
         setPref(p);
         setPush(p.notificacionesPush);
         setRecordatorio(p.recordatorioSalida);
+        setMinutos(p.minutosRecordatorio ?? 50);
         setResumen(p.resumenViaje);
       })
       .catch(() => {
@@ -153,6 +157,34 @@ export default function Ajustes() {
             thumbColor="#fff"
           />
         </View>
+        {recordatorio ? (
+          <View style={{ gap: 6 }}>
+            <Text style={s.etiqueta}>{t('ajustes.antelacion')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MINUTOS_RECORDATORIO.map((n) => (
+                <Text
+                  key={n}
+                  onPress={() => {
+                    setMinutos(n);
+                    void guardar({ minutosRecordatorio: n });
+                  }}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    fontSize: 13,
+                    overflow: 'hidden',
+                    fontWeight: '600',
+                    backgroundColor: minutos === n ? paleta.primario : paleta.fondoSecundario,
+                    color: minutos === n ? '#ffffff' : paleta.textoSecundario,
+                  }}
+                >
+                  {t('ajustes.antelacionMin', { n })}
+                </Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
         <View style={s.fila}>
           <Text style={s.etiqueta}>{t('ajustes.resumen')}</Text>
           <Switch

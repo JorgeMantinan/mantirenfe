@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AlertasModule } from './alertas/alertas.module';
 import { AuthModule } from './auth/auth.module';
 import { EstacionesModule } from './estaciones/estaciones.module';
+import { EstadisticasModule } from './estadisticas/estadisticas.module';
 import { FiltroExcepcionesGlobal } from './common/filtro-excepciones';
 import { HealthModule } from './health/health.module';
 import { IncidenciasModule } from './incidencias/incidencias.module';
@@ -30,6 +31,7 @@ import { TrenesModule } from './trenes/trenes.module';
     TrenesModule,
     IncidenciasModule,
     SuprimidosModule,
+    EstadisticasModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
