@@ -46,3 +46,6 @@ dump.rdb
 # Vercel (creado por vercel link)
 .vercel/
 
+
+# Basura de la CLI de Expo cuando se ejecuta desde la raiz
+/app.json
