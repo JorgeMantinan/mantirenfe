@@ -24,18 +24,27 @@ export async function entrarConOAuth(proveedor: 'google'): Promise<ResultadoOAut
   if (error || !data.url) return { ok: false, error: error?.message ?? 'sin-url' };
 
   const sesion = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  if (sesion.type !== 'success' || !('url' in sesion)) {
-    return { ok: false, error: 'cancelado' };
+  if (sesion.type === 'success' && 'url' in sesion) {
+    // Captura en el navegador (iOS y parte de Android): intercambio aquí
+    try {
+      const url = new URL(sesion.url);
+      const code = url.searchParams.get('code');
+      if (code) {
+        const { error: intercambio } = await supabase.auth.exchangeCodeForSession(code);
+        if (!intercambio) return { ok: true };
+      }
+    } catch {
+      // seguimos por la comprobación de sesión de abajo
+    }
   }
 
-  try {
-    const url = new URL(sesion.url);
-    const code = url.searchParams.get('code');
-    if (!code) return { ok: false, error: 'sin-codigo' };
-    const { error: intercambio } = await supabase.auth.exchangeCodeForSession(code);
-    if (intercambio) return { ok: false, error: intercambio.message };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'oauth-fallo' };
+  // En Android el deep link suele navegar la app por expo-router a
+  // /login-callback (que hace el intercambio): si al volver ya hay sesión, ok.
+  const { data: actual } = await supabase.auth.getSession();
+  if (actual.session) return { ok: true };
+
+  if (sesion.type === 'dismiss' || sesion.type === 'cancel') {
+    return { ok: false, error: 'cancelado' };
   }
+  return { ok: false, error: 'sin-codigo' };
 }

@@ -98,6 +98,7 @@ function Aplicacion() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ title: t('comunes.iniciarSesion') }} />
         <Stack.Screen name="registro" options={{ title: t('comunes.crearCuenta') }} />
+        <Stack.Screen name="login-callback" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="alertas/nueva"
