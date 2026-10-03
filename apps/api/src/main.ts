@@ -23,6 +23,22 @@ async function bootstrap() {
   // Con Vercel/Render delante, la IP real viene en X-Forwarded-For:1 salto para
   // que el rate limit por IP funcione (si no, todos los usuarios comparten bucket).
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // No fingerprintar el stack (audit de seguridad)
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.use(
+    (
+      _req: import('express').Request,
+      res: import('express').Response,
+      next: import('express').NextFunction,
+    ) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      next();
+    },
+  );
 
   app.use(
     pinoHttp({
