@@ -655,7 +655,7 @@ describe('textoPrecioBajo', () => {
         },
         30,
       ),
-    ).toBe('Precio: 15648 06:35 a 24,5 € (objetivo ≤ 30 €)');
+    ).toBe('Tren 15648 06:35 a 24,50 € (tu objetivo: ≤30,00 €)');
   });
 
   it('usa el trenId si no hay número de tren y formatea decimales', () => {
@@ -670,6 +670,6 @@ describe('textoPrecioBajo', () => {
         },
         42.9,
       ),
-    ).toBe('Precio: 3065J23574C1 08:10 a 42 € (objetivo ≤ 42,9 €)');
+    ).toBe('Tren 3065J23574C1 08:10 a 42,00 € (tu objetivo: ≤42,90 €)');
   });
 });

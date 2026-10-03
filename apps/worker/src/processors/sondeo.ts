@@ -267,15 +267,18 @@ export function textoParadaSuprimida(tren: EstadoSerializado, estacion: string):
   return `Tu tren de las ${horaGtfs(tren.salida)} (${numero}) no para hoy en ${estacion}`;
 }
 
-/** Cifra en € sin símbolo: 42.5 → "42,5", 30 → "30". */
+/** Cifra en € sin símbolo y con dos decimales: 42.5 → "42,50", 30 → "30,00". */
 function euros(valor: number): string {
-  return valor.toLocaleString('es-ES', { maximumFractionDigits: 2 });
+  return valor.toLocaleString('es-ES', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export function textoPrecioBajo(tren: EstadoSerializado, precioObjetivo: number): string {
   const numero = tren.numeroTren || tren.trenId;
   const precio = typeof tren.precioMin === 'number' ? euros(tren.precioMin) : '—';
-  return `Precio: ${numero} ${horaGtfs(tren.salida)} a ${precio} € (objetivo ≤ ${euros(precioObjetivo)} €)`;
+  return `Tren ${numero} ${horaGtfs(tren.salida)} a ${precio} € (tu objetivo: ≤${euros(precioObjetivo)} €)`;
 }
 
 export async function notificar(
@@ -467,7 +470,10 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       logger.debug({ alertaId }, 'Sin trenes bajo el precio objetivo');
       return;
     }
-    const cuerpo = bajos.map((t) => textoPrecioBajo(t, precioObjetivo)).join(' · ');
+    const cuerpo = [
+      ...bajos.map((t) => textoPrecioBajo(t, precioObjetivo)),
+      `${alerta.origenNombre} → ${alerta.destinoNombre}`,
+    ].join(' · ');
     const titulo = 'Precio bajo tu objetivo';
     await notificar(
       alerta,

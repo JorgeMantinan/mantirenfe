@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { locale } from '@/i18n';
+import { etiquetaCriterio } from '@/lib/alertas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -246,9 +247,13 @@ export function PaginaDetalleAlerta() {
                       ? t('alertas.estadoPausa')
                       : t('alertas.completada')}
                 </Badge>
-                <Badge variant="outline">{alerta.criterio}</Badge>
+                <Badge variant="outline">{etiquetaCriterio(t, alerta.criterio)}</Badge>
                 {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null && (
-                  <Badge variant="aviso">≤ {formatearPrecio(alerta.precioObjetivo)}</Badge>
+                  <Badge variant="aviso">
+                    {t('alertas.precioObjetivo', {
+                      precio: formatearPrecio(alerta.precioObjetivo),
+                    })}
+                  </Badge>
                 )}
                 {alerta.recurrente && (
                   <Badge variant="aviso">

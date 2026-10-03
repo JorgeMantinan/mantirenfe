@@ -5,6 +5,7 @@ import { Bell, BellRing, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { locale } from '@/i18n';
+import { etiquetaCriterio } from '@/lib/alertas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -188,7 +189,7 @@ export function PaginaAlertas() {
                     <Bell className="h-3.5 w-3.5" aria-hidden="true" />
                     {textoAvisos(alerta.avisosRecibidos ?? 0, t)}
                   </Badge>
-                  <Badge variant="outline">{alerta.criterio}</Badge>
+                  <Badge variant="outline">{etiquetaCriterio(t, alerta.criterio)}</Badge>
                   <Button
                     variant="outline"
                     size="sm"

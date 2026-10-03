@@ -130,8 +130,11 @@ export default function DetalleAlerta() {
 
   const trenes = alerta?.ultimoEstado ?? [];
   const seriesPrecios = useMemo(() => agruparPrecios(precios), [precios]);
-  /** Igual que en la web: la evolución se enseña en disponibilidad o si hay datos. */
-  const verEvolucion = alerta?.criterio === 'DISPONIBILIDAD' || seriesPrecios.length > 0;
+  /** Igual que en la web: la evolución se enseña en disponibilidad, en precio o si hay datos. */
+  const verEvolucion =
+    alerta?.criterio === 'DISPONIBILIDAD' ||
+    alerta?.criterio === 'PRECIO' ||
+    seriesPrecios.length > 0;
 
   const compartir = async () => {
     if (!alerta) return;
