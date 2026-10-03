@@ -39,9 +39,17 @@ function guardarIdioma(idioma: Idioma): void {
   }
 }
 
-/** Idioma inicial: la última elección guardada o, en su defecto, español. */
+/** Idioma inicial: la última elección guardada → idioma del sistema → español. */
 export function idiomaInicial(): Idioma {
-  return leerIdiomaGuardado() ?? 'es';
+  const guardado = leerIdiomaGuardado();
+  if (guardado) return guardado;
+  try {
+    const delSistema = Intl.DateTimeFormat().resolvedOptions().locale ?? '';
+    if (delSistema.toLowerCase().startsWith('en')) return 'en';
+  } catch {
+    // Intl no disponible en este runtime: español por defecto
+  }
+  return 'es';
 }
 
 /** Cambia el idioma global y lo persiste para los próximos arranques. */
