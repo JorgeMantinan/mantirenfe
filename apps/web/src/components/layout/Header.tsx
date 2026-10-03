@@ -107,6 +107,12 @@ export function Header() {
     navigate('/');
   };
 
+  // Dentro del WebView de la app móvil (UA MantiRenfeApp) la barra solo
+  // aporta tema y login — la app ya gestiona ambos: se oculta.
+  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('MantiRenfeApp')) {
+    return null;
+  }
+
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background px-14 sm:px-6">
       <div className="hidden text-sm text-muted-foreground sm:block">{t('cabecera.lema')}</div>

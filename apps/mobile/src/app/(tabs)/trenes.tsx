@@ -785,6 +785,7 @@ export default function Trenes() {
             source={{ uri: 'https://mantirenfe.vercel.app/mapa' }}
             style={{ flex: 1 }}
             startInLoadingState
+            userAgent="MantiRenfeApp/1.0"
           />
         </View>
       )}

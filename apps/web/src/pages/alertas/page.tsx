@@ -141,8 +141,8 @@ export function PaginaAlertas() {
           )}
           {visibles.map((alerta) => (
             <Card key={alerta.id} className="transition-shadow hover:shadow-md">
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
-                <div className="space-y-1">
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1 sm:flex-1">
                   <p className="font-heading text-lg font-semibold">
                     {alerta.origenNombre}{' '}
                     <span className="text-primary" aria-hidden="true">
@@ -168,7 +168,7 @@ export function PaginaAlertas() {
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
                   <Badge
                     variant={
                       alerta.estado === 'ACTIVA'
