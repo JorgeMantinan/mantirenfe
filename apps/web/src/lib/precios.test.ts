@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { cambiarIdioma } from '@/i18n';
 import type { PuntoPrecio } from '@mantirenfe/shared-types';
 import {
   agruparContagos,
@@ -34,6 +35,11 @@ function contagosEnTramos(tramos: number, porTramo: number): ReturnType<typeof a
   }
   return agruparContagos(puntos);
 }
+
+// Fija el español: en CI el runner es en-US y el i18n arranca en 'en'.
+beforeEach(async () => {
+  await cambiarIdioma('es');
+});
 
 describe('agruparPrecios', () => {
   it('agrupa por numeroTren + salida y calcula min/max', () => {

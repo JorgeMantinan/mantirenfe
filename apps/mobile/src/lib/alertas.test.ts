@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { cambiarIdioma } from '../i18n';
 import { etiquetaAvisos, etiquetaBono, etiquetaEstado, validarAlerta } from './alertas';
+
+// Fija el español: en CI el runner es en-US y el i18n arranca en 'en'.
+beforeEach(async () => {
+  await cambiarIdioma('es');
+});
 
 describe('validarAlerta', () => {
   it('acepta una alerta válida', () => {

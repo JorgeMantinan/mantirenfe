@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { cambiarIdioma } from '@/i18n';
 import type { AlertaResponse, EstadoSerializado } from '@mantirenfe/shared-types';
 import { formatearPrecio } from './precios';
 import {
@@ -57,6 +58,11 @@ function tren(datos: Partial<EstadoSerializado> & { salida: string }): EstadoSer
 function delDia(hora: string, datos: Partial<EstadoSerializado> = {}): EstadoSerializado {
   return tren({ salida: `${HOY}T${hora}:00.000Z`, ...datos });
 }
+
+// Fija el español: en CI el runner es en-US y el i18n arranca en 'en'.
+beforeEach(async () => {
+  await cambiarIdioma('es');
+});
 
 describe('proximaSalida', () => {
   it('toma la primera salida de hoy dentro de la franja horaria', () => {
