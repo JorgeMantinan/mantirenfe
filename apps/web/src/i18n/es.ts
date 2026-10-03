@@ -829,6 +829,13 @@ export const es = {
     toastActualizada: 'Alerta actualizada: {{resumen}}.',
     toastCreada: 'Alerta creada: {{resumen}}. Empezamos a vigilarla.',
     accionVuelta: 'Crear la vuelta',
+    tambienVuelta: 'También la vuelta',
+    tambienVueltaDesc:
+      'Crearemos la alerta de vuelta con el mismo criterio y franja, en la misma fecha.',
+    tambienVueltaRiesgo:
+      'La vuelta se creará con la MISMA fecha que la ida: si vuelves otro día, edítala después.',
+    toastCreadasVuelta: '2 alertas creadas: ida y vuelta ({{resumen}}). Empezamos a vigilarlas.',
+    errorVuelta: 'Alerta de ida creada; la de vuelta falló: reintenta.',
   },
 
   // ──────────────────────────────── detalle de alerta

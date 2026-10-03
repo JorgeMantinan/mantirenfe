@@ -1,6 +1,17 @@
 import type { TFunction } from 'i18next';
 
 /**
+ * Payload de la alerta de vuelta: la misma alerta con los extremos invertidos.
+ * Pura (no toca el original) y genérica para no acoplar la página a un tipo
+ * concreto: solo exige los dos campos que sí cambian.
+ */
+export function construirAlertaVuelta<T extends { origenNombre: string; destinoNombre: string }>(
+  datos: T,
+): T {
+  return { ...datos, origenNombre: datos.destinoNombre, destinoNombre: datos.origenNombre };
+}
+
+/**
  * Criterio de la alerta en texto legible ("Plazas libres" en vez de
  * "DISPONIBILIDAD"). El código cruido solo se pinta si no lo conocemos, para
  * que una alerta con un criterio de otra versión no salga vacía.

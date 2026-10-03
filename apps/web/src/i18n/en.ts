@@ -828,6 +828,14 @@ export const en: MismoArbol<Claves> = {
     toastActualizada: 'Alert updated: {{resumen}}.',
     toastCreada: 'Alert created: {{resumen}}. We have started watching it.',
     accionVuelta: 'Create the return leg',
+    tambienVuelta: 'Also the return leg',
+    tambienVueltaDesc:
+      'We will create the return alert with the same criteria and time window, on the same date.',
+    tambienVueltaRiesgo:
+      'The return alert will use the SAME date as the outbound leg: if you come back another day, edit it afterwards.',
+    toastCreadasVuelta:
+      '2 alerts created: outbound and return ({{resumen}}). We have started watching them.',
+    errorVuelta: 'Outbound alert created; the return leg failed: please try again.',
   },
 
   // ──────────────────────────────── detalle de alerta

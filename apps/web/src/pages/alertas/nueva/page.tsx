@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { construirAlertaVuelta } from '@/lib/alertas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -78,6 +79,7 @@ export function PaginaNuevaAlerta() {
   const [bono, setBono] = useState('GENERAL');
   const [numeroTren, setNumeroTren] = useState('');
   const [notas, setNotas] = useState('');
+  const [tambienVuelta, setTambienVuelta] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
   const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
@@ -259,25 +261,33 @@ export function PaginaNuevaAlerta() {
     try {
       const url = editandoId ? `/alertas/${editandoId}` : '/alertas';
       const metodo = editandoId ? 'PATCH' : 'POST';
+      const datos = {
+        origenNombre: origen.trim(),
+        destinoNombre: destino.trim(),
+        // Un trayecto cotidiano se ancla a hoy: la fecha dejó de importar
+        fechaViaje: fechaEfectiva,
+        recurrente,
+        soloLaborables: frecuencia === 'laborables',
+        horaDesde: horaDesde || null,
+        horaHasta: horaHasta || null,
+        numeroTren: numeroTren.trim() || null,
+        criterio,
+        // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
+        precioObjetivo: criterio === 'PRECIO' ? objetivo : null,
+        intervaloSondeoMin: intervalo,
+        bono,
+        notas: notas.trim() || null,
+      };
+      // Formulario de la vuelta precargado (extremos invertidos): lo usan la
+      // acción del toast y el aviso de fallo para poder reintentarla.
+      const rutaVuelta = `/alertas/nueva?origen=${encodeURIComponent(
+        datos.destinoNombre,
+      )}&destino=${encodeURIComponent(datos.origenNombre)}&fecha=${encodeURIComponent(
+        fechaEfectiva,
+      )}`;
       const resultado = await api<{ id?: string; error?: unknown }>(url, {
         method: metodo,
-        json: {
-          origenNombre: origen.trim(),
-          destinoNombre: destino.trim(),
-          // Un trayecto cotidiano se ancla a hoy: la fecha dejó de importar
-          fechaViaje: fechaEfectiva,
-          recurrente,
-          soloLaborables: frecuencia === 'laborables',
-          horaDesde: horaDesde || null,
-          horaHasta: horaHasta || null,
-          numeroTren: numeroTren.trim() || null,
-          criterio,
-          // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
-          precioObjetivo: criterio === 'PRECIO' ? objetivo : null,
-          intervaloSondeoMin: intervalo,
-          bono,
-          notas: notas.trim() || null,
-        },
+        json: datos,
       });
 
       if (resultado?.error) {
@@ -287,19 +297,37 @@ export function PaginaNuevaAlerta() {
 
       if (editandoId) {
         toast.success(t('nuevaAlerta.toastActualizada', { resumen }));
+      } else if (tambienVuelta) {
+        // La ida ya está creada: la vuelta va como segunda petición con la
+        // misma alerta y los extremos invertidos. Si falla, no celebramos:
+        // avisamos de forma diferenciada y dejamos el reintento a un clic.
+        let vueltaCreada = false;
+        try {
+          const vuelta = await api<{ id?: string; error?: unknown }>('/alertas', {
+            method: 'POST',
+            json: construirAlertaVuelta(datos),
+          });
+          vueltaCreada = !vuelta?.error;
+        } catch {
+          vueltaCreada = false;
+        }
+        if (vueltaCreada) {
+          toast.success(t('nuevaAlerta.toastCreadasVuelta', { resumen }), { duration: 8000 });
+        } else {
+          toast.error(t('nuevaAlerta.errorVuelta'), {
+            duration: 10000,
+            action: {
+              label: t('nuevaAlerta.accionVuelta'),
+              onClick: () => navigate(rutaVuelta),
+            },
+          });
+        }
       } else {
         toast.success(t('nuevaAlerta.toastCreada', { resumen }), {
           duration: 8000,
           action: {
             label: t('nuevaAlerta.accionVuelta'),
-            onClick: () =>
-              navigate(
-                `/alertas/nueva?origen=${encodeURIComponent(
-                  destino.trim(),
-                )}&destino=${encodeURIComponent(origen.trim())}&fecha=${encodeURIComponent(
-                  fechaEfectiva,
-                )}`,
-              ),
+            onClick: () => navigate(rutaVuelta),
           },
         });
       }
@@ -557,6 +585,29 @@ export function PaginaNuevaAlerta() {
                 maxLength={500}
               />
             </div>
+
+            {!editandoId && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <div className="flex items-start gap-2">
+                  <input
+                    id="tambienVuelta"
+                    type="checkbox"
+                    checked={tambienVuelta}
+                    onChange={(e) => setTambienVuelta(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="tambienVuelta">{t('nuevaAlerta.tambienVuelta')}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('nuevaAlerta.tambienVueltaDesc')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('nuevaAlerta.tambienVueltaRiesgo')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1 rounded-lg border bg-muted/40 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

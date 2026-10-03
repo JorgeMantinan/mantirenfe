@@ -5,6 +5,17 @@ export function validarAlerta(datos: unknown) {
   return crearAlertaSchema.safeParse(datos);
 }
 
+/**
+ * Payload de la alerta de vuelta: la misma alerta con los extremos invertidos.
+ * Función pura (no muta la entrada) y genérica: solo exige los dos campos que
+ * sí cambian, el resto (fecha, criterio, franja, bono, notas...) se copia tal cual.
+ */
+export function construirAlertaVuelta<T extends { origenNombre: string; destinoNombre: string }>(
+  datos: T,
+): T {
+  return { ...datos, origenNombre: datos.destinoNombre, destinoNombre: datos.origenNombre };
+}
+
 export function etiquetaBono(bono: string): string {
   switch (bono) {
     case 'GENERAL':

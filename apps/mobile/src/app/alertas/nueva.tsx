@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   BONOS,
@@ -13,7 +13,7 @@ import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
-import { etiquetaBono, validarAlerta } from '@/lib/alertas';
+import { construirAlertaVuelta, etiquetaBono, validarAlerta } from '@/lib/alertas';
 import { fechaCorta } from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
@@ -30,6 +30,7 @@ export default function NuevaAlerta() {
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
   const [notas, setNotas] = useState('');
+  const [tambienVuelta, setTambienVuelta] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
@@ -250,6 +251,26 @@ export default function NuevaAlerta() {
         method: editandoId ? 'PATCH' : 'POST',
         json: validacion.data,
       });
+
+      if (!editandoId && tambienVuelta) {
+        // La ida ya está creada: la vuelta va como segunda petición con la
+        // misma alerta y los extremos invertidos. Solo celebramos si salen
+        // las dos; si no, avisamos de forma diferenciada.
+        try {
+          await api('/alertas', {
+            method: 'POST',
+            json: construirAlertaVuelta(validacion.data),
+          });
+          Alert.alert(t('nueva.creadasTitulo'), t('nueva.creadasCuerpo', { resumen }), [
+            { text: t('nueva.entendido') },
+          ]);
+        } catch {
+          Alert.alert(t('comunes.error'), t('nueva.errorVuelta'), [{ text: t('nueva.entendido') }]);
+        }
+        router.back();
+        return;
+      }
+
       Alert.alert(
         editandoId ? t('nueva.actualizadaTitulo') : t('nueva.creadaTitulo'),
         t(editandoId ? 'nueva.actualizadaCuerpo' : 'nueva.creadaCuerpo', { resumen }),
@@ -483,6 +504,29 @@ export default function NuevaAlerta() {
         onChangeText={setNotas}
       />
 
+      {editandoId ? null : (
+        <View style={s.cajaVuelta}>
+          <View style={s.cajaVueltaFila}>
+            <Text
+              style={s.cajaVueltaTitulo}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: tambienVuelta }}
+              onPress={() => setTambienVuelta((v) => !v)}
+            >
+              {t('nueva.tambienVuelta')}
+            </Text>
+            <Switch
+              value={tambienVuelta}
+              onValueChange={setTambienVuelta}
+              trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
+              thumbColor="#fff"
+            />
+          </View>
+          <Text style={s.pista}>{t('nueva.tambienVueltaDesc')}</Text>
+          <Text style={s.pista}>{t('nueva.tambienVueltaRiesgo')}</Text>
+        </View>
+      )}
+
       <Tarjeta style={{ marginTop: espaciado.sm }}>
         <Text style={s.resumenTitulo}>{t('nueva.resumenTitulo')}</Text>
         <Text style={s.resumenRuta}>
@@ -562,6 +606,27 @@ const estilos = (c: Paleta) =>
     notas: {
       minHeight: 88,
       textAlignVertical: 'top',
+    },
+    cajaVuelta: {
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.md,
+      backgroundColor: c.fondoSecundario,
+      padding: espaciado.md,
+      gap: 6,
+      marginTop: espaciado.sm,
+    },
+    cajaVueltaFila: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: espaciado.sm,
+    },
+    cajaVueltaTitulo: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.texto,
     },
     pista: {
       fontSize: 12,

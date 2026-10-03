@@ -1,11 +1,33 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { cambiarIdioma } from '../i18n';
-import { etiquetaAvisos, etiquetaBono, etiquetaEstado, validarAlerta } from './alertas';
+import {
+  construirAlertaVuelta,
+  etiquetaAvisos,
+  etiquetaBono,
+  etiquetaEstado,
+  validarAlerta,
+} from './alertas';
 
 // Fija el español: en CI el runner es en-US y el i18n arranca en 'en'.
 beforeEach(async () => {
   await cambiarIdioma('es');
 });
+
+const payloadIda = {
+  origenNombre: 'Madrid-Chamartín',
+  destinoNombre: 'Barcelona-Sants',
+  fechaViaje: '2026-11-02',
+  recurrente: false,
+  soloLaborables: false,
+  horaDesde: '08:00',
+  horaHasta: null,
+  numeroTren: '03311',
+  criterio: 'PRECIO',
+  precioObjetivo: 45,
+  intervaloSondeoMin: 15,
+  bono: 'BONO_10',
+  notas: 'Solo clase Turista',
+};
 
 describe('validarAlerta', () => {
   it('acepta una alerta válida', () => {
@@ -63,5 +85,26 @@ describe('etiquetas', () => {
     expect(etiquetaAvisos(0)).toBe('0 avisos');
     expect(etiquetaAvisos(1)).toBe('1 aviso');
     expect(etiquetaAvisos(12)).toBe('12 avisos');
+  });
+});
+
+describe('construirAlertaVuelta', () => {
+  it('invierte origen y destino y conserva el resto', () => {
+    const { origenNombre, destinoNombre, ...resto } = payloadIda;
+    expect(construirAlertaVuelta(payloadIda)).toEqual({
+      ...resto,
+      origenNombre: destinoNombre,
+      destinoNombre: origenNombre,
+    });
+  });
+
+  it('no muta el payload de la ida', () => {
+    construirAlertaVuelta(payloadIda);
+    expect(payloadIda.origenNombre).toBe('Madrid-Chamartín');
+    expect(payloadIda.destinoNombre).toBe('Barcelona-Sants');
+  });
+
+  it('genera una alerta que la API sigue aceptando', () => {
+    expect(validarAlerta(construirAlertaVuelta(payloadIda)).success).toBe(true);
   });
 });
