@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { es } from './es';
 import { en } from './en';
-import { cambiarIdioma, i18n, idiomaInicial, locale, t } from './index';
+import { cambiarIdioma, i18n, idiomaDesdeLocale, idiomaInicial, locale, t } from './index';
 
 /** Ruta completa de cada hoja del diccionario ("comunes.error"). */
 function hojas(valor: unknown, prefijo = ''): Array<[string, string]> {
@@ -51,9 +51,27 @@ describe('diccionarios ES/EN', () => {
   });
 });
 
+describe('idiomaDesdeLocale', () => {
+  it('mapea locales del sistema a es/en', () => {
+    expect(idiomaDesdeLocale('es-ES')).toBe('es');
+    expect(idiomaDesdeLocale('es-AR')).toBe('es');
+    expect(idiomaDesdeLocale('fr-FR')).toBe('es');
+    expect(idiomaDesdeLocale('en-US')).toBe('en');
+    expect(idiomaDesdeLocale('en-GB')).toBe('en');
+    expect(idiomaDesdeLocale(null)).toBe('es');
+    expect(idiomaDesdeLocale(undefined)).toBe('es');
+  });
+});
+
 describe('traductor', () => {
-  it('empieza en español y traduce con el idioma activo', () => {
-    expect(idiomaInicial()).toBe('es');
+  // Fija el idioma: el arranque de i18n depende del locale del entorno
+  // (en CI el runner es en-US → 'en'), no del valor de los tests.
+  beforeEach(async () => {
+    await cambiarIdioma('es');
+  });
+
+  it('arranca con el idioma del entorno y traduce con el activo', async () => {
+    expect(['es', 'en']).toContain(idiomaInicial());
     expect(i18n.language).toBe('es');
     expect(t('comunes.error')).toBe('Error');
     expect(t('pestanas.ajustes')).toBe('Ajustes');

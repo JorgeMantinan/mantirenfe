@@ -39,17 +39,22 @@ function guardarIdioma(idioma: Idioma): void {
   }
 }
 
+/** Traduce un locale del sistema (ej. 'en-US') a nuestro idioma soportado. */
+export function idiomaDesdeLocale(delSistema: string | undefined | null): Idioma {
+  if (delSistema && delSistema.toLowerCase().startsWith('en')) return 'en';
+  return 'es';
+}
+
 /** Idioma inicial: la última elección guardada → idioma del sistema → español. */
 export function idiomaInicial(): Idioma {
   const guardado = leerIdiomaGuardado();
   if (guardado) return guardado;
   try {
-    const delSistema = Intl.DateTimeFormat().resolvedOptions().locale ?? '';
-    if (delSistema.toLowerCase().startsWith('en')) return 'en';
+    return idiomaDesdeLocale(Intl.DateTimeFormat().resolvedOptions().locale);
   } catch {
     // Intl no disponible en este runtime: español por defecto
+    return 'es';
   }
-  return 'es';
 }
 
 /** Cambia el idioma global y lo persiste para los próximos arranques. */
