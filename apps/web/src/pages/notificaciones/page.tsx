@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bell, BellOff, CheckCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { desuscribirPush } from '@/lib/push';
 import { locale } from '@/i18n';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,26 @@ export function PaginaNotificaciones() {
   const [notificaciones, setNotificaciones] = useState<NotificacionResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activandoPush, setActivandoPush] = useState(false);
+  const [pushActivo, setPushActivo] = useState(false);
+
+  // Estado real de la suscripción (no solo el toast del momento)
+  useEffect(() => {
+    let vivo = true;
+    const calcular = async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      try {
+        const registro = await navigator.serviceWorker.ready;
+        const suscripcion = await registro.pushManager.getSubscription();
+        if (vivo) setPushActivo(Boolean(suscripcion));
+      } catch {
+        // sin SW activo: se queda como desactivado
+      }
+    };
+    void calcular();
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const cargar = useCallback(() => {
     api<NotificacionResponse[]>('/notificaciones')
@@ -64,7 +85,10 @@ export function PaginaNotificaciones() {
 
   const activarPush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      toast.error(t('notificaciones.sinSoporte'));
+      const ua = navigator.userAgent;
+      const esSafariIOS =
+        /iPad|iPhone|iPod/.test(ua) || (ua.includes('Safari') && !ua.includes('Chrome'));
+      toast.error(esSafariIOS ? t('notificaciones.sinSoporteIos') : t('notificaciones.sinSoporte'));
       return;
     }
     setActivandoPush(true);
@@ -93,11 +117,22 @@ export function PaginaNotificaciones() {
         method: 'POST',
         json: suscripcion.toJSON(),
       });
+      setPushActivo(true);
       toast.success(t('notificaciones.pushOk'));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('notificaciones.pushError'));
     } finally {
       setActivandoPush(false);
+    }
+  };
+
+  const desactivarPush = async () => {
+    try {
+      await desuscribirPush();
+      setPushActivo(false);
+      toast.success(t('notificaciones.pushDesactivado'));
+    } catch {
+      toast.error(t('comunes.error'));
     }
   };
 
@@ -118,11 +153,17 @@ export function PaginaNotificaciones() {
           </h1>
           <p className="text-muted-foreground">{t('notificaciones.subtitulo')}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void activarPush()} disabled={activandoPush}>
-            <Bell aria-hidden="true" />
-            {activandoPush ? t('notificaciones.activando') : t('notificaciones.activarPush')}
-          </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {pushActivo ? (
+            <Button variant="outline" onClick={() => void desactivarPush()}>
+              <Bell aria-hidden="true" /> {t('notificaciones.pushActivo')}
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => void activarPush()} disabled={activandoPush}>
+              <Bell aria-hidden="true" />
+              {activandoPush ? t('notificaciones.activando') : t('notificaciones.activarPush')}
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => void marcarTodas()}>
             <CheckCheck aria-hidden="true" /> {t('notificaciones.marcarLeidas')}
           </Button>

@@ -871,6 +871,10 @@ export const es = {
 
   // ──────────────────────────────── bandeja de notificaciones
   notificaciones: {
+    pushActivo: 'Push activado ✓',
+    pushDesactivado: 'Push desactivado',
+    sinSoporteIos:
+      'Safari no permite push web en iPhone. Usa la app MantiRenfe o instala la web en tu pantalla de inicio (Safari → Compartir → Añadir a la pantalla de inicio).',
     subtitulo: 'Avisos de tus alertas y recordatorios',
     activando: 'Activando...',
     activarPush: 'Activar push',

@@ -870,6 +870,10 @@ export const en: MismoArbol<Claves> = {
 
   // ──────────────────────────────── bandeja de notificaciones
   notificaciones: {
+    pushActivo: 'Push enabled ✓',
+    pushDesactivado: 'Push disabled',
+    sinSoporteIos:
+      'Safari does not support web push on iPhone. Use the MantiRenfe app or add the site to your Home Screen (Safari → Share → Add to Home Screen).',
     subtitulo: 'Notices from your alerts and reminders',
     activando: 'Enabling...',
     activarPush: 'Enable push',
