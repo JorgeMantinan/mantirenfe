@@ -60,7 +60,15 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const { payload } = await jwtVerify(token, this.jwks, { algorithms: ['ES256'] });
+      const opciones: { algorithms: string[]; issuer?: string; audience?: string } = {
+        algorithms: ['ES256'],
+      };
+      if (process.env.SUPABASE_URL) {
+        // Restringe el token a NUESTRO proyecto (iss/aud de Supabase Auth)
+        opciones.issuer = `${process.env.SUPABASE_URL}/auth/v1`;
+        opciones.audience = 'authenticated';
+      }
+      const { payload } = await jwtVerify(token, this.jwks, opciones);
       const p = payload as PayloadJwt;
       if (!p.sub) throw new UnauthorizedException('Token sin sujeto');
       request.user = {
@@ -83,9 +91,9 @@ export class JwtAuthGuard implements CanActivate {
         mensaje.includes('network') ||
         mensaje.includes('ENOTFOUND')
       ) {
-        throw new UnauthorizedException('No se pudo verificar el token (JWKS no accesible)');
+        throw new UnauthorizedException('Token inválido');
       }
-      throw new UnauthorizedException(`Token inválido (${mensaje})`);
+      throw new UnauthorizedException('Token inválido');
     }
   }
 }

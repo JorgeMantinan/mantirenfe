@@ -18,9 +18,16 @@ type ResumenAlertas = {
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
+  /** Caché corta: Render exige respuesta en5s y no deja subir el timeout en free. */
+  private cache: { en: number; valor: unknown } | null = null;
+
   @Get()
   @EsPublico()
   async comprobar() {
+    if (this.cache && Date.now() - this.cache.en < 10_000) {
+      return this.cache.valor;
+    }
+
     const estado: Record<string, string> = { api: 'ok' };
 
     try {
@@ -33,7 +40,12 @@ export class HealthController {
     const redisUrl = process.env.REDIS_URL;
     if (redisUrl) {
       const { default: IORedis } = await import('ioredis');
-      const redis = new IORedis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
+      const redis = new IORedis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        lazyConnect: true,
+        connectTimeout: 1_500,
+        commandTimeout: 1_500,
+      });
       try {
         await redis.connect();
         await redis.ping();
@@ -49,21 +61,18 @@ export class HealthController {
 
     const alertas = await this.resumenSondeo();
     const sano = estado.baseDatos === 'ok';
-    const memoria = process.memoryUsage();
-    return {
+    const respuesta = {
       estado,
       sano,
       timestamp: new Date().toISOString(),
       ultimoSondeoGlobal: alertas.ultimoSondeoEn,
       alertas,
       umbralRetrasoMinutos: UMBRAL_RETRASO_MINUTOS,
-      // Diagnóstico de OOM de Render: si rssMb se acerca a512, hay que actuar
-      memoria: {
-        rssMb: Math.round(memoria.rss / 1_048_576),
-        heapUsadoMb: Math.round(memoria.heapUsed / 1_048_576),
-        heapTotalMb: Math.round(memoria.heapTotal / 1_048_576),
-      },
+      // Sin métricas de memoria en el health público (fingerprint para atacantes);
+      // la memoria del worker está en sus logs de Render.
     };
+    this.cache = { en: Date.now(), valor: respuesta };
+    return respuesta;
   }
 
   /**

@@ -54,3 +54,9 @@ jobs:
           GTFS_DIAS_VENTANA: '45'
           GTFS_ZIP_URLS_OUIGO: 'https://nap.transportes.gob.es/api/Fichero/download/1766'
           NAP_API_KEY: ${{ secrets.NAP_API_KEY }}
+
+      # Auditoría de privilegios de BD (RLS/grants) tras cada sync
+      - name: Auditoria de privilegios BD
+        run: pnpm --filter @mantirenfe/database db:audit
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}

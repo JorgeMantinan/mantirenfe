@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getPrisma } from '@mantirenfe/database';
 import {
@@ -77,6 +77,14 @@ export class NotificacionesService {
       update: {},
       create: { id: usuario.sub, email: usuario.email || `${usuario.sub}@placeholder` },
     });
+    // No reasignar una suscripción que ya pertenece a otra cuenta
+    const existente = await prisma.suscripcionPush.findUnique({
+      where: { endpoint: input.endpoint },
+      select: { usuarioId: true },
+    });
+    if (existente && existente.usuarioId !== usuario.sub) {
+      throw new ForbiddenException('Esa suscripción ya está vinculada a otra cuenta');
+    }
     return prisma.suscripcionPush.upsert({
       where: { endpoint: input.endpoint },
       update: {
@@ -113,6 +121,14 @@ export class NotificacionesService {
       update: {},
       create: { id: usuario.sub, email: usuario.email || `${usuario.sub}@placeholder` },
     });
+    // No reasignar un token de otro dispositivo/usuario
+    const existente = await prisma.tokenPushMovil.findUnique({
+      where: { token: input.token },
+      select: { usuarioId: true },
+    });
+    if (existente && existente.usuarioId !== usuario.sub) {
+      throw new ForbiddenException('Ese token ya está vinculado a otra cuenta');
+    }
     await prisma.tokenPushMovil.upsert({
       where: { token: input.token },
       update: {

@@ -20,6 +20,9 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule, { logger: new NestPinoLogger(logger) });
+  // Con Vercel/Render delante, la IP real viene en X-Forwarded-For:1 salto para
+  // que el rate limit por IP funcione (si no, todos los usuarios comparten bucket).
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   app.use(
     pinoHttp({
