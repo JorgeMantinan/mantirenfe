@@ -107,7 +107,9 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
-      // El trayecto cotidiano no caduca: se resumen cada día aunque su fechaViaje sea antigua
+      // El trayecto cotidiano no caduca: se resumen cada día aunque su fechaViaje sea antigua.
+      // Las de fecha flexible no tienen un día concreto: no resumen "hoy".
+      fechaFlexible: false,
       OR: [{ fechaViaje: new Date(`${hoyIso}T00:00:00Z`) }, { recurrente: true }],
       resumenEnviadoEn: null,
       recordatorioEnviadoEn: null, // si ya queda poco para salir, manda el recordatorio
@@ -225,7 +227,9 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
-      // El trayecto cotidiano no caduca: se recuerda cada día aunque su fechaViaje sea antigua
+      // El trayecto cotidiano no caduca: se recuerda cada día aunque su fechaViaje sea antigua.
+      // Las de fecha flexible no tienen un día concreto: no mandan recordatorio de salida.
+      fechaFlexible: false,
       OR: [{ fechaViaje: new Date(`${hoyIso}T00:00:00Z`) }, { recurrente: true }],
     },
     include: {

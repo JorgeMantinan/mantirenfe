@@ -3,6 +3,7 @@ import { getPrisma } from '@mantirenfe/database';
 import {
   funcionIndemnizacion,
   horaGtfs,
+  HORIZONTE_FLEXIBLE_DIAS,
   type ConsultaDisponibilidad,
   type EstadoDisponibilidad,
   type EstadoSerializado,
@@ -281,6 +282,117 @@ export function textoPrecioBajo(tren: EstadoSerializado, precioObjetivo: number)
   return `Tren ${numero} ${horaGtfs(tren.salida)} a ${precio} € (tu objetivo: ≤${euros(precioObjetivo)} €)`;
 }
 
+// ──────────────────────────── «cualquier fecha» (rango flexible) ────────────────────────────
+
+/**
+ * Cuántas fechas consulta el worker por alerta y por sondeo con
+ * `fechaFlexible` (N = 4, el máximo documentado). El rango
+ * (`fechaDesde`…`fechaHasta`, hoy … hoy + 180 días) se parte en N tramos y
+ * cada sondeo mira una fecha por tramo; el índice de rotación guarda en
+ * `Alerta.estadoFlexible` por qué tramo va, de modo que en ~45 sondeos (7,5 h
+ * a 10 min) ha recorrido todo el rango.
+ *
+ * Cada consulta pasa por la caché DWR compartida por ruta+fecha
+ * (`renfe-dwr.ts`), así que re-sondear una fecha recién vista no vuelve a
+ * tocar venta.renfe.com.
+ */
+export const SONDEOS_FLEXIBLE_POR_ALERTA = 4;
+
+/** Estado rotatorio del sondeo flexible, guardado en `Alerta.estadoFlexible`. */
+export interface EstadoFlexible {
+  /** Próximo índice de rotación (avanza 1 en cada sondeo). */
+  indice: number;
+  /** Última disponibilidad vista por fecha (true = había al menos una plaza). */
+  fechas: Record<string, boolean>;
+}
+
+/** Lee `Alerta.estadoFlexible`, tolerando JSON ausente o de otra versión. */
+export function parsearEstadoFlexible(bruto: unknown): EstadoFlexible {
+  if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) return { indice: 0, fechas: {} };
+  const objeto = bruto as { indice?: unknown; fechas?: unknown };
+  const indice =
+    typeof objeto.indice === 'number' && Number.isInteger(objeto.indice) && objeto.indice >= 0
+      ? objeto.indice
+      : 0;
+  const fechas: Record<string, boolean> = {};
+  if (objeto.fechas && typeof objeto.fechas === 'object' && !Array.isArray(objeto.fechas)) {
+    for (const [fecha, valor] of Object.entries(objeto.fechas as Record<string, unknown>)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fecha) && typeof valor === 'boolean') fechas[fecha] = valor;
+    }
+  }
+  return { indice, fechas };
+}
+
+/** Suma días a una fecha `YYYY-MM-DD` (cálculo en UTC, sin husos de por medio). */
+function sumarDiasIso(fecha: string, dias: number): string {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(anio ?? 1970, (mes ?? 1) - 1, (dia ?? 1) + dias))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** Días de diferencia entre dos fechas `YYYY-MM-DD` (negativo si `hasta` es anterior). */
+function diasEntreIso(desde: string, hasta: string): number {
+  return Math.round(
+    (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+/**
+ * Fechas a consultar en el sondeo `indice` de una alerta con `fechaFlexible`.
+ *
+ * Rotación estratificada: el rango se divide en `min(N, días+1)` tramos
+ * contiguos y de cada tramo se coge la fecha que toca según el índice. Así:
+ * - cada sondeo consulta **como mucho N fechas** (nunca más consultas DWR);
+ * - hay una fecha por zona del rango (cerca, media y lejana) en cada pasada;
+ * - rotando el índice, todo el rango se recorre en `longitud del tramo`
+ *   sondeos (45 con 180 días y N = 4) y vuelve a empezar.
+ */
+export function fechasSondeoFlexible(desde: string, hasta: string, indice: number): string[] {
+  const total = Math.max(1, diasEntreIso(desde, hasta) + 1);
+  const tramos = Math.min(SONDEOS_FLEXIBLE_POR_ALERTA, total);
+  const fechas: string[] = [];
+  for (let i = 0; i < tramos; i++) {
+    const inicio = Math.floor((i * total) / tramos);
+    const fin = Math.floor(((i + 1) * total) / tramos);
+    const tam = Math.max(1, fin - inicio);
+    const posicion = inicio + (Math.abs(Math.trunc(indice)) % tam);
+    fechas.push(sumarDiasIso(desde, posicion));
+  }
+  return [...new Set(fechas)];
+}
+
+/** "15 de marzo" de una fecha `YYYY-MM-DD` (los avisos del worker son en español). */
+function fechaLarga(fecha: string): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(`${fecha}T00:00:00Z`));
+}
+
+/** "07:35 desde 32,00 €" de un tren disponible (sin precio: solo la hora). */
+function detalleTrenFlexible(tren: EstadoSerializado): string {
+  const hora = horaGtfs(tren.salida);
+  return typeof tren.precioMin === 'number' ? `${hora} desde ${euros(tren.precioMin)} €` : hora;
+}
+
+/**
+ * Cuerpo del aviso de apertura: una línea por fecha que acaba de abrir,
+ * con sus primeras salidas, y el trayecto al final (mismo patrón que el aviso
+ * de disponibilidad).
+ */
+export function cuerpoAvisoFlexible(
+  ruta: string,
+  abiertas: ReadonlyArray<{ fecha: string; trenes: readonly EstadoSerializado[] }>,
+): string {
+  const lineas = abiertas.map(
+    (a) =>
+      `Hay plazas el ${fechaLarga(a.fecha)}: ${a.trenes.slice(0, 3).map(detalleTrenFlexible).join(' · ')}`,
+  );
+  return [...lineas, ruta].join(' · ');
+}
+
 export async function notificar(
   alerta: {
     id: string;
@@ -345,6 +457,114 @@ export async function notificar(
   }
 }
 
+/** Campos de una alerta flexible: lo que lee `sondearFlexible`. */
+type AlertaFlexible = Parameters<typeof notificar>[0] & {
+  horaDesde: string | null;
+  horaHasta: string | null;
+  numeroTren: string | null;
+  fechaDesde: Date | null;
+  fechaHasta: Date | null;
+  estadoFlexible: unknown;
+};
+
+/**
+ * Sondeo de una alerta con `fechaFlexible` ("cualquier fecha en los próximos
+ * 6 meses"): en lugar de una fecha concreta consulta hasta
+ * `SONDEOS_FLEXIBLE_POR_ALERTA` fechas del rango en rotación y avisa en la
+ * que acaba de abrir.
+ *
+ * - **Baseline por fecha**: el primer contacto con una fecha solo la registra
+ *   (igual que el `primeraVez` del sondeo normal), así un billete que ya
+ *   estaba a la venta no dispara un aviso falso.
+ * - Solo cuenta la transición *no había plazas → hay plazas* de cada fecha; si
+ *   vuelven a desaparecer, el siguiente aviso vuelve a estar permitido.
+ * - Una fecha que falla se salta sin abortar el sondeo de las demás.
+ * - `ultimoEstado` se queda con la última serie consultada (la que tiene
+ *   plazas si alguna la tiene), que es lo que enseña el detalle.
+ * - No escribe histórico de precios: `PrecioTren` no guarda fecha y mezclaría
+ *   trenes de días distintos en la misma serie.
+ */
+async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<void> {
+  const prisma = getPrisma();
+  const estado = parsearEstadoFlexible(alerta.estadoFlexible);
+  const hoy = hoyGtfs();
+  const desde = alerta.fechaDesde ? alerta.fechaDesde.toISOString().slice(0, 10) : hoy;
+  const hasta = alerta.fechaHasta
+    ? alerta.fechaHasta.toISOString().slice(0, 10)
+    : sumarDiasIso(desde, HORIZONTE_FLEXIBLE_DIAS);
+  const fechas = fechasSondeoFlexible(desde, hasta, estado.indice);
+  const fuente = crearFuenteDatos(alerta.criterio);
+
+  const abiertas: Array<{ fecha: string; trenes: EstadoSerializado[] }> = [];
+  let ultimaSerie: EstadoSerializado[] | null = null;
+  let ultimaConPlazas: EstadoSerializado[] | null = null;
+
+  for (const fecha of fechas) {
+    let serie: EstadoSerializado[];
+    try {
+      const consultada = await fuente.getDisponibilidad({
+        origenNombre: alerta.origenNombre,
+        destinoNombre: alerta.destinoNombre,
+        fecha,
+        horaDesde: alerta.horaDesde,
+        horaHasta: alerta.horaHasta,
+        numeroTren: alerta.numeroTren,
+      });
+      serie = serializarEstado(consultada);
+    } catch (error) {
+      logger.warn({ alertaId: alerta.id, fecha, err: error }, 'Fecha del rango sin sondear');
+      continue;
+    }
+    if (alerta.horaDesde || alerta.horaHasta) {
+      serie = serie.filter((t) =>
+        enFranjaHoraria(t.salida, alerta.horaDesde ?? null, alerta.horaHasta ?? null),
+      );
+    }
+    const conPlazas = serie.filter((t) => t.disponible && t.cancelado !== true);
+    // `previo === undefined` es la primera vez que se mira esta fecha: baseline
+    if (estado.fechas[fecha] === false && conPlazas.length > 0) {
+      abiertas.push({ fecha, trenes: conPlazas });
+    }
+    estado.fechas[fecha] = conPlazas.length > 0;
+    ultimaSerie = serie;
+    if (conPlazas.length > 0) ultimaConPlazas = serie;
+  }
+
+  estado.indice += 1;
+  const referencia = ultimaConPlazas ?? ultimaSerie;
+  await prisma.alerta.update({
+    where: { id: alerta.id },
+    data: {
+      estadoFlexible: estado as object,
+      ...(referencia ? { ultimoEstado: referencia as object } : {}),
+      ultimoSondeoEn: new Date(),
+    },
+  });
+
+  if (abiertas.length === 0) {
+    logger.debug({ alertaId: alerta.id, fechas }, 'Sin fechas recién abiertas en el rango');
+    return;
+  }
+
+  const cuerpo = cuerpoAvisoFlexible(`${alerta.origenNombre} → ${alerta.destinoNombre}`, abiertas);
+  await notificar(
+    alerta,
+    '¡Billetes a la venta!',
+    cuerpo,
+    {
+      tipo: 'apertura',
+      fechas: abiertas.map((a) => a.fecha),
+      trenes: abiertas.flatMap((a) => a.trenes.slice(0, 3).map((t) => t.trenId)),
+    },
+    logger,
+    { email: true },
+  );
+  logger.info(
+    { alertaId: alerta.id, fechas: abiertas.map((a) => a.fecha) },
+    'Aviso de billetes a la venta enviado',
+  );
+}
+
 export async function sondearAlerta(alertaId: string, logger: Logger): Promise<void> {
   const prisma = getPrisma();
   const alerta = await prisma.alerta.findUnique({
@@ -365,6 +585,12 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   }
   if (alerta.estado !== 'ACTIVA') {
     logger.debug({ alertaId, estado: alerta.estado }, 'Alerta no activa, se omite');
+    return;
+  }
+
+  // "Cualquier fecha": el sondeo rota por el rango en vez de anclarse a un día
+  if (alerta.fechaFlexible) {
+    await sondearFlexible(alerta, logger);
     return;
   }
 

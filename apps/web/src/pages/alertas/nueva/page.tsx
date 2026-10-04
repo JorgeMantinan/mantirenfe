@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { construirAlertaVuelta } from '@/lib/alertas';
+import { construirAlertaVuelta, etiquetaDiasSemana } from '@/lib/alertas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SELECT_CLS } from '@/lib/ui-constants';
 import { fechaCorta } from '@/lib/proximoViaje';
-import { BONOS, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
+import { BONOS, DIAS_LABORABLES, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
 import type { TFunction } from 'i18next';
 import {
   horaGtfs,
@@ -21,7 +21,8 @@ import {
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
 
-type Frecuencia = 'fecha' | 'diaria' | 'laborables';
+/** Modalidades del bloque "¿Cuándo viajas?": fecha concreta, rango flexible o cotidiano. */
+type Frecuencia = 'fecha' | 'flexible' | 'diaria' | 'dias';
 
 /** Etiquetas del bono de la alerta, en el idioma activo. */
 function etiquetasBonos(t: TFunction): Record<string, string> {
@@ -52,14 +53,22 @@ function etiquetasCriterio(t: TFunction): Record<string, string> {
 function frecuencias(t: TFunction): Array<{ valor: Frecuencia; etiqueta: string }> {
   return [
     { valor: 'fecha', etiqueta: t('nuevaAlerta.frecuenciaFecha') },
+    { valor: 'flexible', etiqueta: t('nuevaAlerta.frecuenciaFlexible') },
     { valor: 'diaria', etiqueta: t('nuevaAlerta.frecuenciaDiaria') },
-    { valor: 'laborables', etiqueta: t('nuevaAlerta.frecuenciaLaborables') },
+    { valor: 'dias', etiqueta: t('nuevaAlerta.frecuenciaDias') },
   ];
 }
 
-function frecuenciaDe(recurrente: boolean, soloLaborables: boolean): Frecuencia {
-  if (!recurrente) return 'fecha';
-  return soloLaborables ? 'laborables' : 'diaria';
+/** Modalidad a partir de lo que hay guardado en la alerta (modo edición). */
+function frecuenciaDe(alerta: AlertaResponse): Frecuencia {
+  if (alerta.fechaFlexible) return 'flexible';
+  if (!alerta.recurrente) return 'fecha';
+  return alerta.diasSemana.length > 0 ? 'dias' : 'diaria';
+}
+
+/** Letras de los chips de días, en orden 0 = domingo … 6 = sábado. */
+function letrasDias(t: TFunction): string[] {
+  return t('comunes.diasIniciales').split(',');
 }
 
 export function PaginaNuevaAlerta() {
@@ -71,6 +80,8 @@ export function PaginaNuevaAlerta() {
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
   const [frecuencia, setFrecuencia] = useState<Frecuencia>('fecha');
+  // Días marcados para "Días concretos" (preselección: lunes a viernes)
+  const [dias, setDias] = useState<number[]>([...DIAS_LABORABLES]);
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
   const [criterio, setCriterio] = useState('DISPONIBILIDAD');
@@ -87,9 +98,10 @@ export function PaginaNuevaAlerta() {
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const fechaMin = hoyIso;
-  // La fecha que viaja al servidor: un trayecto recurrente se ancla a hoy
+  // La fecha que viaja al servidor: cotidiano y "cualquier fecha" se anclan a hoy
+  const recurrente = frecuencia === 'diaria' || frecuencia === 'dias';
+  const flexible = frecuencia === 'flexible';
   const fechaEfectiva = frecuencia === 'fecha' ? fecha : hoyIso;
-  const recurrente = frecuencia !== 'fecha';
 
   // Búsqueda de estaciones mientras se escribe (con debounce): la lista inicial
   // solo traía las primeras40 alfabéticas y nunca aparecían, p.ej., las de Vigo.
@@ -164,7 +176,8 @@ export function PaginaNuevaAlerta() {
           setOrigen(a.origenNombre);
           setDestino(a.destinoNombre);
           setFecha(a.fechaViaje);
-          setFrecuencia(frecuenciaDe(a.recurrente, a.soloLaborables));
+          setFrecuencia(frecuenciaDe(a));
+          setDias(a.diasSemana.length > 0 ? [...a.diasSemana] : [...DIAS_LABORABLES]);
           setHoraDesde(a.horaDesde ?? '');
           setHoraHasta(a.horaHasta ?? '');
           setCriterio(a.criterio);
@@ -180,7 +193,8 @@ export function PaginaNuevaAlerta() {
 
   // Los 3 próximos trenes de la ruta (para elegir sin escribir el número)
   useEffect(() => {
-    if (origen.trim().length < 2 || destino.trim().length < 2 || !fechaEfectiva) {
+    // Con "cualquier fecha" no hay día del que sugerir salidas
+    if (flexible || origen.trim().length < 2 || destino.trim().length < 2 || !fechaEfectiva) {
       setTrenesSugeridos([]);
       return;
     }
@@ -210,18 +224,18 @@ export function PaginaNuevaAlerta() {
       window.clearTimeout(timer);
       controlador.abort();
     };
-  }, [origen, destino, fechaEfectiva, hoyIso]);
+  }, [origen, destino, fechaEfectiva, hoyIso, flexible]);
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (caja + toast final).
   const criterioEtiqueta = etiquetasCriterio(t)[criterio] ?? criterio;
-  const resumenFecha = recurrente
-    ? frecuencia === 'laborables'
-      ? t('nuevaAlerta.resumenLunesViernes')
-      : t('nuevaAlerta.resumenCadaDia')
-    : fecha
-      ? fechaCorta(fecha)
-      : t('nuevaAlerta.resumenSinFecha');
+  const resumenFecha = flexible
+    ? t('nuevaAlerta.resumenFlexible')
+    : recurrente
+      ? etiquetaDiasSemana(t, dias)
+      : fecha
+        ? fechaCorta(fecha)
+        : t('nuevaAlerta.resumenSinFecha');
   const resumenFranja =
     horaDesde || horaHasta ? `${horaDesde || '00:00'}–${horaHasta || '23:59'}` : null;
   const resumenCriterio = [
@@ -247,8 +261,12 @@ export function PaginaNuevaAlerta() {
       toast.error(t('nuevaAlerta.errorOrigenDestino'));
       return;
     }
-    if (!recurrente && !fecha) {
+    if (frecuencia === 'fecha' && !fecha) {
       toast.error(t('nuevaAlerta.errorFecha'));
+      return;
+    }
+    if (frecuencia === 'dias' && dias.length === 0) {
+      toast.error(t('nuevaAlerta.errorDias'));
       return;
     }
     const objetivo = Number(precioObjetivo);
@@ -264,10 +282,13 @@ export function PaginaNuevaAlerta() {
       const datos = {
         origenNombre: origen.trim(),
         destinoNombre: destino.trim(),
-        // Un trayecto cotidiano se ancla a hoy: la fecha dejó de importar
+        // Un trayecto cotidiano o "cualquier fecha" se ancla a hoy
         fechaViaje: fechaEfectiva,
         recurrente,
-        soloLaborables: frecuencia === 'laborables',
+        // Único formato de días: vacío = todos los días
+        diasSemana: recurrente ? [...dias].sort((a, b) => a - b) : [],
+        // "Cualquier fecha en los próximos 6 meses": el worker rota el rango
+        fechaFlexible: flexible,
         horaDesde: horaDesde || null,
         horaHasta: horaHasta || null,
         numeroTren: numeroTren.trim() || null,
@@ -427,12 +448,40 @@ export function PaginaNuevaAlerta() {
                   </Button>
                 ))}
               </div>
-              {recurrente && (
-                <p className="text-xs text-muted-foreground">
-                  {frecuencia === 'laborables'
-                    ? t('nuevaAlerta.recurrenteLaborables')
-                    : t('nuevaAlerta.recurrenteDiaria')}
-                </p>
+              {frecuencia === 'diaria' && (
+                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.recurrenteDiaria')}</p>
+              )}
+              {flexible && (
+                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.pistaFlexible')}</p>
+              )}
+              {frecuencia === 'dias' && (
+                <>
+                  <p className="text-xs text-muted-foreground">{t('nuevaAlerta.pistaDias')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {letrasDias(t).map((letra, dia) => {
+                      const marcado = dias.includes(dia);
+                      return (
+                        <Button
+                          key={dia}
+                          type="button"
+                          variant={marcado ? 'default' : 'outline'}
+                          size="sm"
+                          aria-pressed={marcado}
+                          className="h-8 w-8 px-0"
+                          onClick={() =>
+                            setDias((prev) =>
+                              marcado
+                                ? prev.filter((d) => d !== dia)
+                                : [...prev, dia].sort((a, b) => a - b),
+                            )
+                          }
+                        >
+                          {letra}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
 

@@ -34,6 +34,9 @@ export const es = {
     suprimidos: 'Suprimidos',
     iniciarSesion: 'Iniciar sesión',
     crearCuenta: 'Crear cuenta',
+    // Iniciales de los días en orden 0=domingo … 6=sábado (chips y etiqueta)
+    diasIniciales: 'D,L,M,X,J,V,S',
+    diasCortos: 'Dom,Lun,Mar,Mié,Jue,Vie,Sáb',
   },
 
   // ──────────────────────────────── pestañas
@@ -107,8 +110,10 @@ export const es = {
     placeholderDestino: 'Estación de destino',
     cuando: '¿Cuándo viajas?',
     cotidianoDiaria: 'Trayecto cotidiano: te avisaremos cada día. No hace falta indicar fecha.',
-    cotidianoLaborables:
-      'Trayecto cotidiano: te avisaremos de lunes a viernes. No hace falta indicar fecha.',
+    pistaDias: 'Te avisaremos solo en los días marcados',
+    pistaFlexible:
+      'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
+    errorDias: 'Marca al menos un día de la semana',
     fechaViaje: 'Fecha del viaje',
     minimo: 'Mínimo: {{fecha}}',
     franja: 'Franja horaria (opcional)',
@@ -130,7 +135,7 @@ export const es = {
     crear: 'Crear alerta',
     sinFecha: 'Sin fecha',
     cadaMin: 'cada {{min}} min',
-    resumenLaborables: 'L-V',
+    resumenFlexible: 'Cualquier fecha (próximos 6 meses)',
     criterio: {
       disponibilidad: 'Plazas libres',
       retraso: 'Retraso',
@@ -147,8 +152,9 @@ export const es = {
     },
     frecuencia: {
       fecha: 'Una fecha',
+      flexible: 'Cualquier fecha',
       diaria: 'Cada día',
-      laborables: 'Lunes a viernes',
+      dias: 'Días concretos',
     },
   },
 
@@ -170,8 +176,7 @@ export const es = {
     calendarioTitulo: 'Añadir al calendario',
     calendarioError:
       'No se ha podido compartir el evento. Vuelve a intentarlo o entra en MantiRenfe desde el navegador para descargar el archivo .ics.',
-    laborables: 'L-V: Cada día laborable',
-    cadaDia: 'Cada día',
+    rangoFechas: 'Del {{desde}} al {{hasta}}',
     metaAlerta: '{{fecha}} · {{criterio}} · cada {{min}} min · {{bono}}',
     objetivo: 'Objetivo: avisar si baja de {{precio}}',
     franja: 'Franja: {{desde}} – {{hasta}}',
@@ -292,6 +297,8 @@ export const es = {
     sinSalidas: 'Sin salidas registradas hoy',
     tocaSalidas: '{{meta}} — toca para ver salidas',
     noEstaciones: 'No se encontraron estaciones',
+    crearAlertaFila: 'Crear alerta',
+    cargandoMas: 'Cargando…',
     estacionNoEncontrada: 'Estación no encontrada',
     sinTrenesRuta: 'Sin trenes con esa ruta',
     noEncontramos:
@@ -400,6 +407,9 @@ export const es = {
     },
     aviso: 'aviso',
     avisos: 'avisos',
+    // Etiqueta de frecuencia según los días marcados de la alerta
+    diasTodos: 'Cada día',
+    diasLaborables: 'L-V',
   },
 
   // ──────────────────────────────── precios (lib/precios.ts)

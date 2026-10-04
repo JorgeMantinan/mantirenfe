@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { actualizarAlertaSchema, crearAlertaSchema } from '@mantirenfe/shared-types';
-import { formatearUltimoEstado } from './alertas.service';
+import {
+  actualizarAlertaSchema,
+  crearAlertaSchema,
+  DIAS_LABORABLES,
+} from '@mantirenfe/shared-types';
+import {
+  diasSemanaDe,
+  esSoloLaborables,
+  formatearUltimoEstado,
+  rangoFlexible,
+} from './alertas.service';
 
 describe('API (schemas compartidos)', () => {
   it('el esquema de alertas es el mismo que usa la web', () => {
@@ -75,6 +84,64 @@ describe('actualizarAlertaSchema (edición)', () => {
     expect(actualizarAlertaSchema.safeParse({ fechaViaje: 'mañana' }).success).toBe(false);
     expect(actualizarAlertaSchema.safeParse({ horaDesde: '25:99' }).success).toBe(false);
     expect(actualizarAlertaSchema.safeParse({ criterio: 'NINGUNO' }).success).toBe(false);
+  });
+});
+
+describe('diasSemanaDe (formato único de días)', () => {
+  it('las alertas no recurrentes no tienen días marcados', () => {
+    expect(diasSemanaDe({ recurrente: false, diasSemana: [4] })).toEqual([]);
+    expect(diasSemanaDe({ recurrente: false, soloLaborables: true })).toEqual([]);
+  });
+
+  it('diasSemana manda si viene, aunque sea vacío (todos los días)', () => {
+    expect(diasSemanaDe({ recurrente: true, diasSemana: [4, 0, 4] })).toEqual([0, 4]);
+    expect(diasSemanaDe({ recurrente: true, diasSemana: [], soloLaborables: true })).toEqual([]);
+  });
+
+  it('convierte el legado soloLaborables a lunes a viernes', () => {
+    expect(diasSemanaDe({ recurrente: true, soloLaborables: true })).toEqual([...DIAS_LABORABLES]);
+    expect(diasSemanaDe({ recurrente: true, soloLaborables: false })).toEqual([]);
+    // Sin días en la entrada se conservan los ya guardados (edición)
+    expect(diasSemanaDe({ recurrente: true }, [4, 6])).toEqual([4, 6]);
+    expect(diasSemanaDe({ recurrente: true }, [])).toEqual([]);
+  });
+});
+
+describe('esSoloLaborables (espejo del formato legado)', () => {
+  it('solo es true si los días marcados son exactamente lunes a viernes', () => {
+    expect(esSoloLaborables([1, 2, 3, 4, 5])).toBe(true);
+    expect(esSoloLaborables([1, 2, 3])).toBe(false);
+    expect(esSoloLaborables([1, 2, 3, 4, 5, 6])).toBe(false);
+    expect(esSoloLaborables([])).toBe(false);
+  });
+});
+
+describe('rangoFlexible (cualquier fecha en los próximos 6 meses)', () => {
+  const HOY = '2026-10-05';
+
+  it('si no es flexible no hay rango', () => {
+    expect(rangoFlexible(false, '2026-11-01', '2026-12-01', HOY)).toBeNull();
+  });
+
+  it('por defecto va de hoy a hoy + 180 días', () => {
+    expect(rangoFlexible(true, undefined, undefined, HOY)).toEqual({
+      desde: HOY,
+      hasta: '2027-04-03',
+    });
+  });
+
+  it('respeta el rango del usuario', () => {
+    expect(rangoFlexible(true, '2026-11-01', '2026-12-01', HOY)).toEqual({
+      desde: '2026-11-01',
+      hasta: '2026-12-01',
+    });
+  });
+
+  it('acota el fin al inicio si el usuario se pasa del horizonte', () => {
+    expect(rangoFlexible(true, '2027-06-01', undefined, HOY)).toEqual({
+      desde: '2027-06-01',
+      hasta: '2027-06-01',
+    });
   });
 });
 

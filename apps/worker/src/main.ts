@@ -224,14 +224,18 @@ async function main() {
       }
 
       // Las alertas cuyo viaje ya pasó se completan solas (no se vuelven a sondear).
-      // Las recurrentes (trayecto cotidiano) nunca caducan.
+      // Las recurrentes (trayecto cotidiano) nunca caducan; las de fecha flexible
+      // se agotan cuando termina su rango (hoy … hoy + 180 días).
       try {
         const hoyIso = ahoraRelojGtfs().toISOString().slice(0, 10);
+        const hoy00 = new Date(`${hoyIso}T00:00:00Z`);
         const completadas = await prisma.alerta.updateMany({
           where: {
             estado: 'ACTIVA',
-            recurrente: false,
-            fechaViaje: { lt: new Date(`${hoyIso}T00:00:00Z`) },
+            OR: [
+              { recurrente: false, fechaFlexible: false, fechaViaje: { lt: hoy00 } },
+              { fechaFlexible: true, fechaHasta: { lt: hoy00 } },
+            ],
           },
           data: { estado: 'COMPLETADA' },
         });
@@ -243,14 +247,15 @@ async function main() {
       }
 
       // El filtro por intervaloSondeoMin se aplica en memoria más abajo: en SQL
-      // solo se descartan las de otros días (salvo las recurrentes, que trabajan
-      // siempre) y se limita a las más urgentes
+      // solo se descartan las de otros días (salvo las recurrentes y las de
+      // fecha flexible, que trabajan siempre) y se limita a las más urgentes
       const alertas = await prisma.alerta.findMany({
         where: {
           estado: 'ACTIVA',
           OR: [
             { fechaViaje: { gte: new Date(new Date().toISOString().slice(0, 10)) } },
             { recurrente: true },
+            { fechaFlexible: true },
           ],
         },
         select: {
@@ -258,6 +263,8 @@ async function main() {
           ultimoSondeoEn: true,
           intervaloSondeoMin: true,
           recurrente: true,
+          diasSemana: true,
+          // LEGACY: esDiaAplicable todavía lo lee en filas antiguas
           soloLaborables: true,
         },
         orderBy: [{ ultimoSondeoEn: 'asc' }, { creadaEn: 'asc' }],

@@ -56,7 +56,10 @@ function alerta(parcial: Partial<AlertaResponse> = {}): AlertaResponse {
     precioObjetivo: null,
     estado: 'ACTIVA',
     recurrente: false,
-    soloLaborables: false,
+    diasSemana: [],
+    fechaFlexible: false,
+    fechaDesde: null,
+    fechaHasta: null,
     intervaloSondeoMin: 10,
     bono: 'GENERAL',
     notas: null,
@@ -78,13 +81,22 @@ describe('alertaAplicaHoy', () => {
     expect(alertaAplicaHoy(alerta({ fechaViaje: '2026-09-29' }), HOY)).toBe(false);
   });
 
-  it('las recurrentes valen cada día, salvo soloLaborables en fin de semana', () => {
+  it('las recurrentes valen cada día, salvo los días no marcados', () => {
     const recurrente = alerta({ recurrente: true, fechaViaje: '2026-01-01' });
     expect(alertaAplicaHoy(recurrente, '2026-09-26')).toBe(true); // sábado
 
-    const laborables = alerta({ recurrente: true, soloLaborables: true });
+    const laborables = alerta({ recurrente: true, diasSemana: [1, 2, 3, 4, 5] });
     expect(alertaAplicaHoy(laborables, '2026-09-26')).toBe(false);
     expect(alertaAplicaHoy(laborables, HOY)).toBe(true);
+
+    // 2026-10-01 es jueves: solo con el jueves marcado
+    const jueves = alerta({ recurrente: true, diasSemana: [4] });
+    expect(alertaAplicaHoy(jueves, '2026-10-01')).toBe(true);
+    expect(alertaAplicaHoy(jueves, HOY)).toBe(false);
+
+    // Flexible: el rango lo vigila el worker, el widget la considera siempre
+    const flexible = alerta({ recurrente: false, fechaFlexible: true, fechaViaje: '2026-01-01' });
+    expect(alertaAplicaHoy(flexible, '2026-09-26')).toBe(true);
   });
 });
 

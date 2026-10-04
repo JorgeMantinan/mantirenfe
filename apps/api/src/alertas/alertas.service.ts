@@ -7,6 +7,10 @@ import {
   COLA_SONDEO,
   CrearAlertaInput,
   ActualizarAlertaInput,
+  DIAS_LABORABLES,
+  HORIZONTE_FLEXIBLE_DIAS,
+  fechaIso,
+  normalizarDiasSemana,
   type AvisoAlertaResponse,
   type EstadoSerializado,
   type PuntoPrecio,
@@ -67,6 +71,63 @@ function textoPropio(valor: unknown): valor is string {
   return typeof valor === 'string' && valor !== '';
 }
 
+/** Suma días a una fecha `YYYY-MM-DD` sin depender de la zona horaria local. */
+function sumarDias(fecha: string, dias: number): string {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(anio ?? 1970, (mes ?? 1) - 1, (dia ?? 1) + dias))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * Días aplicables canónicos (`diasSemana`) a partir de la entrada de un cliente.
+ *
+ * Solo hay UN formato en la base: este traductor absorbe el legado
+ * `soloLaborables` (true = lunes a viernes) y fija "todos los días" para las
+ * alertas no recurrentes (ellas van ancladas a su fecha).
+ *
+ * - Viene `diasSemana` (aunque sea `[]`) → manda él.
+ * - Solo `soloLaborables` → `[1,2,3,4,5]` si está en true, `[]` si en false.
+ * - Ninguno de los dos → el valor ya guardado (edición) o `[]` (alta).
+ */
+export function diasSemanaDe(
+  datos: {
+    recurrente: boolean;
+    diasSemana?: number[] | undefined;
+    soloLaborables?: boolean | undefined;
+  },
+  previo: readonly number[] = [],
+): number[] {
+  if (!datos.recurrente) return [];
+  if (datos.diasSemana !== undefined) return normalizarDiasSemana(datos.diasSemana);
+  if (datos.soloLaborables !== undefined) {
+    return datos.soloLaborables ? normalizarDiasSemana(DIAS_LABORABLES) : [];
+  }
+  return normalizarDiasSemana(previo);
+}
+
+/** Espejo del formato legado: `soloLaborables` = "los días marcados son lun-vie". */
+export function esSoloLaborables(dias: readonly number[]): boolean {
+  return dias.length === DIAS_LABORABLES.length && DIAS_LABORABLES.every((d) => dias.includes(d));
+}
+
+/**
+ * Rango del sondeo flexible (`fechaFlexible`): hoy … hoy + 180 días por
+ * defecto; si no es flexible, no hay rango. Si el resultado saliera del
+ * horizonte (solo pudo pasar por una entrada del usuario), se acota al inicio.
+ */
+export function rangoFlexible(
+  flexible: boolean,
+  desde: string | undefined,
+  hasta: string | undefined,
+  hoy: string,
+): { desde: string; hasta: string } | null {
+  if (!flexible) return null;
+  const d = desde ?? hoy;
+  const h = hasta ?? sumarDias(hoy, HORIZONTE_FLEXIBLE_DIAS);
+  return { desde: d, hasta: h < d ? d : h };
+}
+
 function formatearAlerta(alerta: {
   id: string;
   origenNombre: string;
@@ -79,7 +140,10 @@ function formatearAlerta(alerta: {
   precioObjetivo: number | null;
   estado: string;
   recurrente: boolean;
-  soloLaborables: boolean;
+  diasSemana: number[];
+  fechaFlexible: boolean;
+  fechaDesde: Date | null;
+  fechaHasta: Date | null;
   intervaloSondeoMin: number;
   bono: string;
   notas: string | null;
@@ -99,7 +163,10 @@ function formatearAlerta(alerta: {
     precioObjetivo: alerta.precioObjetivo,
     estado: alerta.estado as AlertaResponse['estado'],
     recurrente: alerta.recurrente,
-    soloLaborables: alerta.soloLaborables,
+    diasSemana: normalizarDiasSemana(alerta.diasSemana),
+    fechaFlexible: alerta.fechaFlexible,
+    fechaDesde: alerta.fechaDesde ? fechaIso(alerta.fechaDesde) : null,
+    fechaHasta: alerta.fechaHasta ? fechaIso(alerta.fechaHasta) : null,
     intervaloSondeoMin: alerta.intervaloSondeoMin,
     bono: alerta.bono,
     notas: alerta.notas,
@@ -217,9 +284,12 @@ export class AlertasService {
     const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
     const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
 
-    // Trayecto cotidiano: la fecha del formulario se ignora y se ancla a hoy,
-    // así ninguna query por fecha (barrido, sondeo) caduca nunca.
-    const fechaViaje = datos.recurrente ? hoyIso() : datos.fechaViaje;
+    // Trayecto cotidiano o "cualquier fecha": la fecha del formulario se ignora
+    // y se ancla a hoy, así ninguna query por fecha (barrido, sondeo) caduca.
+    const recurrente = datos.fechaFlexible ? false : datos.recurrente;
+    const diasSemana = diasSemanaDe({ ...datos, recurrente });
+    const rango = rangoFlexible(datos.fechaFlexible, datos.fechaDesde, datos.fechaHasta, hoyIso());
+    const fechaViaje = recurrente || datos.fechaFlexible ? hoyIso() : datos.fechaViaje;
 
     const alerta = await prisma.alerta.create({
       data: {
@@ -229,9 +299,14 @@ export class AlertasService {
         origenEstacionId: origen?.id ?? null,
         destinoEstacionId: destino?.id ?? null,
         fechaViaje: new Date(`${fechaViaje}T00:00:00Z`),
-        recurrente: datos.recurrente,
-        // soloLaborables solo tiene sentido dentro de un trayecto recurrente
-        soloLaborables: datos.recurrente && datos.soloLaborables,
+        recurrente,
+        // Único formato de días: vacío = todos. `soloLaborables` se espeja
+        // (= los días marcados son lun-vie) solo por compatibilidad.
+        diasSemana,
+        soloLaborables: esSoloLaborables(diasSemana),
+        fechaFlexible: datos.fechaFlexible,
+        fechaDesde: rango ? new Date(`${rango.desde}T00:00:00Z`) : null,
+        fechaHasta: rango ? new Date(`${rango.hasta}T00:00:00Z`) : null,
         horaDesde: datos.horaDesde ?? null,
         horaHasta: datos.horaHasta ?? null,
         numeroTren: datos.numeroTren ?? null,
@@ -257,6 +332,9 @@ export class AlertasService {
     const existente = await prisma.alerta.findFirst({ where: { id, usuarioId: usuario.sub } });
     if (!existente) throw new NotFoundException('Alerta no encontrada');
 
+    // Modalidad de fecha tras este parche: "cualquier fecha" ignora `fechaViaje`
+    const flexibleFinal = datos.fechaFlexible ?? existente.fechaFlexible;
+
     // Si cambia la ruta o el viaje, se re-resuelve la estación y se resetea el
     // estado para que el próximo sondeo no compare contra datos de otra ruta.
     const nuevaRuta: Record<string, unknown> = {};
@@ -274,7 +352,7 @@ export class AlertasService {
       nuevaRuta.destinoEstacionId = destino?.id ?? null;
       cambioRuta = true;
     }
-    if (datos.fechaViaje !== undefined) {
+    if (datos.fechaViaje !== undefined && !flexibleFinal) {
       nuevaRuta.fechaViaje = new Date(`${datos.fechaViaje}T00:00:00Z`);
       cambioRuta = true;
       // Se re-arman los avisos del día de viaje
@@ -311,13 +389,27 @@ export class AlertasService {
       data.precioObjetivo = datos.precioObjetivo;
     }
     if (datos.bono !== undefined) data.bono = datos.bono;
-    if (datos.recurrente !== undefined || datos.soloLaborables !== undefined) {
-      const recurrente = datos.recurrente ?? existente.recurrente;
-      const soloLaborables = datos.soloLaborables ?? existente.soloLaborables;
+
+    const tocaFrecuencia =
+      datos.recurrente !== undefined ||
+      datos.soloLaborables !== undefined ||
+      datos.diasSemana !== undefined ||
+      datos.fechaFlexible !== undefined;
+    if (tocaFrecuencia) {
+      // "Cualquier fecha" y "trayecto cotidiano" son modalidades excluyentes
+      const recurrente = flexibleFinal ? false : (datos.recurrente ?? existente.recurrente);
+      const diasSemana = diasSemanaDe(
+        { recurrente, diasSemana: datos.diasSemana, soloLaborables: datos.soloLaborables },
+        existente.diasSemana,
+      );
       data.recurrente = recurrente;
-      data.soloLaborables = recurrente && soloLaborables;
-      if (recurrente) {
-        // El trayecto cotidiano se ancla a hoy: la fecha dejó de ser relevante
+      data.diasSemana = diasSemana;
+      // Espejo del formato legado: soloLaborables = "los días son lun-vie"
+      data.soloLaborables = esSoloLaborables(diasSemana);
+      data.fechaFlexible = flexibleFinal;
+      if (recurrente || flexibleFinal) {
+        // El trayecto cotidiano / el rango flexible se anclan a hoy: la fecha
+        // dejó de ser relevante
         data.fechaViaje = new Date(`${hoyIso()}T00:00:00Z`);
       }
       // Frecuencia nueva: se re-arman los avisos del día (igual que un cambio de ruta)
@@ -326,6 +418,38 @@ export class AlertasService {
       data.recordatorioTrenesEnviados = [];
       cambioRuta = true;
     }
+
+    // Rango del sondeo flexible (hoy … hoy + 180 días por defecto). Solo se
+    // persiste si la alerta es flexible; en el resto de modalidades se ignora
+    // y se limpia cualquier rango anterior.
+    const cambiaRango =
+      flexibleFinal &&
+      (flexibleFinal !== existente.fechaFlexible ||
+        datos.fechaDesde !== undefined ||
+        datos.fechaHasta !== undefined);
+    if (flexibleFinal && cambiaRango) {
+      const rango = rangoFlexible(
+        true,
+        datos.fechaDesde ?? (existente.fechaDesde ? fechaIso(existente.fechaDesde) : undefined),
+        datos.fechaHasta ?? (existente.fechaHasta ? fechaIso(existente.fechaHasta) : undefined),
+        hoyIso(),
+      );
+      if (rango) {
+        data.fechaDesde = new Date(`${rango.desde}T00:00:00Z`);
+        data.fechaHasta = new Date(`${rango.hasta}T00:00:00Z`);
+      }
+      // Rango nuevo: la rotación de fechas y los avisos empiezan de cero
+      data.estadoFlexible = Prisma.JsonNull;
+      cambioRuta = true;
+    } else if (
+      !flexibleFinal &&
+      (tocaFrecuencia || existente.fechaFlexible || existente.fechaDesde || existente.fechaHasta)
+    ) {
+      data.fechaDesde = null;
+      data.fechaHasta = null;
+      data.estadoFlexible = Prisma.JsonNull;
+    }
+
     if (cambioRuta) {
       data.ultimoEstado = Prisma.JsonNull;
       data.ultimoSondeoEn = null;

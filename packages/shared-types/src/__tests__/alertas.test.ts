@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { crearAlertaSchema, actualizarAlertaSchema, criterioAlertaSchema } from '../dto/alertas';
+import {
+  crearAlertaSchema,
+  actualizarAlertaSchema,
+  criterioAlertaSchema,
+  normalizarDiasSemana,
+} from '../dto/alertas';
 import { criterioDisponibilidadSchema } from '../dto/trenes';
 
 describe('crearAlertaSchema', () => {
@@ -191,5 +196,127 @@ describe('criterioDisponibilidadSchema', () => {
       horaDesde: '25:00',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+const base = {
+  origenNombre: 'Madrid-Atocha',
+  destinoNombre: 'Barcelona-Sants',
+  fechaViaje: '2026-10-01',
+};
+
+describe('crearAlertaSchema (días de la semana)', () => {
+  it('diasSemana es opcional (vacío = todos los días)', () => {
+    const result = crearAlertaSchema.safeParse({ ...base, recurrente: true });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.diasSemana).toBeUndefined();
+  });
+
+  it('acepta cualquier día de 0 (domingo) a 6 (sábado)', () => {
+    for (const dias of [[0], [6], [1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5, 6], [4, 0]]) {
+      const result = crearAlertaSchema.safeParse({ ...base, recurrente: true, diasSemana: dias });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.diasSemana).toEqual(dias);
+    }
+  });
+
+  it('rechaza días fuera de rango o no enteros', () => {
+    for (const dias of [[7], [-1], [1.5], ['lunes']]) {
+      expect(
+        crearAlertaSchema.safeParse({ ...base, recurrente: true, diasSemana: dias }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('rechaza más de 7 días', () => {
+    const result = crearAlertaSchema.safeParse({
+      ...base,
+      recurrente: true,
+      diasSemana: [0, 1, 2, 3, 4, 5, 6, 0],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('acepta el legado soloLaborables junto al formato nuevo', () => {
+    const result = crearAlertaSchema.safeParse({
+      ...base,
+      recurrente: true,
+      soloLaborables: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.soloLaborables).toBe(true);
+  });
+});
+
+describe('crearAlertaSchema (cualquier fecha / rango flexible)', () => {
+  it('acepta fechaFlexible sin rango (la API aplica hoy … hoy + 180)', () => {
+    const result = crearAlertaSchema.safeParse({ ...base, fechaFlexible: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fechaFlexible).toBe(true);
+      expect(result.data.fechaDesde).toBeUndefined();
+      expect(result.data.fechaHasta).toBeUndefined();
+    }
+  });
+
+  it('acepta el rango concreto y lo valida', () => {
+    const ok = crearAlertaSchema.safeParse({
+      ...base,
+      fechaFlexible: true,
+      fechaDesde: '2026-10-05',
+      fechaHasta: '2027-04-03',
+    });
+    expect(ok.success).toBe(true);
+
+    const alReves = crearAlertaSchema.safeParse({
+      ...base,
+      fechaFlexible: true,
+      fechaDesde: '2027-04-03',
+      fechaHasta: '2026-10-05',
+    });
+    expect(alReves.success).toBe(false);
+    if (!alReves.success) {
+      expect(alReves.error.issues.some((i) => i.path.includes('fechaHasta'))).toBe(true);
+    }
+  });
+
+  it('rechaza fechas del rango con formato incorrecto', () => {
+    expect(
+      crearAlertaSchema.safeParse({ ...base, fechaFlexible: true, fechaDesde: '05/10/2026' })
+        .success,
+    ).toBe(false);
+    expect(
+      crearAlertaSchema.safeParse({ ...base, fechaFlexible: true, fechaHasta: 'mañana' }).success,
+    ).toBe(false);
+  });
+
+  it('no deja combinar cualquier fecha con un trayecto recurrente', () => {
+    const result = crearAlertaSchema.safeParse({ ...base, recurrente: true, fechaFlexible: true });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.includes('fechaFlexible'))).toBe(true);
+    }
+  });
+
+  it('actualizar: admite el rango por partes y rechaza el rango invertido', () => {
+    expect(actualizarAlertaSchema.safeParse({ fechaFlexible: true }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ fechaDesde: '2026-11-01' }).success).toBe(true);
+    expect(
+      actualizarAlertaSchema.safeParse({ fechaDesde: '2027-01-01', fechaHasta: '2026-12-01' })
+        .success,
+    ).toBe(false);
+    expect(actualizarAlertaSchema.safeParse({ diasSemana: [4] }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ diasSemana: [9] }).success).toBe(false);
+  });
+});
+
+describe('normalizarDiasSemana', () => {
+  it('quita duplicados, fuera de rango y los deja ordenados', () => {
+    expect(normalizarDiasSemana([4, 0, 4, 6])).toEqual([0, 4, 6]);
+    expect(normalizarDiasSemana([7, -1, 1.5, 2])).toEqual([2]);
+    expect(normalizarDiasSemana([])).toEqual([]);
+    expect(normalizarDiasSemana(null)).toEqual([]);
+    expect(normalizarDiasSemana(undefined)).toEqual([]);
+    expect(normalizarDiasSemana([1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5]);
   });
 });

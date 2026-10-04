@@ -24,6 +24,9 @@ export const es = {
     error: 'Error',
     todoElDia: 'todo el día',
     logoAria: 'MantiRenfe inicio',
+    // Iniciales de los días en orden 0=domingo … 6=sábado (chips y badge)
+    diasIniciales: 'D,L,M,X,J,V,S',
+    diasCortos: 'Dom,Lun,Mar,Mié,Jue,Vie,Sáb',
   },
 
   // ──────────────────────────────── cabecera (Header)
@@ -572,6 +575,11 @@ export const es = {
     placeholder: 'Vigo-Guixar, Madrid-Atocha, Valencia...',
     ayuda:
       'Escribe al menos 2 letras. Si no la encuentras, prueba con la ciudad, la comarca o la provincia.',
+    crearAlertaFila: 'Crear alerta',
+    listadoTitulo: 'Todas las estaciones',
+    listadoCargando: 'Cargando...',
+    listadoFin: 'Fin del listado',
+    listadoError: 'No se pudo cargar el listado de estaciones',
     codigo: 'Código {{codigo}}',
     badgeEstacion: 'Estación {{codigo}}',
     incidenciaActiva: '1 incidencia activa',
@@ -723,7 +731,9 @@ export const es = {
     estadoActiva: 'Activa',
     estadoPausa: 'En pausa',
     completada: 'Completada',
-    recurrenteLaborables: 'L-V: Cada día laborable',
+    // Badge de frecuencia según los días marcados de la alerta
+    diasTodos: 'Cada día',
+    diasLaborables: 'L-V',
     aviso1: '1 aviso',
     avisosN: '{{n}} avisos',
     avisosTitulo: 'Avisos recibidos por esta alerta',
@@ -769,12 +779,15 @@ export const es = {
     trayectoDesc: 'Cuanto más específico seas, menos avisos innecesarios recibirás',
     cuandoViajas: '¿Cuándo viajas?',
     frecuenciaFecha: 'Una fecha',
+    frecuenciaFlexible: 'Cualquier fecha',
     frecuenciaDiaria: 'Cada día',
-    frecuenciaLaborables: 'Lunes a viernes',
+    frecuenciaDias: 'Días concretos',
     recurrenteDiaria:
       'Trayecto cotidiano: te avisaremos cada día. No hace falta fecha: se renueva automáticamente.',
-    recurrenteLaborables:
-      'Trayecto cotidiano: te avisaremos cada día, de lunes a viernes. No hace falta fecha: se renueva automáticamente.',
+    pistaDias: 'Te avisaremos solo en los días marcados',
+    pistaFlexible:
+      'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
+    errorDias: 'Marca al menos un día de la semana',
     fechaLabel: 'Fecha del viaje',
     horaDesdeLabel: 'Hora desde (opcional)',
     horaHastaLabel: 'Hora hasta (opcional)',
@@ -809,8 +822,7 @@ export const es = {
     notasPlaceholder: 'Ej.: solo clase Turista, quiero el tren de la tarde...',
     resumenTitulo: 'Resumen de la alerta',
     resumenProximas: 'Próximas salidas: {{horas}}',
-    resumenLunesViernes: 'L-V',
-    resumenCadaDia: 'Cada día',
+    resumenFlexible: 'Cualquier fecha (próximos 6 meses)',
     resumenSinFecha: 'Sin fecha',
     criterioPlazas: 'Plazas libres',
     criterioRetraso: 'Retraso',
@@ -843,6 +855,7 @@ export const es = {
     volver: 'Volver a mis alertas',
     titulo: 'Detalle de la alerta',
     incidenciaTitulo: 'Incidencia de servicio que puede afectar a esta ruta',
+    rangoFechas: 'Del {{desde}} al {{hasta}}',
     verTodas: 'Ver todas las incidencias',
     sondeoNinguno: 'ninguno',
     compartir: 'Compartir',

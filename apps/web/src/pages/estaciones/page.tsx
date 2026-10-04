@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  BellPlus,
   ExternalLink,
   Map,
   MapPin,
@@ -34,6 +35,51 @@ function mapaExterno(latitud: number, longitud: number): string {
   return `https://www.openstreetmap.org/?mlat=${latitud}&mlon=${longitud}#map=16/${latitud}/${longitud}`;
 }
 
+/** Filas por página del listado general: el scroll infinito va de 20 en 20. */
+const PAGINA_ESTACIONES = 20;
+
+/**
+ * Enlace «Crear alerta» de una fila de estación. Va en hermano del botón de la
+ * fila (no anidado), así que no hace falta `stopPropagation`: la fila sigue
+ * abriendo sus salidas y el enlace navega a `/alertas/nueva?origen=…`.
+ */
+function BotonCrearAlerta({ nombre }: { nombre: string }) {
+  const { t } = useTranslation();
+  return (
+    <Button variant="ghost" size="sm" asChild className="shrink-0 text-muted-foreground">
+      <Link to={`/alertas/nueva?origen=${encodeURIComponent(nombre)}`}>
+        <BellPlus className="h-4 w-4" aria-hidden="true" />
+        {t('estaciones.crearAlertaFila')}
+      </Link>
+    </Button>
+  );
+}
+
+/** Fila del listado: el texto abre las salidas, a la derecha queda la alerta. */
+function FilaEstacion({
+  estacion,
+  onElegir,
+}: {
+  estacion: EstacionResponse;
+  onElegir: (estacion: EstacionResponse) => void;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-2 py-1 pl-3 pr-1">
+      <button
+        type="button"
+        className="min-w-0 flex-1 rounded-sm px-1 py-1.5 text-left text-sm hover:bg-accent"
+        onClick={() => onElegir(estacion)}
+      >
+        <span className="font-medium">{estacion.nombre}</span>
+        {estacion.ciudad ? (
+          <span className="text-muted-foreground"> · {estacion.ciudad}</span>
+        ) : null}
+      </button>
+      <BotonCrearAlerta nombre={estacion.nombre} />
+    </li>
+  );
+}
+
 export function PaginaEstaciones() {
   const { t } = useTranslation();
   const [texto, setTexto] = useState('');
@@ -49,6 +95,69 @@ export function PaginaEstaciones() {
   const peticion = useRef(0);
   const peticionSalidas = useRef(0);
   const peticionDetalle = useRef(0);
+
+  // Listado general (sin `q`): página a página con `offset`, hasta venir corto
+  const [listado, setListado] = useState<EstacionResponse[]>([]);
+  const [listadoCargando, setListadoCargando] = useState(false);
+  const [listadoFin, setListadoFin] = useState(false);
+  const [listadoError, setListadoError] = useState(false);
+  const offsetListado = useRef(0);
+  const cargandoListado = useRef(false);
+  const sentinel = useRef<HTMLDivElement | null>(null);
+
+  // Con 2 letras o más manda el desplegable de sugerencias; mientras no haya
+  // texto de búsqueda se enseña el listado general paginado.
+  const sinBusqueda = texto.trim().length < 2;
+
+  const cargarListado = useCallback((acumular: boolean) => {
+    // Serializa las peticiones: si una está en vuelo, la siguiente espera
+    if (cargandoListado.current) return;
+    cargandoListado.current = true;
+    const desde = acumular ? offsetListado.current : 0;
+    if (!acumular) {
+      setListadoFin(false);
+      setListadoError(false);
+    }
+    setListadoCargando(true);
+    api<EstacionResponse[]>(`/estaciones?limite=${PAGINA_ESTACIONES}&offset=${desde}`)
+      .then((r) => {
+        offsetListado.current = desde + r.length;
+        setListadoFin(r.length < PAGINA_ESTACIONES);
+        setListado((prev) => (acumular ? [...prev, ...r] : r));
+      })
+      .catch(() => {
+        if (acumular) {
+          // Cortamos el scroll: reintentar a ciegas no arreglaría nada
+          setListadoFin(true);
+        } else {
+          setListado([]);
+          setListadoError(true);
+        }
+      })
+      .finally(() => {
+        cargandoListado.current = false;
+        setListadoCargando(false);
+      });
+  }, []);
+
+  // Carga inicial: 20 estaciones
+  useEffect(() => {
+    cargarListado(false);
+  }, [cargarListado]);
+
+  // Siguiente página cuando el sentinel al final de la lista entra en pantalla
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !sinBusqueda || listadoCargando || listadoFin) return;
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        if (entradas.some((entrada) => entrada.isIntersecting)) cargarListado(true);
+      },
+      { rootMargin: '240px 0px' },
+    );
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [sinBusqueda, listadoCargando, listadoFin, cargarListado]);
 
   useEffect(
     () => () => {
@@ -184,10 +293,10 @@ export function PaginaEstaciones() {
             {sugerencias.length > 0 && (
               <ul className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border bg-popover shadow-md">
                 {sugerencias.map((e) => (
-                  <li key={e.id}>
+                  <li key={e.id} className="flex items-center justify-between gap-2 pr-1">
                     <button
                       type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                      className="min-w-0 flex-1 px-3 py-2 text-left text-sm hover:bg-accent"
                       onClick={() => elegir(e)}
                     >
                       {e.nombre}
@@ -195,12 +304,33 @@ export function PaginaEstaciones() {
                         <span className="text-muted-foreground"> · {e.ciudad}</span>
                       ) : null}
                     </button>
+                    <BotonCrearAlerta nombre={e.nombre} />
                   </li>
                 ))}
               </ul>
             )}
           </div>
           <p className="text-xs text-muted-foreground">{t('estaciones.ayuda')}</p>
+          {sinBusqueda && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold">{t('estaciones.listadoTitulo')}</h2>
+              {listadoError ? (
+                <p className="text-sm text-destructive">{t('estaciones.listadoError')}</p>
+              ) : listado.length > 0 ? (
+                <ul className="divide-y rounded-md border">
+                  {listado.map((e) => (
+                    <FilaEstacion key={e.id} estacion={e} onElegir={elegir} />
+                  ))}
+                </ul>
+              ) : null}
+              {listadoCargando ? (
+                <p className="text-xs text-muted-foreground">{t('estaciones.listadoCargando')}</p>
+              ) : listadoFin && listado.length > 0 ? (
+                <p className="text-xs text-muted-foreground">{t('estaciones.listadoFin')}</p>
+              ) : null}
+              <div ref={sentinel} aria-hidden="true" />
+            </div>
+          )}
         </CardContent>
       </Card>
 

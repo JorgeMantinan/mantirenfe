@@ -33,7 +33,10 @@ function alerta(datos: Partial<AlertaResponse> = {}): AlertaResponse {
     precioObjetivo: null,
     estado: 'ACTIVA',
     recurrente: true,
-    soloLaborables: false,
+    diasSemana: [],
+    fechaFlexible: false,
+    fechaDesde: null,
+    fechaHasta: null,
     intervaloSondeoMin: 10,
     bono: 'GENERAL',
     notas: null,
@@ -130,26 +133,60 @@ describe('proximaSalida', () => {
     expect(sinEstado?.estado).toBe('sin-datos');
   });
 
-  it('las recurrentes solo laborables saltan el fin de semana', () => {
-    const laborables = { recurrente: true, soloLaborables: true, fechaViaje: HOY };
+  it('las recurrentes con los laborables marcados saltan el fin de semana', () => {
+    const laborables = {
+      recurrente: true,
+      diasSemana: [1, 2, 3, 4, 5],
+      fechaFlexible: false,
+      fechaViaje: HOY,
+    };
     expect(aplicaEnFecha(laborables, SABADO_FECHA)).toBe(false);
     expect(aplicaEnFecha(laborables, '2026-09-27')).toBe(false);
     expect(aplicaEnFecha(laborables, HOY)).toBe(true);
     expect(proximaFechaAplicable(laborables, SABADO_FECHA)).toBe('2026-09-28');
 
-    const salida = proximaSalida([alerta({ soloLaborables: true })], SABADO);
+    const salida = proximaSalida([alerta({ diasSemana: [1, 2, 3, 4, 5] })], SABADO);
     expect(salida).toMatchObject({ fecha: '2026-09-28', salida: null, estado: 'sin-datos' });
   });
 
-  it('las recurrentes sin soloLaborables también trabajan en fin de semana', () => {
+  it('las recurrentes con días concretos solo trabajan esos días', () => {
+    // Miércoles 2026-09-30 y jueves 2026-10-01
+    const miercolesJueves = {
+      recurrente: true,
+      diasSemana: [3, 4],
+      fechaFlexible: false,
+      fechaViaje: HOY,
+    };
+    expect(aplicaEnFecha(miercolesJueves, '2026-09-30')).toBe(true);
+    expect(aplicaEnFecha(miercolesJueves, '2026-10-01')).toBe(true);
+    expect(aplicaEnFecha(miercolesJueves, SABADO_FECHA)).toBe(false);
+    expect(proximaFechaAplicable(miercolesJueves, SABADO_FECHA)).toBe('2026-09-30');
+  });
+
+  it('las recurrentes sin días marcados también trabajan en fin de semana', () => {
     const salida = proximaSalida([alerta()], SABADO);
     expect(salida?.fecha).toBe(SABADO_FECHA);
     expect(
       proximaFechaAplicable(
-        { recurrente: true, soloLaborables: false, fechaViaje: HOY },
+        { recurrente: true, diasSemana: [], fechaFlexible: false, fechaViaje: HOY },
         '2026-09-27',
       ),
     ).toBe('2026-09-27');
+  });
+
+  it('las de fecha flexible valen para cualquier día desde hoy', () => {
+    const flexible = {
+      recurrente: false,
+      diasSemana: [],
+      fechaFlexible: true,
+      fechaViaje: '2026-09-20',
+    };
+    expect(aplicaEnFecha(flexible, SABADO_FECHA)).toBe(true);
+    expect(aplicaEnFecha(flexible, '2026-12-24')).toBe(true);
+    expect(proximaFechaAplicable(flexible, SABADO_FECHA)).toBe(SABADO_FECHA);
+
+    const salida = proximaSalida([alerta({ recurrente: false, fechaFlexible: true })], SABADO);
+    expect(salida?.fecha).toBe(SABADO_FECHA);
   });
 
   it('las puntuales solo valen en su fecha de viaje', () => {

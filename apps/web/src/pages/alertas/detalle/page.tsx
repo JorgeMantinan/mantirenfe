@@ -14,7 +14,8 @@ import {
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { locale } from '@/i18n';
-import { etiquetaCriterio } from '@/lib/alertas';
+import { etiquetaCriterio, etiquetaDiasSemana } from '@/lib/alertas';
+import { fechaCorta } from '@/lib/proximoViaje';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -225,7 +226,13 @@ export function PaginaDetalleAlerta() {
                   {alerta.origenNombre} → {alerta.destinoNombre}
                 </CardTitle>
                 <CardDescription>
-                  {alerta.fechaViaje} ·{' '}
+                  {alerta.fechaFlexible
+                    ? t('detalleAlerta.rangoFechas', {
+                        desde: fechaCorta(alerta.fechaDesde ?? alerta.fechaViaje),
+                        hasta: fechaCorta(alerta.fechaHasta ?? alerta.fechaViaje),
+                      })
+                    : alerta.fechaViaje}{' '}
+                  ·{' '}
                   {alerta.horaDesde || alerta.horaHasta
                     ? `${alerta.horaDesde ?? '00:00'} – ${alerta.horaHasta ?? '23:59'}`
                     : t('comunes.todoElDia')}
@@ -255,12 +262,11 @@ export function PaginaDetalleAlerta() {
                     })}
                   </Badge>
                 )}
+                {alerta.fechaFlexible && (
+                  <Badge variant="aviso">{t('nuevaAlerta.frecuenciaFlexible')}</Badge>
+                )}
                 {alerta.recurrente && (
-                  <Badge variant="aviso">
-                    {alerta.soloLaborables
-                      ? t('alertas.recurrenteLaborables')
-                      : t('nuevaAlerta.resumenCadaDia')}
-                  </Badge>
+                  <Badge variant="aviso">{etiquetaDiasSemana(t, alerta.diasSemana)}</Badge>
                 )}
                 <Badge variant="outline">
                   {t('alertas.cadaMin', { min: alerta.intervaloSondeoMin })}

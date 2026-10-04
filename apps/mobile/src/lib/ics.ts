@@ -10,8 +10,8 @@
  *   (`minutosRecordatorio` no está en el DTO, así que usamos 50, el valor por
  *   defecto de `worker/src/processors/recordatorios.ts`).
  * - `recurrente` → `RRULE:FREQ=DAILY` con `UNTIL` a 365 días (hay clientes que
- *   no importan repeticiones sin fin) y `BYDAY=MO,TU,WE,TH,FR` si
- *   `soloLaborables`.
+ *   no importan repeticiones sin fin) y `BYDAY` con los días de `diasSemana`
+ *   (p. ej. `MO,TU,WE,TH,FR` si son solo laborables; sin `BYDAY` si son todos).
  *
  * Las horas son «floating» (sin zona horaria): el calendario del usuario las
  * interpreta en su huso, que para un tren peninsular es lo esperado. Es copia
@@ -34,7 +34,8 @@ export interface AlertaParaIcs {
   horaHasta?: string | null;
   numeroTren?: string | null;
   recurrente?: boolean;
-  soloLaborables?: boolean;
+  /** Días aplicables del recurrente (0 = domingo … 6 = sábado); vacío = todos. */
+  diasSemana?: readonly number[];
   /** Últimos trenes sondeados: de `salida` (ISO GTFS) sale la hora del VEVENT. */
   ultimoEstado?: { salida: string }[] | null;
 }
@@ -94,6 +95,9 @@ function horaEvento(alerta: AlertaParaIcs): string | null {
   return primeraSalida(alerta) ?? (esHoraValida(alerta.horaDesde) ? alerta.horaDesde : null);
 }
 
+/** Días de la semana en `BYDAY` de RFC 5545 (índice = `getUTCDay`). */
+const DIAS_BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
+
 /** `RRULE` de las alertas recurrentes, o null si el viaje es puntual. */
 function reglaRecurrencia(alerta: AlertaParaIcs): string | null {
   if (!alerta.recurrente) return null;
@@ -103,7 +107,13 @@ function reglaRecurrencia(alerta: AlertaParaIcs): string | null {
     inicio.setUTCDate(inicio.getUTCDate() + DIAS_RECURRENCIA);
     partes.push(`UNTIL=${inicio.toISOString().slice(0, 10).replace(/-/g, '')}T235959`);
   }
-  if (alerta.soloLaborables) partes.push('BYDAY=MO,TU,WE,TH,FR');
+  const dias = [...new Set(alerta.diasSemana ?? [])]
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+    .sort((a, b) => a - b);
+  // Vacío o la semana completa: no hace falta acotar con BYDAY
+  if (dias.length > 0 && dias.length < 7) {
+    partes.push(`BYDAY=${dias.map((d) => DIAS_BYDAY[d] ?? '').join(',')}`);
+  }
   return partes.join(';');
 }
 

@@ -6,12 +6,23 @@ import { obtenerAforos, obtenerFichaOficial } from './renfe-datos';
 
 @Injectable()
 export class EstacionesService {
-  async buscar(q?: string, limite = 20): Promise<EstacionResponse[]> {
+  /**
+   * Listado paginado (`offset` por defecto 0) para el scroll infinito de web
+   * y móvil. Respeta el orden existente: alfabético sin `q`, y el de relevancia
+   * del buscador con `q`. El cliente corta cuando llega una página vacía o
+   * corta (menos de `limite` filas), así que la respuesta sigue siendo un array.
+   */
+  async buscar(q?: string, limite = 20, offset = 0): Promise<EstacionResponse[]> {
     const prisma = getPrisma();
-    const tope = Math.min(limite, 50);
+    const tope = Math.min(Math.max(Number.isFinite(limite) ? Math.trunc(limite) : 20, 1), 50);
+    const desde = Number.isFinite(offset) && offset > 0 ? Math.trunc(offset) : 0;
     const estaciones = q
-      ? await buscarEstaciones(prisma, q, tope)
-      : await prisma.estacion.findMany({ orderBy: { nombre: 'asc' }, take: tope });
+      ? (await buscarEstaciones(prisma, q, desde + tope)).slice(desde, desde + tope)
+      : await prisma.estacion.findMany({
+          orderBy: { nombre: 'asc' },
+          skip: desde,
+          take: tope,
+        });
     return estaciones.map((e) => ({
       id: e.id,
       codigo: e.codigo,

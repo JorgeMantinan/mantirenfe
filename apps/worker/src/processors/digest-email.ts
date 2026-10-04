@@ -22,6 +22,9 @@ export interface AlertaDigest {
   origenNombre: string;
   destinoNombre: string;
   recurrente: boolean;
+  /** Días aplicables (0 = domingo … 6 = sábado); vacío = todos los días. */
+  diasSemana: number[];
+  /** LEGACY: lo sigue leyendo `esDiaAplicable` en filas anteriores a `diasSemana`. */
   soloLaborables: boolean;
   horaDesde: string | null;
   horaHasta: string | null;
@@ -156,9 +159,9 @@ export function construirDigest(
  *
  * A quién: usuarios con `notificacionesEmail` activa (por defecto false, es la
  * preferencia de este canal y es independiente del push) y al menos una alerta
- * ACTIVA aplicable HOY: recurrente que pasa `esDiaAplicable` (p. ej. solo
- * laborables) o con `fechaViaje` = hoy. Sin preferencia no se consulta ni se
- * envía nada en nombre de ese usuario.
+ * ACTIVA aplicable HOY: recurrente que pasa `esDiaAplicable` (los días que
+ * marque `diasSemana`) o con `fechaViaje` = hoy. Sin preferencia no se consulta
+ * ni se envía nada en nombre de ese usuario.
  *
  * Qué: un único email por usuario con las salidas del día de sus alertas
  * (líneas de `ultimoEstado`, franja horaria respetada, máximo 10). Si no hay
@@ -184,7 +187,9 @@ export async function enviarDigestDiario(
   const alertas = await prisma.alerta.findMany({
     where: {
       estado: 'ACTIVA',
-      // El trayecto recurrente no caduca; el puntual solo cuenta si viaja hoy
+      // El trayecto recurrente no caduca; el puntual solo cuenta si viaja hoy.
+      // Las de fecha flexible no tienen "hoy" propio: se quedan fuera del digest.
+      fechaFlexible: false,
       OR: [{ fechaViaje: new Date(`${hoyIso}T00:00:00Z`) }, { recurrente: true }],
     },
     select: {
@@ -193,6 +198,7 @@ export async function enviarDigestDiario(
       origenNombre: true,
       destinoNombre: true,
       recurrente: true,
+      diasSemana: true,
       soloLaborables: true,
       horaDesde: true,
       horaHasta: true,

@@ -26,6 +26,9 @@ export const en: MismoArbol<Claves> = {
     error: 'Error',
     todoElDia: 'all day',
     logoAria: 'MantiRenfe home',
+    // Day initials in 0=Sunday … 6=Saturday order (chips and badge)
+    diasIniciales: 'S,M,T,W,T,F,S',
+    diasCortos: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
   },
 
   // ──────────────────────────────── cabecera (Header)
@@ -571,6 +574,11 @@ export const en: MismoArbol<Claves> = {
     placeholder: 'Vigo-Guixar, Madrid-Atocha, Valencia...',
     ayuda:
       'Type at least 2 letters. If you cannot find it, try the city, the region or the province.',
+    crearAlertaFila: 'Create alert',
+    listadoTitulo: 'All stations',
+    listadoCargando: 'Loading...',
+    listadoFin: 'End of the list',
+    listadoError: 'Could not load the station list',
     codigo: 'Code {{codigo}}',
     badgeEstacion: 'Station {{codigo}}',
     incidenciaActiva: '1 active incident',
@@ -722,7 +730,9 @@ export const en: MismoArbol<Claves> = {
     estadoActiva: 'Active',
     estadoPausa: 'Paused',
     completada: 'Completed',
-    recurrenteLaborables: 'Mon–Fri: Every weekday',
+    // Frequency badge built from the days the alert is set to
+    diasTodos: 'Every day',
+    diasLaborables: 'Mon–Fri',
     aviso1: '1 notice',
     avisosN: '{{n}} notices',
     avisosTitulo: 'Notices received by this alert',
@@ -768,12 +778,15 @@ export const en: MismoArbol<Claves> = {
     trayectoDesc: 'The more specific you are, the fewer unnecessary notices you will get',
     cuandoViajas: 'When do you travel?',
     frecuenciaFecha: 'One date',
+    frecuenciaFlexible: 'Any date',
     frecuenciaDiaria: 'Every day',
-    frecuenciaLaborables: 'Monday to Friday',
+    frecuenciaDias: 'Specific days',
     recurrenteDiaria:
       'Everyday commute: we will alert you every day. No date needed: it renews automatically.',
-    recurrenteLaborables:
-      'Everyday commute: we will alert you every day, Monday to Friday. No date needed: it renews automatically.',
+    pistaDias: 'We will only alert you on the days you pick',
+    pistaFlexible:
+      'We will watch any date between today and 6 months from now: we will tell you as soon as tickets go on sale.',
+    errorDias: 'Pick at least one day of the week',
     fechaLabel: 'Travel date',
     horaDesdeLabel: 'Time from (optional)',
     horaHastaLabel: 'Time to (optional)',
@@ -808,8 +821,7 @@ export const en: MismoArbol<Claves> = {
     notasPlaceholder: 'E.g. tourist class only, I want the evening train...',
     resumenTitulo: 'Alert summary',
     resumenProximas: 'Next departures: {{horas}}',
-    resumenLunesViernes: 'Mon–Fri',
-    resumenCadaDia: 'Every day',
+    resumenFlexible: 'Any date (next 6 months)',
     resumenSinFecha: 'No date',
     criterioPlazas: 'Free seats',
     criterioRetraso: 'Delay',
@@ -843,6 +855,7 @@ export const en: MismoArbol<Claves> = {
     volver: 'Back to my alerts',
     titulo: 'Alert detail',
     incidenciaTitulo: 'Service incident that may affect this route',
+    rangoFechas: 'From {{desde}} to {{hasta}}',
     verTodas: 'See all incidents',
     sondeoNinguno: 'none',
     compartir: 'Share',

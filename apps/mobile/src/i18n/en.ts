@@ -35,6 +35,9 @@ export const en: MismoArbol<Claves> = {
     suprimidos: 'Cancelled trains',
     iniciarSesion: 'Sign in',
     crearCuenta: 'Sign up',
+    // Day initials in 0=Sunday … 6=Saturday order (chips and badge)
+    diasIniciales: 'S,M,T,W,T,F,S',
+    diasCortos: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
   },
 
   // ──────────────────────────────── pestañas
@@ -108,8 +111,10 @@ export const en: MismoArbol<Claves> = {
     placeholderDestino: 'Destination station',
     cuando: 'When do you travel?',
     cotidianoDiaria: 'Daily commute: we will alert you every day. No need to set a date.',
-    cotidianoLaborables:
-      'Daily commute: we will alert you from Monday to Friday. No need to set a date.',
+    pistaDias: 'We will only alert you on the days you pick',
+    pistaFlexible:
+      'We will watch any date between today and 6 months from now: we will tell you as soon as tickets go on sale.',
+    errorDias: 'Pick at least one day of the week',
     fechaViaje: 'Travel date',
     minimo: 'Minimum: {{fecha}}',
     franja: 'Time window (optional)',
@@ -131,7 +136,7 @@ export const en: MismoArbol<Claves> = {
     crear: 'Create alert',
     sinFecha: 'No date',
     cadaMin: 'every {{min}} min',
-    resumenLaborables: 'Mon-Fri',
+    resumenFlexible: 'Any date (next 6 months)',
     criterio: {
       disponibilidad: 'Seats available',
       retraso: 'Delay',
@@ -148,8 +153,9 @@ export const en: MismoArbol<Claves> = {
     },
     frecuencia: {
       fecha: 'One date',
+      flexible: 'Any date',
       diaria: 'Every day',
-      laborables: 'Monday to Friday',
+      dias: 'Specific days',
     },
   },
 
@@ -171,8 +177,7 @@ export const en: MismoArbol<Claves> = {
     calendarioTitulo: 'Add to calendar',
     calendarioError:
       'The event could not be shared. Try again or open MantiRenfe in your browser to download the .ics file.',
-    laborables: 'Mon-Fri: every working day',
-    cadaDia: 'Every day',
+    rangoFechas: 'From {{desde}} to {{hasta}}',
     metaAlerta: '{{fecha}} · {{criterio}} · every {{min}} min · {{bono}}',
     objetivo: 'Target: alert me below {{precio}}',
     franja: 'Window: {{desde}} – {{hasta}}',
@@ -293,6 +298,8 @@ export const en: MismoArbol<Claves> = {
     sinSalidas: 'No departures recorded today',
     tocaSalidas: '{{meta}} — tap to see departures',
     noEstaciones: 'No stations found',
+    crearAlertaFila: 'Create alert',
+    cargandoMas: 'Loading…',
     estacionNoEncontrada: 'Station not found',
     sinTrenesRuta: 'No trains on that route',
     noEncontramos:
@@ -401,6 +408,9 @@ export const en: MismoArbol<Claves> = {
     },
     aviso: 'notice',
     avisos: 'notices',
+    // Frequency badge built from the days the alert is set to
+    diasTodos: 'Every day',
+    diasLaborables: 'Mon-Fri',
   },
 
   // ──────────────────────────────── precios (lib/precios.ts)

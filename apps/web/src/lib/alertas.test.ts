@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cambiarIdioma, i18n } from '@/i18n';
-import { construirAlertaVuelta, etiquetaCriterio } from './alertas';
+import { construirAlertaVuelta, etiquetaCriterio, etiquetaDiasSemana } from './alertas';
 
 const criterios = ['DISPONIBILIDAD', 'HORARIO', 'RETRASO', 'APERTURA_VENTA', 'PRECIO'];
 
@@ -72,5 +72,49 @@ describe('construirAlertaVuelta', () => {
     construirAlertaVuelta(payloadIda);
     expect(payloadIda.origenNombre).toBe('Madrid-Atocha');
     expect(payloadIda.destinoNombre).toBe('Barcelona-Sants');
+  });
+});
+
+describe('etiquetaDiasSemana (badge de frecuencia)', () => {
+  it('sin días marcados (o con los7) dice «Cada día»', async () => {
+    await cambiarIdioma('es');
+    expect(etiquetaDiasSemana(i18n.t, [])).toBe('Cada día');
+    expect(etiquetaDiasSemana(i18n.t, [0, 1, 2, 3, 4, 5, 6])).toBe('Cada día');
+
+    await cambiarIdioma('en');
+    expect(etiquetaDiasSemana(i18n.t, [])).toBe('Every day');
+  });
+
+  it('los laborables se resumen como «L-V»', async () => {
+    await cambiarIdioma('es');
+    expect(etiquetaDiasSemana(i18n.t, [1, 2, 3, 4, 5])).toBe('L-V');
+
+    await cambiarIdioma('en');
+    expect(etiquetaDiasSemana(i18n.t, [1, 2, 3, 4, 5])).toBe('Mon–Fri');
+  });
+
+  it('un solo día usa su nombre corto', async () => {
+    await cambiarIdioma('es');
+    expect(etiquetaDiasSemana(i18n.t, [4])).toBe('Jue');
+    expect(etiquetaDiasSemana(i18n.t, [0])).toBe('Dom');
+
+    await cambiarIdioma('en');
+    expect(etiquetaDiasSemana(i18n.t, [4])).toBe('Thu');
+  });
+
+  it('varios días usa las iniciales en orden de semana', async () => {
+    await cambiarIdioma('es');
+    expect(etiquetaDiasSemana(i18n.t, [5, 1, 3])).toBe('L, X, V');
+    // El orden y la deduplicación no dependen de cómo vengan
+    expect(etiquetaDiasSemana(i18n.t, [5, 1, 5, 3])).toBe('L, X, V');
+
+    await cambiarIdioma('en');
+    expect(etiquetaDiasSemana(i18n.t, [5, 1, 3])).toBe('M, W, F');
+  });
+
+  it('ignora días fuera de rango', async () => {
+    await cambiarIdioma('es');
+    expect(etiquetaDiasSemana(i18n.t, [9, -1, 4])).toBe('Jue');
+    expect(etiquetaDiasSemana(i18n.t, [9, -1])).toBe('Cada día');
   });
 });

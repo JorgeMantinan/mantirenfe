@@ -24,6 +24,51 @@ async function main(): Promise<void> {
   logger.info({ estaciones }, 'CLI: estaciones listas, pasando a horarios');
   const horarios = await sincronizarHorarios(logger);
   logger.info({ estaciones, horarios }, 'Sync GTFS completado (CLI)');
+  await podaEspacio();
+}
+
+/**
+ * Poda diaria de espacio (Supabase free:500MB — ParadaHorario ya ocupa~400MB):
+ * sin esto, los horarios de días pasados y los históricos crecen ~15MB/semana
+ * y en6 semanas se vuelve a rebasar el límite del plan.
+ */
+async function podaEspacio(): Promise<void> {
+  try {
+    const { getPrisma } = await import('@mantirenfe/database');
+    const prisma = getPrisma();
+    const hoy = new Date();
+    hoy.setUTCHours(0, 0, 0, 0);
+    const hace90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const hace12m = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+
+    const horarios = await prisma.horarioTren.deleteMany({ where: { fecha: { lt: hoy } } });
+    // Solo inactivas: las activas se conservan aunque tengan fechas antiguas
+    const incidencias = await prisma.incidencia.deleteMany({
+      where: { activa: false, AND: [{ OR: [{ desde: { lt: hace90d } }, { desde: null }] }] },
+    });
+    const impuntualidad = await prisma.impuntualidadTren.deleteMany({
+      where: { fecha: { lt: hace12m } },
+    });
+    const precio = await prisma.precioTren.deleteMany({
+      where: { registradoEn: { lt: hace45d(hace90d) } },
+    });
+    logger.info(
+      {
+        horariosPasados: horarios.count,
+        incidenciasViejas: incidencias.count,
+        impuntualidadVieja: impuntualidad.count,
+        preciosViejos: precio.count,
+      },
+      'Poda de espacio aplicada',
+    );
+  } catch (error) {
+    // La poda nunca debe romper el sync
+    logger.warn({ err: error }, 'Poda de espacio falló (continúa)');
+  }
+}
+
+function hace45d(_referencia: Date): Date {
+  return new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
 }
 
 main()

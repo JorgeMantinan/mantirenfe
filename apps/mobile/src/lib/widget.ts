@@ -146,15 +146,20 @@ export function fechaCorta(fecha: string): string {
   return `${dia ?? ''} ${meses[(mes ?? 1) - 1] ?? ''}`.trim();
 }
 
-/** ¿La alerta se vigila en esa fecha? (las recurrentes no caducan; soloLaborables = lun-vie). */
+/**
+ * ¿La alerta se vigila en esa fecha? (las recurrentes no caducan y respetan
+ * sus `diasSemana`; las de fecha flexible, cualquier día; las puntuales, su
+ * fecha de viaje).
+ */
 export function alertaAplicaHoy(
-  alerta: Pick<AlertaResponse, 'recurrente' | 'soloLaborables' | 'fechaViaje'>,
+  alerta: Pick<AlertaResponse, 'recurrente' | 'diasSemana' | 'fechaViaje' | 'fechaFlexible'>,
   fecha: string,
 ): boolean {
+  if (alerta.fechaFlexible) return true;
   if (!alerta.recurrente) return alerta.fechaViaje === fecha;
-  if (!alerta.soloLaborables) return true;
+  if (alerta.diasSemana.length === 0) return true;
   const dia = new Date(`${fecha}T12:00:00`).getDay();
-  return dia !== 0 && dia !== 6;
+  return alerta.diasSemana.includes(dia);
 }
 
 /**

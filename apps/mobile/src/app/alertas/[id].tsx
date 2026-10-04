@@ -15,8 +15,9 @@ import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
-import { etiquetaCriterio, etiquetaEstado } from '@/lib/alertas';
+import { etiquetaCriterio, etiquetaDiasSemana, etiquetaEstado } from '@/lib/alertas';
 import { construirIcs } from '@/lib/ics';
+import { fechaCorta } from '@/lib/proximoViaje';
 import {
   agruparContagos,
   agruparPrecios,
@@ -188,16 +189,22 @@ export default function DetalleAlerta() {
               >
                 {etiquetaEstado(alerta.estado)}
               </Etiqueta>
+              {alerta.fechaFlexible ? (
+                <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
+              ) : null}
               {alerta.recurrente ? (
-                <Etiqueta tono="primario">
-                  {alerta.soloLaborables ? t('detalle.laborables') : t('detalle.cadaDia')}
-                </Etiqueta>
+                <Etiqueta tono="primario">{etiquetaDiasSemana(alerta.diasSemana)}</Etiqueta>
               ) : null}
             </View>
           </View>
           <Text style={s.detalle}>
             {t('detalle.metaAlerta', {
-              fecha: alerta.fechaViaje,
+              fecha: alerta.fechaFlexible
+                ? t('detalle.rangoFechas', {
+                    desde: fechaCorta(alerta.fechaDesde ?? alerta.fechaViaje),
+                    hasta: fechaCorta(alerta.fechaHasta ?? alerta.fechaViaje),
+                  })
+                : alerta.fechaViaje,
               criterio: etiquetaCriterio(alerta.criterio),
               min: alerta.intervaloSondeoMin,
               bono: alerta.bono,

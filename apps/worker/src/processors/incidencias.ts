@@ -236,10 +236,13 @@ export async function notificarIncidencias(logger: Logger): Promise<void> {
     if (incidencias.length === 0) return;
 
     // Mismo filtro que el barrido: las no recurrentes solo cuentan si el viaje
-    // aún no ha pasado; las recurrentes trabajan cada día.
+    // aún no ha pasado; las recurrentes y las de fecha flexible trabajan siempre.
     const hoy = new Date(`${hoyGtfs()}T00:00:00Z`);
     const alertas = await prisma.alerta.findMany({
-      where: { estado: 'ACTIVA', OR: [{ recurrente: true }, { fechaViaje: { gte: hoy } }] },
+      where: {
+        estado: 'ACTIVA',
+        OR: [{ recurrente: true }, { fechaFlexible: true }, { fechaViaje: { gte: hoy } }],
+      },
       include: {
         usuario: {
           include: {

@@ -30,13 +30,24 @@ export function esLaborable(ahoraGtfs: Date): boolean {
 /**
  * ¿Toca sondear/avisar esta alerta hoy? Las no recurrentes siguen su fecha de
  * viaje (ya filtrada en SQL), así que siempre son aplicables; las recurrentes
- * trabajan cada día y, si son solo laborables, se saltan fin de semana y festivos.
+ * trabajan cada día salvo los que excluya su `diasSemana`.
+ *
+ * `diasSemana` es el formato canónico (0 = domingo … 6 = sábado; vacío = todos
+ * los días). Las filas creadas antes de esa columna pueden traer
+ * `soloLaborables = true` con `diasSemana` vacío: para ellas se mantiene la
+ * lectura legada (lunes a viernes).
  */
 export function esDiaAplicable(
-  alerta: { recurrente?: boolean | null; soloLaborables?: boolean | null },
+  alerta: {
+    recurrente?: boolean | null;
+    diasSemana?: number[] | readonly number[] | null;
+    soloLaborables?: boolean | null;
+  },
   ahoraGtfs: Date = ahoraRelojGtfs(),
 ): boolean {
   if (!alerta.recurrente) return true;
-  if (!alerta.soloLaborables) return true;
-  return esLaborable(ahoraGtfs);
+  const dias = alerta.diasSemana ?? [];
+  if (dias.length > 0) return dias.includes(ahoraGtfs.getUTCDay());
+  if (alerta.soloLaborables) return esLaborable(ahoraGtfs);
+  return true;
 }

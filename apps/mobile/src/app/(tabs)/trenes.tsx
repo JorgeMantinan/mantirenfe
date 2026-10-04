@@ -57,6 +57,9 @@ const FRANJAS_SALIDA: Array<{
 /** Tope del bloque «Salidas de X hoy»: así la lista de estaciones de debajo sigue viéndose. */
 const MAX_ALTO_SALIDAS = Dimensions.get('window').height * 0.4;
 
+/** Filas por página del listado de estaciones (scroll infinito con offset). */
+const PAGINA_ESTACIONES = 20;
+
 function mesActual(): string {
   return new Date().toISOString().slice(0, 7);
 }
@@ -181,14 +184,60 @@ export default function Trenes() {
     });
   }, [horarios, franjaSalida]);
 
-  const cargarEstaciones = useCallback((q?: string) => {
-    setCargando(true);
-    const query = q ? `&q=${encodeURIComponent(q)}` : '';
-    api<EstacionResponse[]>(`/estaciones?limite=30${query}`)
-      .then(setEstaciones)
-      .catch(() => setEstaciones([]))
-      .finally(() => setCargando(false));
+  // Listado de estaciones paginado: `reset` vuelve al principio (foco, refresh
+  // o búsqueda nueva) y sin `reset` añade la página siguiente (+20).
+  const [cargandoMasEstaciones, setCargandoMasEstaciones] = useState(false);
+  const [hayMasEstaciones, setHayMasEstaciones] = useState(true);
+  const offsetEstaciones = useRef(0);
+  const consultaEstaciones = useRef('');
+  const cargandoPaginaEstaciones = useRef(false);
+  const recargaEstacionesVuelo = useRef(false);
+  const peticionEstaciones = useRef(0);
+
+  const cargarEstaciones = useCallback((q?: string, reset = true) => {
+    const texto = q?.trim();
+    if (reset) {
+      setHayMasEstaciones(true);
+      setCargando(true);
+      recargaEstacionesVuelo.current = true;
+    } else {
+      // onEndReached puede dispararse antes de repintar: una sola página en
+      // vuelo y nunca por delante de una recarga que siga en curso (si no, su
+      // respuesta, que ya no interesa, tiraría la de la recarga).
+      if (cargandoPaginaEstaciones.current || recargaEstacionesVuelo.current) return;
+      cargandoPaginaEstaciones.current = true;
+      setCargandoMasEstaciones(true);
+    }
+    const id = ++peticionEstaciones.current;
+    const desde = reset ? 0 : offsetEstaciones.current;
+    consultaEstaciones.current = texto ?? '';
+    const query = texto ? `&q=${encodeURIComponent(texto)}` : '';
+    api<EstacionResponse[]>(`/estaciones?limite=${PAGINA_ESTACIONES}&offset=${desde}${query}`)
+      .then((r) => {
+        if (peticionEstaciones.current !== id) return;
+        offsetEstaciones.current = desde + r.length;
+        setHayMasEstaciones(r.length >= PAGINA_ESTACIONES);
+        setEstaciones((prev) => (reset ? r : [...prev, ...r]));
+      })
+      .catch(() => {
+        if (peticionEstaciones.current !== id) return;
+        if (reset) setEstaciones([]);
+        setHayMasEstaciones(false);
+      })
+      .finally(() => {
+        if (!reset) cargandoPaginaEstaciones.current = false;
+        if (peticionEstaciones.current !== id) return;
+        if (reset) recargaEstacionesVuelo.current = false;
+        setCargando(false);
+        setCargandoMasEstaciones(false);
+      });
   }, []);
+
+  /** Siguiente página: pagina sobre la consulta con la que se cargó la lista. */
+  const cargarMasEstaciones = () => {
+    if (cargando || cargandoMasEstaciones || !hayMasEstaciones) return;
+    cargarEstaciones(consultaEstaciones.current || undefined, false);
+  };
 
   const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
   const [cargandoSalidas, setCargandoSalidas] = useState(false);
@@ -246,10 +295,10 @@ export default function Trenes() {
     setCoordsSel(null);
   };
 
-  // Búsqueda en el servidor mientras se escribe (la lista fija no incluía,
-  // p.ej., estaciones como Arcade que empiezan pasadas las primeras30)
+  // Búsqueda en el servidor mientras se escribe (la lista paginada no incluía,
+  // p.ej., estaciones como Arcade que empiezan pasadas las primeras páginas).
+  // Usa el mismo `cargarEstaciones`, así que una búsqueda larga también pagina.
   const timerBusqueda = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticionBusqueda = useRef(0);
   const buscarEstacionesTexto = (texto: string) => {
     clearTimeout(timerBusqueda.current);
     const q = texto.trim();
@@ -257,14 +306,7 @@ export default function Trenes() {
       cargarEstaciones();
       return;
     }
-    timerBusqueda.current = setTimeout(() => {
-      const id = ++peticionBusqueda.current;
-      api<EstacionResponse[]>(`/estaciones?limite=8&q=${encodeURIComponent(q)}`)
-        .then((r) => {
-          if (peticionBusqueda.current === id) setEstaciones(r);
-        })
-        .catch(() => undefined);
-    }, 250);
+    timerBusqueda.current = setTimeout(() => cargarEstaciones(q), 250);
   };
 
   useEffect(() => () => clearTimeout(timerBusqueda.current), []);
@@ -371,7 +413,8 @@ export default function Trenes() {
   };
 
   const refrescar = () => {
-    if (modo === 'estaciones') cargarEstaciones(buscar || undefined);
+    // Pull-to-refresh: recarga con `reset`, así que vuelve al offset 0
+    if (modo === 'estaciones') cargarEstaciones(buscar.trim() || undefined);
     if (modo === 'posiciones') cargarPosiciones();
     if (modo === 'horarios') void buscarHorarios();
     if (modo === 'impuntuales') cargarImpuntuales();
@@ -629,6 +672,11 @@ export default function Trenes() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => refrescar()} />}
           contentContainerStyle={s.lista}
+          onEndReachedThreshold={0.4}
+          onEndReached={cargarMasEstaciones}
+          ListFooterComponent={
+            cargandoMasEstaciones ? <Text style={s.pieLista}>{t('trenes.cargandoMas')}</Text> : null
+          }
           renderItem={({ item }) => (
             <Tarjeta
               style={{ borderColor: estacionSel === item.nombre ? paleta.primario : undefined }}
@@ -641,9 +689,21 @@ export default function Trenes() {
                   })}
                 </Text>
               </Pressable>
+              <Boton
+                titulo={t('trenes.crearAlertaFila')}
+                variante="contorno"
+                onPress={() =>
+                  router.push(`/alertas/nueva?origen=${encodeURIComponent(item.nombre)}`)
+                }
+                style={s.botonAlerta}
+              />
             </Tarjeta>
           )}
-          ListEmptyComponent={<Text style={s.vacio}>{t('trenes.noEstaciones')}</Text>}
+          ListEmptyComponent={
+            <Text style={s.vacio}>
+              {cargando ? t('trenes.buscando') : t('trenes.noEstaciones')}
+            </Text>
+          }
         />
       )}
 
@@ -1018,6 +1078,12 @@ const estilos = (c: Paleta) =>
       paddingHorizontal: 12,
       alignSelf: 'flex-start',
     },
+    botonAlerta: {
+      alignSelf: 'flex-start',
+      minHeight: 36,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    },
     aforos: {
       gap: 2,
       marginTop: espaciado.xs,
@@ -1046,5 +1112,11 @@ const estilos = (c: Paleta) =>
       textAlign: 'center',
       color: c.textoSecundario,
       marginTop: espaciado.xl,
+    },
+    pieLista: {
+      textAlign: 'center',
+      color: c.textoSecundario,
+      fontSize: 13,
+      paddingVertical: espaciado.sm,
     },
   });

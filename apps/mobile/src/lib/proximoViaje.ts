@@ -64,28 +64,31 @@ function diaSemana(fecha: string): number {
 }
 
 /**
- * ¿Se vigila la alerta en esa fecha? Las recurrentes no caducan (y, con
- * `soloLaborables`, solo de lunes a viernes); las puntuales van por su fecha.
+ * ¿Se vigila la alerta en esa fecha? Las recurrentes no caducan y respetan sus
+ * `diasSemana` (vacío = todos los días); las de fecha flexible valen para
+ * cualquier día (su rango lo vigila el worker); las puntuales van por su fecha.
  */
 export function aplicaEnFecha(
-  alerta: Pick<AlertaResponse, 'recurrente' | 'soloLaborables' | 'fechaViaje'>,
+  alerta: Pick<AlertaResponse, 'recurrente' | 'diasSemana' | 'fechaViaje' | 'fechaFlexible'>,
   fecha: string,
 ): boolean {
+  if (alerta.fechaFlexible) return true;
   if (!alerta.recurrente) return alerta.fechaViaje === fecha;
-  if (!alerta.soloLaborables) return true;
-  const dow = diaSemana(fecha);
-  return dow !== 0 && dow !== 6;
+  if (alerta.diasSemana.length === 0) return true;
+  return alerta.diasSemana.includes(diaSemana(fecha));
 }
 
 /**
  * Primer día (>= desde) en el que toca vigilar la alerta. Las puntuales solo
- * valen en su fecha de viaje (null si ya pasó); las recurrentes miran hasta
- * `HORIZONTE_DIAS` días (para saltarse un fin de semana de `soloLaborables`).
+ * valen en su fecha de viaje (null si ya pasó); las de fecha flexible valen
+ * desde hoy; las recurrentes miran hasta `HORIZONTE_DIAS` días (para saltarse
+ * los días no marcados en `diasSemana`).
  */
 export function proximaFechaAplicable(
-  alerta: Pick<AlertaResponse, 'recurrente' | 'soloLaborables' | 'fechaViaje'>,
+  alerta: Pick<AlertaResponse, 'recurrente' | 'diasSemana' | 'fechaViaje' | 'fechaFlexible'>,
   desde: string,
 ): string | null {
+  if (alerta.fechaFlexible) return desde;
   if (!alerta.recurrente) return alerta.fechaViaje >= desde ? alerta.fechaViaje : null;
   for (let i = 0; i <= HORIZONTE_DIAS; i++) {
     const fecha = sumarDias(desde, i);

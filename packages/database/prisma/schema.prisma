@@ -75,9 +75,22 @@ model Alerta {
   origenEstacionId  String?
   destinoEstacionId String?
   fechaViaje        DateTime       @db.Date
+  // "Cualquier fecha en los próximos 6 meses": en vez de anclarse a fechaViaje,
+  // el worker rota entre fechas del rango [fechaDesde, fechaHasta] (defaults:
+  // hoy y hoy + 180 días) hasta que encuentra billetes. Ignorado si no es
+  // flexible. `estadoFlexible` guarda la rotación y la disponibilidad por fecha.
+  fechaFlexible     Boolean        @default(false)
+  fechaDesde        DateTime?      @db.Date
+  fechaHasta        DateTime?      @db.Date
+  estadoFlexible    Json?
   // Trayecto cotidiano: la alerta no caduca ni se completa, se re-sondea cada
-  // día (soloLaborables solo tiene sentido con recurrente = lun-vie)
+  // día. `diasSemana` es el formato canónico de los días aplicables (0=domingo
+  // … 6=sábado, igual que Date#getUTCDay); vacío = todos los días. Solo tiene
+  // sentido con recurrente = true.
   recurrente        Boolean        @default(false)
+  diasSemana        Int[]          @default([])
+  // LEGACY: se conserva por compatibilidad con datos/clients antiguos y se
+  // re-espeja al guardar (= diasSemana es [1,2,3,4,5]); ya no se lee.
   soloLaborables    Boolean        @default(false)
   horaDesde         String?
   horaHasta         String?

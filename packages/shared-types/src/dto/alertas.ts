@@ -12,6 +12,43 @@ export const criterioAlertaSchema = z.enum([
 
 export const estadoAlertaSchema = z.enum(['ACTIVA', 'PAUSA', 'COMPLETADA']);
 
+/**
+ * Días de la semana aplicables en formato JS `getUTCDay`: 0 = domingo,
+ * 1 = lunes … 6 = sábado. Es el formato canónico de `Alerta.diasSemana`
+ * (vacío = todos los días).
+ */
+export const DIAS_SEMANA = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/** Lunes a viernes: el equivalente al antiguo `soloLaborables`. */
+export const DIAS_LABORABLES = [1, 2, 3, 4, 5] as const;
+
+/**
+ * Horizonte del sondeo flexible ("cualquier fecha en los próximos 6 meses"):
+ * días entre `fechaDesde` (hoy) y `fechaHasta` (hoy + 180) por defecto.
+ */
+export const HORIZONTE_FLEXIBLE_DIAS = 180;
+
+/** Un día de la semana válido (0 = domingo … 6 = sábado). */
+export const diaSemanaSchema = z.number().int().min(0).max(6);
+
+/**
+ * Fecha en `YYYY-MM-DD` (la que usan `fechaViaje`, `fechaDesde` y `fechaHasta`).
+ */
+export const fechaIsoSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)')
+  .refine((v) => !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime()), 'Fecha inválida');
+
+/**
+ * Días únicos, dentro de 0-6 y en orden: la forma en la que se persiste
+ * `Alerta.diasSemana` (defensa ante entradas repetidas o sucias).
+ */
+export function normalizarDiasSemana(dias: readonly number[] | null | undefined): number[] {
+  if (!Array.isArray(dias)) return [];
+  const unicos = new Set(dias.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6));
+  return [...unicos].sort((a, b) => a - b);
+}
+
 /** Un precio objetivo solo cuenta si es un número positivo (euros). */
 function precioObjetivoValido(valor: number | null | undefined): boolean {
   return typeof valor === 'number' && Number.isFinite(valor) && valor > 0;
@@ -34,17 +71,43 @@ function exigirPrecioObjetivoSiPrecio(
   }
 }
 
+/** Campos de frecuencia que comparten crear y actualizar. */
+type FrecuenciaInput = {
+  recurrente?: boolean | undefined;
+  fechaFlexible?: boolean | undefined;
+  fechaDesde?: string | undefined;
+  fechaHasta?: string | undefined;
+};
+
+/**
+ * Reglas de la frecuencia:
+ * - "cualquier fecha" (flexible) y "trayecto cotidiano" (recurrente) son
+ *   modalidades incompatibles: la primera rota por un rango de fechas y la
+ *   segunda trabaja todos los días desde hoy.
+ * - El rango del sondeo flexible debe ir de menor a mayor.
+ */
+function exigirFrecuenciaCoherente(valor: FrecuenciaInput, ctx: z.RefinementCtx) {
+  if (valor.fechaFlexible && valor.recurrente) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fechaFlexible'],
+      message: 'No puedes combinar "cualquier fecha" con un trayecto recurrente',
+    });
+  }
+  if (valor.fechaDesde && valor.fechaHasta && valor.fechaDesde > valor.fechaHasta) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fechaHasta'],
+      message: 'La fecha final debe ser posterior a la inicial',
+    });
+  }
+}
+
 export const crearAlertaSchema = z
   .object({
     origenNombre: z.string().trim().min(2, 'Indica la estación de origen').max(120),
     destinoNombre: z.string().trim().min(2, 'Indica la estación de destino').max(120),
-    fechaViaje: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)')
-      .refine((v) => {
-        const d = new Date(`${v}T00:00:00Z`);
-        return !Number.isNaN(d.getTime());
-      }, 'Fecha inválida'),
+    fechaViaje: fechaIsoSchema,
     horaDesde: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Formato HH:MM')
@@ -64,10 +127,21 @@ export const crearAlertaSchema = z
       .positive('El precio objetivo debe ser mayor que 0')
       .nullable()
       .optional(),
-    // Trayecto cotidiano: sin fecha concreta, se vigila cada día (lun-vie si
-    // soloLaborables). La fechaViaje del formulario se ignora en este caso.
+    // Trayecto cotidiano: sin fecha concreta, se vigila cada día (los que marque
+    // `diasSemana`; vacío = todos). La fechaViaje del formulario se ignora.
     recurrente: z.boolean().default(false),
+    // Días aplicables (0 = domingo … 6 = sábado). Opcional: si no viene, la API
+    // cae en el legado `soloLaborables` (true = [1,2,3,4,5]) y si tampoco, en
+    // "todos los días". Solo se usa con recurrente.
+    diasSemana: z.array(diaSemanaSchema).max(7).optional(),
+    // LEGACY: se acepta por compatibilidad y la API lo convierte a diasSemana.
     soloLaborables: z.boolean().default(false),
+    // "Cualquier fecha en los próximos 6 meses": el worker rota por el rango
+    // [fechaDesde, fechaHasta] (defaults: hoy y hoy + 180 días) hasta que
+    // encuentra billetes. Si no es flexible, los dos campos se ignoran.
+    fechaFlexible: z.boolean().default(false),
+    fechaDesde: fechaIsoSchema.optional(),
+    fechaHasta: fechaIsoSchema.optional(),
     intervaloSondeoMin: z
       .number()
       .int()
@@ -78,7 +152,10 @@ export const crearAlertaSchema = z
     bono: z.enum(BONOS).default('GENERAL'),
     notas: z.string().trim().max(500).optional().nullable(),
   })
-  .superRefine(exigirPrecioObjetivoSiPrecio);
+  .superRefine((valor, ctx) => {
+    exigirPrecioObjetivoSiPrecio(valor, ctx);
+    exigirFrecuenciaCoherente(valor, ctx);
+  });
 
 export type CrearAlertaInput = z.infer<typeof crearAlertaSchema>;
 export type CriterioAlerta = z.infer<typeof criterioAlertaSchema>;
@@ -96,11 +173,7 @@ export const actualizarAlertaSchema = z
     // Campos editables de la ruta/viaje
     origenNombre: z.string().trim().min(2, 'Indica la estación de origen').max(120).optional(),
     destinoNombre: z.string().trim().min(2, 'Indica la estación de destino').max(120).optional(),
-    fechaViaje: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)')
-      .refine((v) => !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime()), 'Fecha inválida')
-      .optional(),
+    fechaViaje: fechaIsoSchema.optional(),
     horaDesde: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Formato HH:MM')
@@ -120,10 +193,20 @@ export const actualizarAlertaSchema = z
       .nullable()
       .optional(),
     recurrente: z.boolean().optional(),
+    // Días aplicables (0 = domingo … 6 = sábado); vacío = todos los días.
+    diasSemana: z.array(diaSemanaSchema).max(7).optional(),
+    // LEGACY: se acepta por compatibilidad y la API lo convierte a diasSemana.
     soloLaborables: z.boolean().optional(),
+    // Rango del sondeo flexible; solo se guarda si la alerta (acaba de ser) flexible.
+    fechaFlexible: z.boolean().optional(),
+    fechaDesde: fechaIsoSchema.optional(),
+    fechaHasta: fechaIsoSchema.optional(),
     bono: z.enum(BONOS).optional(),
   })
-  .superRefine(exigirPrecioObjetivoSiPrecio);
+  .superRefine((valor, ctx) => {
+    exigirPrecioObjetivoSiPrecio(valor, ctx);
+    exigirFrecuenciaCoherente(valor, ctx);
+  });
 
 export type ActualizarAlertaInput = z.infer<typeof actualizarAlertaSchema>;
 
@@ -141,8 +224,21 @@ export interface AlertaResponse {
   estado: EstadoAlerta;
   /** Trayecto cotidiano: se vigila cada día (no caduca ni se completa). */
   recurrente: boolean;
-  /** Solo aplica con `recurrente`: lunes a viernes. */
-  soloLaborables: boolean;
+  /**
+   * Días aplicables del trayecto recurrente (0 = domingo … 6 = sábado, formato
+   * JS `getUTCDay`). Vacío = todos los días. Es el único formato del DTO: el
+   * antiguo `soloLaborables` solo se acepta como entrada y la API lo traduce.
+   */
+  diasSemana: number[];
+  /**
+   * "Cualquier fecha en los próximos 6 meses": la alerta no se ancla a
+   * `fechaViaje` sino que el worker rota por el rango `fechaDesde`–`fechaHasta`.
+   */
+  fechaFlexible: boolean;
+  /** Inicio del rango flexible (YYYY-MM-DD); null si no es flexible. */
+  fechaDesde: string | null;
+  /** Fin del rango flexible (YYYY-MM-DD); null si no es flexible. */
+  fechaHasta: string | null;
   intervaloSondeoMin: number;
   bono: string;
   notas: string | null;

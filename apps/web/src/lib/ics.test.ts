@@ -13,7 +13,7 @@ function alerta(datos: Partial<AlertaParaIcs> = {}): AlertaParaIcs {
     horaHasta: null,
     numeroTren: null,
     recurrente: false,
-    soloLaborables: false,
+    diasSemana: [],
     ultimoEstado: null,
     ...datos,
   };
@@ -94,10 +94,23 @@ describe('construirIcs', () => {
     expect(ics).toContain('RRULE:FREQ=DAILY;UNTIL=20271005T235959\r\n');
   });
 
-  it('recurrente soloLaborables: RRULE con BYDAY de lunes a viernes', () => {
-    const ics = construirIcs(alerta({ recurrente: true, soloLaborables: true }), AHORA);
+  it('recurrente con días marcados: RRULE con BYDAY de lunes a viernes', () => {
+    const ics = construirIcs(alerta({ recurrente: true, diasSemana: [1, 2, 3, 4, 5] }), AHORA);
 
     expect(ics).toContain('RRULE:FREQ=DAILY;UNTIL=20271005T235959;BYDAY=MO,TU,WE,TH,FR\r\n');
+  });
+
+  it('recurrente con días sueltos: BYDAY en orden de la semana', () => {
+    const ics = construirIcs(alerta({ recurrente: true, diasSemana: [4, 0, 6] }), AHORA);
+
+    expect(ics).toContain('RRULE:FREQ=DAILY;UNTIL=20271005T235959;BYDAY=SU,TH,SA\r\n');
+  });
+
+  it('recurrente sin días marcados: RRULE sin BYDAY (todos los días)', () => {
+    const ics = construirIcs(alerta({ recurrente: true, diasSemana: [] }), AHORA);
+
+    expect(ics).toContain('RRULE:FREQ=DAILY;UNTIL=20271005T235959\r\n');
+    expect(ics).not.toContain('BYDAY');
   });
 
   it('puntual: sin RRULE', () => {
