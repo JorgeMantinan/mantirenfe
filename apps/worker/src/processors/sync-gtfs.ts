@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import unzipper from 'unzipper';
 import { getPrisma } from '@mantirenfe/database';
+import { hoyGtfs } from './reloj';
 
 const URLS_GTFS_DEFECTO = [
   'https://ssl.renfe.com/gtransit/Fichero_AV_LD/google_transit.zip',
@@ -71,6 +72,8 @@ const ENTRADAS_PEQUENAS = [
 const TAM_LOTE_PARADAS = 10_000;
 /** Chunks de id para los deleteMany (el límite de parámetros de PG es65.535). */
 const TAM_LOTE_IDS = 5_000;
+/** Filas por createMany de Estacion (5 campos: cómodamente bajo el límite de PG). */
+const TAM_LOTE_ESTACIONES = 5_000;
 
 function memoriaMb(): number {
   const u = process.memoryUsage();
@@ -307,9 +310,37 @@ async function recorrerZip(
   return buffers;
 }
 
+/** Fila de `Estacion` lista para el alta masiva. */
+interface EstacionAlta {
+  id: string;
+  codigo: string;
+  nombre: string;
+  latitud: number | null;
+  longitud: number | null;
+}
+
+/** Datos actualizables de una estación (agrupados en un solo updateMany). */
+type EstacionCambio = Pick<EstacionAlta, 'nombre' | 'latitud' | 'longitud'>;
+
+function trocear<T>(items: T[], tam: number): T[][] {
+  const lotes: T[][] = [];
+  for (let inicio = 0; inicio < items.length; inicio += tam) {
+    lotes.push(items.slice(inicio, inicio + tam));
+  }
+  return lotes;
+}
+
 export async function sincronizarEstaciones(logger: Logger): Promise<number> {
   const prisma = getPrisma();
   let total = 0;
+
+  // Estado previo: sin él haría un upsert por estación (N idas y vuelta a la
+  // BD). Con él se separa lo que se da de alta de lo que hay que actualizar y
+  // las estaciones intactas no se tocan.
+  const previas = await prisma.estacion.findMany({
+    select: { codigo: true, nombre: true, latitud: true, longitud: true },
+  });
+  const porCodigo = new Map(previas.map((e) => [e.codigo, e]));
 
   for (const fuente of fuentesGtfs()) {
     const buffers = await recorrerZip(fuente.url, logger);
@@ -321,37 +352,10 @@ export async function sincronizarEstaciones(logger: Logger): Promise<number> {
     }
     const filas = parsearCsv(stops);
 
-    if (fuente.operador) {
-      // Feed secundario (OUIGO): reutiliza el mapeo de estaciones que ya
-      // existe y solo añade las que falten. Así su tipografía ("MADRID
-      // CHAMARTIN") no pisa nombres/coordenadas de los feeds principales.
-      const nuevas: Array<{
-        id: string;
-        codigo: string;
-        nombre: string;
-        latitud: number | null;
-        longitud: number | null;
-      }> = [];
-      for (const fila of filas) {
-        const codigo = fila.stop_id || fila.stop_code;
-        const nombre = fila.stop_name;
-        if (!codigo || !nombre) continue;
-        const lat = Number(fila.stop_lat);
-        const lon = Number(fila.stop_lon);
-        nuevas.push({
-          id: codigo,
-          codigo,
-          nombre,
-          latitud: Number.isFinite(lat) ? lat : null,
-          longitud: Number.isFinite(lon) ? lon : null,
-        });
-      }
-      if (nuevas.length > 0) {
-        const creadas = await prisma.estacion.createMany({ data: nuevas, skipDuplicates: true });
-        total += creadas.count;
-      }
-      continue;
-    }
+    const aCrear: EstacionAlta[] = [];
+    // Un updateMany por payload idéntico: `updateMany` no admite datos distintos
+    // por fila, y en un feed real la mayoría de filas caen en el mismo grupo
+    const cambios = new Map<string, { datos: EstacionCambio; codigos: string[] }>();
 
     for (const fila of filas) {
       const codigo = fila.stop_id || fila.stop_code;
@@ -359,23 +363,57 @@ export async function sincronizarEstaciones(logger: Logger): Promise<number> {
       if (!codigo || !nombre) continue;
       const lat = Number(fila.stop_lat);
       const lon = Number(fila.stop_lon);
+      const registro: EstacionAlta = {
+        id: codigo,
+        codigo,
+        nombre,
+        latitud: Number.isFinite(lat) ? lat : null,
+        longitud: Number.isFinite(lon) ? lon : null,
+      };
 
-      await prisma.estacion.upsert({
-        where: { codigo },
-        update: {
-          nombre,
-          latitud: Number.isFinite(lat) ? lat : null,
-          longitud: Number.isFinite(lon) ? lon : null,
-        },
-        create: {
-          id: codigo,
-          codigo,
-          nombre,
-          latitud: Number.isFinite(lat) ? lat : null,
-          longitud: Number.isFinite(lon) ? lon : null,
-        },
-      });
-      total++;
+      const previa = porCodigo.get(codigo);
+      if (!previa) {
+        porCodigo.set(codigo, registro);
+        aCrear.push(registro);
+        continue;
+      }
+      // Feed secundario (OUIGO): solo da de alta lo que falte. Así su
+      // tipografía ("MADRID CHAMARTIN") no pisa nombres/coordenadas de los
+      // feeds principales.
+      if (fuente.operador) continue;
+      if (
+        previa.nombre === registro.nombre &&
+        previa.latitud === registro.latitud &&
+        previa.longitud === registro.longitud
+      ) {
+        continue;
+      }
+      const datos: EstacionCambio = {
+        nombre: registro.nombre,
+        latitud: registro.latitud,
+        longitud: registro.longitud,
+      };
+      const clave = JSON.stringify(datos);
+      const grupo = cambios.get(clave) ?? { datos, codigos: [] };
+      grupo.codigos.push(codigo);
+      cambios.set(clave, grupo);
+    }
+
+    for (const lote of trocear(aCrear, TAM_LOTE_ESTACIONES)) {
+      const creadas = await prisma.estacion.createMany({ data: lote, skipDuplicates: true });
+      total += creadas.count;
+    }
+    for (const { datos, codigos } of cambios.values()) {
+      for (const lote of trocear(codigos, TAM_LOTE_IDS)) {
+        const actualizadas = await prisma.estacion.updateMany({
+          where: { codigo: { in: lote } },
+          data: datos,
+        });
+        total += actualizadas.count;
+      }
+      for (const codigo of codigos) {
+        porCodigo.set(codigo, { ...(porCodigo.get(codigo) ?? { codigo }), ...datos });
+      }
     }
   }
 
@@ -780,8 +818,9 @@ async function limpiarParadasObsoletas(
 
 export async function sincronizarHorarios(logger: Logger): Promise<number> {
   const prisma = getPrisma();
-  const hoy = new Date();
-  hoy.setUTCHours(0, 0, 0, 0);
+  // "Hoy" en el reloj peninsular (el mismo con el que se guardan las fechas
+  // GTFS): con el de UTC la ventana se desplazaba 1-2 h en el cambio de hora
+  const hoy = new Date(`${hoyGtfs()}T00:00:00Z`);
   const desde = new Date(hoy);
   desde.setUTCDate(desde.getUTCDate() - 7);
   const hasta = new Date(hoy);
@@ -1077,7 +1116,16 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       }
     }
     await vaciarLote();
-    feedsOk++;
+    if (errorParadas) {
+      // Las paradas de este feed no están completas: cuenta como feed fallido
+      // para que la limpieza final no borre paradas de otros trips
+      logger.warn(
+        { url, err: String(errorParadas) },
+        'Feed de horarios importado sin sus paradas GTFS',
+      );
+    } else {
+      feedsOk++;
+    }
 
     logger.info(
       {

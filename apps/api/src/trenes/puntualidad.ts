@@ -1,4 +1,9 @@
 import type { PuntualidadTrenResponse } from '@mantirenfe/shared-types';
+import { horaDesdeMinutos } from '../common/utilidades';
+
+// Reexportado: la implementación vive en `common/utilidades.ts` (compartida
+// con `suprimidos/enriquecer.ts`).
+export { horaDesdeMinutos };
 
 /** Fila de `ImpuntualidadTren` dentro del mes consultado. */
 export interface ServicioImpuntual {
@@ -43,16 +48,6 @@ export function rangoMes(mes?: string): { desde: Date; hasta: Date } {
     desde: new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1)),
     hasta: new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 1)),
   };
-}
-
-/**
- * Minutos GTFS desde medianoche → "HH:MM". Los servicios que acaban tras la
- * medianoche (minutos > 1440) ruedan de día, igual que al leer un ISO.
- */
-export function horaDesdeMinutos(minutos: number | null | undefined): string | null {
-  if (minutos == null || !Number.isFinite(minutos)) return null;
-  const m = ((Math.floor(minutos) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 /** "HH:MM" → minutos desde medianoche (null si no es una hora válida). */

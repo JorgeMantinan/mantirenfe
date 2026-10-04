@@ -12,14 +12,16 @@ export class AuthController {
 
   @Get('me')
   async me(@UsuarioActual() usuario: UsuarioRequest) {
-    const usuarioDb = await this.authService.obtenerOCrear(usuario);
+    // UNA sola escritura: las preferencias se derivan del usuario ya leído
+    const { usuario: usuarioDb, preferencias } =
+      await this.authService.obtenerUsuarioYPreferencias(usuario);
     return {
       id: usuarioDb.id,
       email: usuarioDb.email,
       nombre: usuarioDb.nombre,
       avatarUrl: usuarioDb.avatarUrl,
       proveedor: usuarioDb.proveedor,
-      preferencias: await this.authService.obtenerPreferencias(usuario),
+      preferencias,
     };
   }
 

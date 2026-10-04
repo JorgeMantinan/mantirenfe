@@ -27,6 +27,7 @@ export const es = {
     sinDatos: 'Sin datos',
     plazas: 'Plazas',
     errorActualizar: 'No se pudo actualizar',
+    timeout: 'La petición ha tardado demasiado. Comprueba tu conexión e inténtalo de nuevo.',
     avisoConfig:
       'Falta configurar EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY en .env',
     y: ' y ',
@@ -295,6 +296,7 @@ export const es = {
     aforo: 'Aforo histórico (2018)',
     viajeros: '{{n}} viajeros',
     sinSalidas: 'Sin salidas registradas hoy',
+    errorSalidas: 'No se pudieron cargar las salidas de esta estación',
     tocaSalidas: '{{meta}} — toca para ver salidas',
     noEstaciones: 'No se encontraron estaciones',
     crearAlertaFila: 'Crear alerta',
@@ -344,6 +346,7 @@ export const es = {
     pushOk: 'Avisos push activados en este dispositivo',
     pushKo: 'Avisos push desactivados en este dispositivo',
     pushError: 'No se pudo actualizar el registro push',
+    abrirAjustes: 'Abrir ajustes del sistema',
     recordatorio: 'Recordatorio de salida (50 min)',
     resumen: 'Resumen del viaje (mañana del día)',
     guardando: 'Guardando...',

@@ -11,30 +11,35 @@ import { TrenesService } from './trenes.service';
  * 1.426 min (23,7 h) y 1.074 min, es decir +1000 min imposibles.
  */
 const mocks = vi.hoisted(() => ({
-  posicionUpsert: vi.fn(),
+  posicionCreateMany: vi.fn(),
   posicionDeleteMany: vi.fn(),
   historialCreateMany: vi.fn(),
   historialDeleteMany: vi.fn(),
   impuntualidadFindMany: vi.fn(),
-  impuntualidadCreate: vi.fn(),
+  impuntualidadCreateMany: vi.fn(),
   impuntualidadUpdateMany: vi.fn(),
 }));
 
-vi.mock('@mantirenfe/database', () => ({
-  getPrisma: () => ({
-    posicionTren: { upsert: mocks.posicionUpsert, deleteMany: mocks.posicionDeleteMany },
+vi.mock('@mantirenfe/database', () => {
+  const prisma = {
+    posicionTren: {
+      createMany: mocks.posicionCreateMany,
+      deleteMany: mocks.posicionDeleteMany,
+    },
     posicionHistorial: {
       createMany: mocks.historialCreateMany,
       deleteMany: mocks.historialDeleteMany,
     },
     impuntualidadTren: {
       findMany: mocks.impuntualidadFindMany,
-      create: mocks.impuntualidadCreate,
+      createMany: mocks.impuntualidadCreateMany,
       updateMany: mocks.impuntualidadUpdateMany,
     },
-  }),
-  buscarEstaciones: vi.fn(),
-}));
+    // La transacción se ejecuta en secuencia (sin rollback real en el test)
+    $transaction: (fn: (tx: unknown) => unknown) => fn(prisma),
+  };
+  return { getPrisma: () => prisma, buscarEstaciones: vi.fn() };
+});
 
 const posicion = (sobrantes: Partial<PosicionTrenResponse>): PosicionTrenResponse => ({
   id: 'p1',
@@ -55,19 +60,26 @@ function persistir(datos: PosicionTrenResponse[]): Promise<void> {
   return servicio.persistirPosiciones(datos);
 }
 
-/** tripIds que acabaron insertados en `ImpuntualidadTren`, en orden. */
+/** tripIds que acabaron insertados en `ImpuntualidadTren` (una sola escritura en lote). */
 function registrados(): string[] {
-  return mocks.impuntualidadCreate.mock.calls.map(
-    (llamada) => (llamada[0] as { data: { tripId: string } }).data.tripId,
-  );
+  const llamada = mocks.impuntualidadCreateMany.mock.calls[0]?.[0] as
+    { data: Array<{ tripId: string }> } | undefined;
+  return (llamada?.data ?? []).map((fila) => fila.tripId);
+}
+
+/** `retrasoMaxSeg` de cada fila insertada en `ImpuntualidadTren`, en orden. */
+function retrasosInsertados(): number[] {
+  const llamada = mocks.impuntualidadCreateMany.mock.calls[0]?.[0] as
+    { data: Array<{ retrasoMaxSeg: number }> } | undefined;
+  return (llamada?.data ?? []).map((fila) => fila.retrasoMaxSeg);
 }
 
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.impuntualidadFindMany.mockResolvedValue([]);
-  mocks.impuntualidadCreate.mockResolvedValue({ id: 'nuevo' });
+  mocks.impuntualidadCreateMany.mockResolvedValue({ count: 1 });
   mocks.impuntualidadUpdateMany.mockResolvedValue({ count: 1 });
-  mocks.posicionUpsert.mockResolvedValue({});
+  mocks.posicionCreateMany.mockResolvedValue({ count: 0 });
   mocks.posicionDeleteMany.mockResolvedValue({ count: 0 });
   mocks.historialCreateMany.mockResolvedValue({ count: 0 });
   mocks.historialDeleteMany.mockResolvedValue({ count: 0 });
@@ -84,11 +96,7 @@ describe('TrenesService.persistirPosiciones (sanidad de ImpuntualidadTren)', () 
     ]);
 
     expect(registrados().sort()).toEqual(['T-BORDE', 'T-OK']);
-    expect(
-      mocks.impuntualidadCreate.mock.calls.map(
-        (llamada) => (llamada[0] as { data: { retrasoMaxSeg: number } }).data.retrasoMaxSeg,
-      ),
-    ).toEqual([600, 21_600]);
+    expect(retrasosInsertados()).toEqual([600, 21_600]);
   });
 
   it('descarta los viajes de plataforma (PLATF) aunque su retraso sea modesto', async () => {
@@ -136,12 +144,18 @@ describe('TrenesService.persistirPosiciones (sanidad de ImpuntualidadTren)', () 
 
     await persistir(datos);
 
-    expect(mocks.posicionUpsert).toHaveBeenCalledTimes(3);
+    // Un snapshot = UNA escritura de posiciones (antes: un upsert por tren)
+    expect(mocks.posicionCreateMany).toHaveBeenCalledTimes(1);
+    expect((mocks.posicionCreateMany.mock.calls[0]?.[0] as { data: unknown[] }).data).toHaveLength(
+      3,
+    );
     expect(mocks.historialCreateMany).toHaveBeenCalledTimes(1);
     expect((mocks.historialCreateMany.mock.calls[0]?.[0] as { data: unknown[] }).data).toHaveLength(
       3,
     );
-    expect(mocks.posicionDeleteMany).toHaveBeenCalledTimes(1);
+    // Una para refrescar el snapshot (borrar+insertar en transacción) y otra
+    // para la poda de posiciones con más de 24 h sin verse
+    expect(mocks.posicionDeleteMany).toHaveBeenCalledTimes(2);
     expect(mocks.historialDeleteMany).toHaveBeenCalledTimes(1);
   });
 
@@ -156,10 +170,10 @@ describe('TrenesService.persistirPosiciones (sanidad de ImpuntualidadTren)', () 
       posicion({ id: 'b', tripId: 'T-PEOR', retrasoSeg: 1_200 }),
     ]);
 
-    expect(mocks.impuntualidadCreate).not.toHaveBeenCalled();
+    expect(mocks.impuntualidadCreateMany).not.toHaveBeenCalled();
     expect(mocks.impuntualidadUpdateMany).toHaveBeenCalledTimes(1);
     expect(mocks.impuntualidadUpdateMany.mock.calls[0]?.[0]).toEqual({
-      where: { tripId: 'T-PEOR', fecha: expect.any(Date) },
+      where: { fecha: expect.any(Date), tripId: { in: ['T-PEOR'] } },
       data: { retrasoMaxSeg: 1_200 },
     });
   });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import {
   Dimensions,
@@ -29,6 +29,7 @@ import {
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
+import { useSugerenciasEstacion } from '@/hooks/useSugerenciasEstacion';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import { useTema } from '@/lib/tema-contexto';
@@ -59,6 +60,20 @@ const MAX_ALTO_SALIDAS = Dimensions.get('window').height * 0.4;
 
 /** Filas por página del listado de estaciones (scroll infinito con offset). */
 const PAGINA_ESTACIONES = 20;
+
+/** Origen permitido dentro del WebView del mapa (cualquier otro, fuera). */
+const ORIGEN_MAPA = 'https://mantirenfe.vercel.app';
+
+/** ¿Es una URL del propio mapa? (no basta con `startsWith`: evitaría spoofing) */
+function esDelMapa(destino: string): boolean {
+  if (destino === 'about:blank') return true;
+  try {
+    const parsed = new URL(destino);
+    return parsed.protocol === 'https:' && parsed.host === 'mantirenfe.vercel.app';
+  } catch {
+    return false;
+  }
+}
 
 function mesActual(): string {
   return new Date().toISOString().slice(0, 7);
@@ -240,6 +255,9 @@ export default function Trenes() {
   };
 
   const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
+  // Distingue «no hay salidas» de «la petición ha fallado» (la lista vacía
+  // se pintaría como «sin salidas» y es mentira)
+  const [errorSalidas, setErrorSalidas] = useState<string | null>(null);
   const [cargandoSalidas, setCargandoSalidas] = useState(false);
   const [estacionSel, setEstacionSel] = useState('');
   // Ficha enriquecida (data.renfe.com): se pide en paralelo a las salidas y si
@@ -248,8 +266,12 @@ export default function Trenes() {
   const [detalleListo, setDetalleListo] = useState(false);
   const [coordsSel, setCoordsSel] = useState<{ lat: number; lng: number } | null>(null);
   const peticionDetalle = useRef(0);
+  // Invalida las salidas de una estación anterior (o de antes de desmontar)
+  const peticionSalidas = useRef(0);
+  // Ídem para las posiciones en tiempo real
+  const peticionPosiciones = useRef(0);
 
-  const cargarDetalle = (nombre: string) => {
+  const cargarDetalle = useCallback((nombre: string) => {
     const id = ++peticionDetalle.current;
     setDetalle(null);
     setDetalleListo(false);
@@ -264,36 +286,65 @@ export default function Trenes() {
         setDetalle(null);
         setDetalleListo(true);
       });
-  };
+  }, []);
 
-  const cargarSalidas = (nombre: string, estacion?: EstacionResponse) => {
-    const fecha = new Date().toISOString().slice(0, 10);
-    setEstacionSel(nombre);
-    setSalidas(null);
-    setCargandoSalidas(true);
-    setCoordsSel(
-      estacion && estacion.latitud !== null && estacion.longitud !== null
-        ? { lat: estacion.latitud, lng: estacion.longitud }
-        : null,
-    );
-    cargarDetalle(nombre);
-    api<HorarioTrenResponse[]>(
-      `/trenes/estacion?estacion=${encodeURIComponent(nombre)}&fecha=${fecha}`,
-    )
-      .then(setSalidas)
-      .catch(() => setSalidas([]))
-      .finally(() => setCargandoSalidas(false));
-  };
+  const cargarSalidas = useCallback(
+    (nombre: string, estacion?: EstacionResponse) => {
+      const fechaHoy = new Date().toISOString().slice(0, 10);
+      const id = ++peticionSalidas.current;
+      setEstacionSel(nombre);
+      setSalidas(null);
+      setErrorSalidas(null);
+      setCargandoSalidas(true);
+      setCoordsSel(
+        estacion && estacion.latitud !== null && estacion.longitud !== null
+          ? { lat: estacion.latitud, lng: estacion.longitud }
+          : null,
+      );
+      cargarDetalle(nombre);
+      api<HorarioTrenResponse[]>(
+        `/trenes/estacion?estacion=${encodeURIComponent(nombre)}&fecha=${fechaHoy}`,
+      )
+        .then((r) => {
+          if (peticionSalidas.current !== id) return;
+          setSalidas(r);
+        })
+        .catch((e: Error) => {
+          if (peticionSalidas.current !== id) return;
+          setErrorSalidas(e.message || t('trenes.errorSalidas'));
+          setSalidas([]);
+        })
+        .finally(() => {
+          if (peticionSalidas.current !== id) return;
+          setCargandoSalidas(false);
+        });
+    },
+    [cargarDetalle, t],
+  );
 
   /** Cierra la tarjeta de salidas y cancela la ficha pendiente (si la hay). */
   const cerrarSalidas = () => {
+    peticionSalidas.current++;
     peticionDetalle.current++;
     setSalidas(null);
+    setErrorSalidas(null);
     setEstacionSel('');
     setDetalle(null);
     setDetalleListo(false);
     setCoordsSel(null);
   };
+
+  // Al desmontar, ninguna petición pendiente debe tocar el estado
+  useEffect(
+    () => () => {
+      peticionSalidas.current++;
+      peticionDetalle.current++;
+      peticionPosiciones.current++;
+      peticionEstaciones.current++;
+      peticionImpuntuales.current++;
+    },
+    [],
+  );
 
   // Búsqueda en el servidor mientras se escribe (la lista paginada no incluía,
   // p.ej., estaciones como Arcade que empiezan pasadas las primeras páginas).
@@ -311,53 +362,26 @@ export default function Trenes() {
 
   useEffect(() => () => clearTimeout(timerBusqueda.current), []);
 
-  // Sugerencias para el formulario de horarios: una lista por campo, para que
-  // escribir en Destino no pinte también las sugerencias de Origen.
-  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
-  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
-  const timerSugerencias = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticionSugerencias = useRef(0);
-
-  /** Cierra las dos listas y cancela la petición pendiente (si la hay). */
-  const limpiarSugerencias = () => {
-    peticionSugerencias.current++;
-    clearTimeout(timerSugerencias.current);
-    setSugOrigen([]);
-    setSugDestino([]);
-  };
-
-  const buscarSugerencias = (campo: 'origen' | 'destino', texto: string) => {
-    clearTimeout(timerSugerencias.current);
-    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
-    // Invalida cualquier respuesta pendiente y cierra la lista del otro campo
-    peticionSugerencias.current++;
-    (campo === 'origen' ? setSugDestino : setSugOrigen)([]);
-    const q = texto.trim();
-    if (q.length < 2) {
-      set([]);
-      return;
-    }
-    timerSugerencias.current = setTimeout(() => {
-      const id = ++peticionSugerencias.current;
-      api<EstacionResponse[]>(`/estaciones?limite=5&q=${encodeURIComponent(q)}`)
-        .then((r) => {
-          if (peticionSugerencias.current === id) set(r);
-        })
-        .catch(() => undefined);
-    }, 250);
-  };
-
-  useEffect(() => () => clearTimeout(timerSugerencias.current), []);
+  // Sugerencias para el formulario de horarios (hook compartido con alertas)
+  const { sugOrigen, sugDestino, buscarSugerencias, limpiarSugerencias } = useSugerenciasEstacion();
 
   const cargarPosiciones = useCallback(() => {
+    const id = ++peticionPosiciones.current;
     setCargando(true);
     api<{ trenes: PosicionTrenResponse[] }>('/trenes/posiciones')
       .then((d) => {
+        if (peticionPosiciones.current !== id) return;
         setPosiciones(d.trenes);
         setErrorPosiciones(null);
       })
-      .catch((e: Error) => setErrorPosiciones(e.message))
-      .finally(() => setCargando(false));
+      .catch((e: Error) => {
+        if (peticionPosiciones.current !== id) return;
+        setErrorPosiciones(e.message);
+      })
+      .finally(() => {
+        if (peticionPosiciones.current !== id) return;
+        setCargando(false);
+      });
   }, []);
 
   // Depende de mes/orden: useFocusEffect se vuelve a ejecutar al cambiarlos (y al
@@ -419,6 +443,17 @@ export default function Trenes() {
     if (modo === 'horarios') void buscarHorarios();
     if (modo === 'impuntuales') cargarImpuntuales();
   };
+
+  // Referencia estable para la fila de horarios (React.memo de la fila)
+  const crearAlertaHorario = useCallback(
+    (numeroTren: string) => {
+      router.push({
+        pathname: '/alertas/nueva',
+        params: { origen, destino, fecha, numeroTren },
+      });
+    },
+    [origen, destino, fecha],
+  );
 
   // Ficha de la estación seleccionada (fallo tolerado: sin ficha no se rompe nada)
   const latitud = detalle?.latitud ?? coordsSel?.lat ?? null;
@@ -646,7 +681,10 @@ export default function Trenes() {
               ) : null}
             </View>
           ) : null}
-          {!cargandoSalidas && (salidas ?? []).length === 0 ? (
+          {/* Un fallo no es «sin salidas»: se distingue el catch del vacío */}
+          {errorSalidas ? (
+            <Text style={{ color: paleta.error, fontSize: 13 }}>{errorSalidas}</Text>
+          ) : !cargandoSalidas && (salidas ?? []).length === 0 ? (
             <Text style={s.meta}>{t('trenes.sinSalidas')}</Text>
           ) : (
             <ScrollView style={s.salidasScroll} nestedScrollEnabled>
@@ -691,22 +729,16 @@ export default function Trenes() {
           contentContainerStyle={s.lista}
           onEndReachedThreshold={0.4}
           onEndReached={cargarMasEstaciones}
+          initialNumToRender={10}
           ListFooterComponent={
             cargandoMasEstaciones ? <Text style={s.pieLista}>{t('trenes.cargandoMas')}</Text> : null
           }
           renderItem={({ item }) => (
-            <Tarjeta
-              style={{ borderColor: estacionSel === item.nombre ? paleta.primario : undefined }}
-            >
-              <Pressable onPress={() => cargarSalidas(item.nombre, item)}>
-                <Text style={s.nombre}>{item.nombre}</Text>
-                <Text style={s.meta}>
-                  {t('trenes.tocaSalidas', {
-                    meta: `${item.codigo}${item.ciudad ? ` · ${item.ciudad}` : ''}`,
-                  })}
-                </Text>
-              </Pressable>
-            </Tarjeta>
+            <FilaEstacion
+              estacion={item}
+              activa={estacionSel === item.nombre}
+              onPulsar={cargarSalidas}
+            />
           )}
           ListEmptyComponent={
             <Text style={s.vacio}>
@@ -788,59 +820,15 @@ export default function Trenes() {
               </View>
             ) : null
           }
+          initialNumToRender={8}
           renderItem={({ item }) => (
-            <Tarjeta>
-              <View style={s.fila}>
-                <Text style={s.nombre}>{item.numeroTren}</Text>
-                <Etiqueta tono="primario">{item.duracionMin} min</Etiqueta>
-              </View>
-              <Text style={s.meta}>
-                {horaGtfs(item.salida)}
-                {' → '}
-                {horaGtfs(item.llegada)}
-                {' · '}
-                {item.origenNombre} → {item.destinoNombre}
-              </Text>
-              {item.operador ? (
-                esOuigo(item.operador) ? (
-                  <Etiqueta tono="aviso">{item.operador}</Etiqueta>
-                ) : (
-                  <Text style={s.meta}>{item.operador}</Text>
-                )
-              ) : null}
-              {item.transbordo ? (
-                <View style={{ marginTop: 4, gap: 2 }}>
-                  <Etiqueta tono="primario">
-                    {t('trenes.transbordo', { estacion: item.transbordo.estacion })}
-                  </Etiqueta>
-                  <Text style={s.meta}>
-                    {t('trenes.transbordoDetalle', {
-                      tren1: item.transbordo.trenPrimera,
-                      hora1: horaGtfs(item.transbordo.llegadaPrimera),
-                      espera: item.transbordo.esperaMin,
-                      tren2: item.transbordo.trenSegunda,
-                      hora2: horaGtfs(item.transbordo.salidaSegunda),
-                    })}
-                  </Text>
-                </View>
-              ) : null}
-              <Boton
-                titulo={t('trenes.masAlerta')}
-                variante="contorno"
-                onPress={() =>
-                  router.push({
-                    pathname: '/alertas/nueva',
-                    params: {
-                      origen,
-                      destino,
-                      fecha,
-                      numeroTren: item.transbordo ? '' : item.numeroTren,
-                    },
-                  })
-                }
-                style={{ marginTop: 8, alignSelf: 'flex-start' }}
-              />
-            </Tarjeta>
+            <FilaHorario
+              horario={item}
+              origen={origen}
+              destino={destino}
+              fecha={fecha}
+              onCrearAlerta={crearAlertaHorario}
+            />
           )}
         />
       )}
@@ -851,10 +839,17 @@ export default function Trenes() {
             <Text style={[s.vacio, { color: paleta.error }]}>{errorPosiciones}</Text>
           ) : null}
           <WebView
-            source={{ uri: 'https://mantirenfe.vercel.app/mapa' }}
+            source={{ uri: `${ORIGEN_MAPA}/mapa` }}
             style={{ flex: 1 }}
             startInLoadingState
             userAgent="MantiRenfeApp/1.0"
+            // Solo el mapa de la app: cualquier otro destino se abre fuera
+            originWhitelist={[`${ORIGEN_MAPA}/*`]}
+            onShouldStartLoadWithRequest={(solicitud) => {
+              if (esDelMapa(solicitud.url)) return true;
+              void Linking.openURL(solicitud.url).catch(() => undefined);
+              return false;
+            }}
           />
         </View>
       )}
@@ -876,53 +871,8 @@ export default function Trenes() {
               <Text style={s.vacio}>{t('trenes.sinCoincidencias', { filtro: filtroPos })}</Text>
             ) : null
           }
-          renderItem={({ item }) => {
-            const indemnizacion =
-              item.retrasoSeg != null ? funcionIndemnizacion(item.retrasoSeg) : null;
-            return (
-              <Tarjeta>
-                <View style={s.fila}>
-                  <Text style={s.nombre}>{item.numeroTren ?? item.id}</Text>
-                  {item.cancelado ? (
-                    <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta>
-                  ) : null}
-                  {item.velocidadKmh != null ? (
-                    <Etiqueta>{Math.round(item.velocidadKmh)} km/h</Etiqueta>
-                  ) : null}
-                  {item.retrasoSeg != null ? (
-                    <Etiqueta tono={item.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
-                      {item.retrasoSeg > 0
-                        ? `+${Math.round(item.retrasoSeg / 60)} min`
-                        : t('trenes.aTiempo')}
-                    </Etiqueta>
-                  ) : null}
-                </View>
-                {item.origenNombre && item.destinoNombre ? (
-                  <Text style={s.meta}>
-                    {item.origenNombre} → {item.destinoNombre}
-                  </Text>
-                ) : null}
-                {item.salida || item.llegada ? (
-                  <Text style={s.meta}>
-                    {item.salida ? t('trenes.salidaHora', { hora: horaGtfs(item.salida) }) : ''}
-                    {item.salida && item.llegada ? ' · ' : ''}
-                    {item.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(item.llegada) }) : ''}
-                  </Text>
-                ) : null}
-                {item.operador ? <Text style={s.meta}>{item.operador}</Text> : null}
-                {!item.origenNombre ? (
-                  <Text style={s.meta}>
-                    {item.latitud.toFixed(4)}, {item.longitud.toFixed(4)}
-                  </Text>
-                ) : null}
-                {indemnizacion ? (
-                  <Text style={s.indemnizacion}>
-                    {t('trenes.compromiso', { texto: indemnizacion.descripcion })}
-                  </Text>
-                ) : null}
-              </Tarjeta>
-            );
-          }}
+          initialNumToRender={10}
+          renderItem={({ item }) => <FilaPosicion posicion={item} />}
         />
       )}
 
@@ -946,47 +896,197 @@ export default function Trenes() {
               </Text>
             )
           }
-          renderItem={({ item }) => (
-            <Tarjeta>
-              <View style={s.fila}>
-                <Text style={s.nombre}>{item.numeroTren ?? item.vehiculoId}</Text>
-                <Etiqueta tono="aviso">{t('trenes.veces', { n: item.vecesImpuntuales })}</Etiqueta>
-              </View>
-              <Text style={s.meta}>
-                {t('trenes.retrasoMedio', {
-                  medio: formatMinutos(item.retrasoMedioSeg),
-                  peor: formatMinutos(item.retrasoMaxSeg),
-                })}
-              </Text>
-              {item.origenNombre && item.destinoNombre ? (
-                <Text style={s.meta}>
-                  {item.origenNombre} → {item.destinoNombre}
-                </Text>
-              ) : null}
-              {item.salida ? (
-                <Text style={s.meta}>
-                  {t('trenes.salidaHora', { hora: horaGtfs(item.salida) })}
-                  {item.fecha ? ` · ${item.fecha}` : ''}
-                </Text>
-              ) : null}
-              {item.llegada || item.llegadaEstimada ? (
-                <Text style={s.meta}>
-                  {item.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(item.llegada) }) : ''}
-                  {item.llegada && item.llegadaEstimada ? ' · ' : ''}
-                  {item.llegadaEstimada
-                    ? t('trenes.llegadaEstimada', {
-                        hora: horaGtfs(item.llegadaEstimada),
-                      })
-                    : ''}
-                </Text>
-              ) : null}
-            </Tarjeta>
-          )}
+          initialNumToRender={8}
+          renderItem={({ item }) => <FilaImpuntual dato={item} />}
         />
       )}
     </View>
   );
 }
+
+/**
+ * Filas de las listas grandes, fuera del render de la pantalla y con
+ * `React.memo`: al refrescar o escribir en el buscador solo se repinta lo que
+ * ha cambiado de verdad (los datos de cada fila son referencias estables).
+ */
+const FilaEstacion = memo(function FilaEstacion({
+  estacion,
+  activa,
+  onPulsar,
+}: {
+  estacion: EstacionResponse;
+  activa: boolean;
+  onPulsar: (nombre: string, estacion: EstacionResponse) => void;
+}) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  return (
+    <Tarjeta style={{ borderColor: activa ? paleta.primario : undefined }}>
+      <Pressable onPress={() => onPulsar(estacion.nombre, estacion)}>
+        <Text style={s.nombre}>{estacion.nombre}</Text>
+        <Text style={s.meta}>
+          {t('trenes.tocaSalidas', {
+            meta: `${estacion.codigo}${estacion.ciudad ? ` · ${estacion.ciudad}` : ''}`,
+          })}
+        </Text>
+      </Pressable>
+    </Tarjeta>
+  );
+});
+
+const FilaHorario = memo(function FilaHorario({
+  horario,
+  origen,
+  destino,
+  fecha,
+  onCrearAlerta,
+}: {
+  horario: HorarioTrenResponse;
+  origen: string;
+  destino: string;
+  fecha: string;
+  onCrearAlerta: (numeroTren: string) => void;
+}) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  return (
+    <Tarjeta>
+      <View style={s.fila}>
+        <Text style={s.nombre}>{horario.numeroTren}</Text>
+        <Etiqueta tono="primario">{horario.duracionMin} min</Etiqueta>
+      </View>
+      <Text style={s.meta}>
+        {horaGtfs(horario.salida)}
+        {' → '}
+        {horaGtfs(horario.llegada)}
+        {' · '}
+        {horario.origenNombre} → {horario.destinoNombre}
+      </Text>
+      {horario.operador ? (
+        esOuigo(horario.operador) ? (
+          <Etiqueta tono="aviso">{horario.operador}</Etiqueta>
+        ) : (
+          <Text style={s.meta}>{horario.operador}</Text>
+        )
+      ) : null}
+      {horario.transbordo ? (
+        <View style={{ marginTop: 4, gap: 2 }}>
+          <Etiqueta tono="primario">
+            {t('trenes.transbordo', { estacion: horario.transbordo.estacion })}
+          </Etiqueta>
+          <Text style={s.meta}>
+            {t('trenes.transbordoDetalle', {
+              tren1: horario.transbordo.trenPrimera,
+              hora1: horaGtfs(horario.transbordo.llegadaPrimera),
+              espera: horario.transbordo.esperaMin,
+              tren2: horario.transbordo.trenSegunda,
+              hora2: horaGtfs(horario.transbordo.salidaSegunda),
+            })}
+          </Text>
+        </View>
+      ) : null}
+      <Boton
+        titulo={t('trenes.masAlerta')}
+        variante="contorno"
+        onPress={() => onCrearAlerta(horario.transbordo ? '' : horario.numeroTren)}
+        style={{ marginTop: 8, alignSelf: 'flex-start' }}
+      />
+    </Tarjeta>
+  );
+});
+
+const FilaPosicion = memo(function FilaPosicion({ posicion }: { posicion: PosicionTrenResponse }) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  const indemnizacion =
+    posicion.retrasoSeg != null ? funcionIndemnizacion(posicion.retrasoSeg) : null;
+  return (
+    <Tarjeta>
+      <View style={s.fila}>
+        <Text style={s.nombre}>{posicion.numeroTren ?? posicion.id}</Text>
+        {posicion.cancelado ? <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta> : null}
+        {posicion.velocidadKmh != null ? (
+          <Etiqueta>{Math.round(posicion.velocidadKmh)} km/h</Etiqueta>
+        ) : null}
+        {posicion.retrasoSeg != null ? (
+          <Etiqueta tono={posicion.retrasoSeg >= 300 ? 'aviso' : 'exito'}>
+            {posicion.retrasoSeg > 0
+              ? `+${Math.round(posicion.retrasoSeg / 60)} min`
+              : t('trenes.aTiempo')}
+          </Etiqueta>
+        ) : null}
+      </View>
+      {posicion.origenNombre && posicion.destinoNombre ? (
+        <Text style={s.meta}>
+          {posicion.origenNombre} → {posicion.destinoNombre}
+        </Text>
+      ) : null}
+      {posicion.salida || posicion.llegada ? (
+        <Text style={s.meta}>
+          {posicion.salida ? t('trenes.salidaHora', { hora: horaGtfs(posicion.salida) }) : ''}
+          {posicion.salida && posicion.llegada ? ' · ' : ''}
+          {posicion.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(posicion.llegada) }) : ''}
+        </Text>
+      ) : null}
+      {posicion.operador ? <Text style={s.meta}>{posicion.operador}</Text> : null}
+      {!posicion.origenNombre ? (
+        <Text style={s.meta}>
+          {posicion.latitud.toFixed(4)}, {posicion.longitud.toFixed(4)}
+        </Text>
+      ) : null}
+      {indemnizacion ? (
+        <Text style={s.indemnizacion}>
+          {t('trenes.compromiso', { texto: indemnizacion.descripcion })}
+        </Text>
+      ) : null}
+    </Tarjeta>
+  );
+});
+
+const FilaImpuntual = memo(function FilaImpuntual({ dato }: { dato: PuntualidadTrenResponse }) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  return (
+    <Tarjeta>
+      <View style={s.fila}>
+        <Text style={s.nombre}>{dato.numeroTren ?? dato.vehiculoId}</Text>
+        <Etiqueta tono="aviso">{t('trenes.veces', { n: dato.vecesImpuntuales })}</Etiqueta>
+      </View>
+      <Text style={s.meta}>
+        {t('trenes.retrasoMedio', {
+          medio: formatMinutos(dato.retrasoMedioSeg),
+          peor: formatMinutos(dato.retrasoMaxSeg),
+        })}
+      </Text>
+      {dato.origenNombre && dato.destinoNombre ? (
+        <Text style={s.meta}>
+          {dato.origenNombre} → {dato.destinoNombre}
+        </Text>
+      ) : null}
+      {dato.salida ? (
+        <Text style={s.meta}>
+          {t('trenes.salidaHora', { hora: horaGtfs(dato.salida) })}
+          {dato.fecha ? ` · ${dato.fecha}` : ''}
+        </Text>
+      ) : null}
+      {dato.llegada || dato.llegadaEstimada ? (
+        <Text style={s.meta}>
+          {dato.llegada ? t('trenes.llegadaHora', { hora: horaGtfs(dato.llegada) }) : ''}
+          {dato.llegada && dato.llegadaEstimada ? ' · ' : ''}
+          {dato.llegadaEstimada
+            ? t('trenes.llegadaEstimada', {
+                hora: horaGtfs(dato.llegadaEstimada),
+              })
+            : ''}
+        </Text>
+      ) : null}
+    </Tarjeta>
+  );
+});
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({

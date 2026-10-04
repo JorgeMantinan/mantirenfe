@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -16,24 +16,40 @@ export default function Incidencias() {
   const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
+  // `cancelado` evita setState tras desmontar; `peticion` evita que una
+  // respuesta vieja pise la de un refresco más reciente.
+  const cancelado = useRef(false);
+  const peticion = useRef(0);
+
   const cargar = useCallback(() => {
+    cancelado.current = false;
+    const id = ++peticion.current;
     setCargando(true);
     api<IncidenciaResponse[]>('/incidencias')
       .then((d) => {
+        if (cancelado.current || peticion.current !== id) return;
         setDatos(d);
         setError(null);
       })
       .catch((e: Error) => {
+        if (cancelado.current || peticion.current !== id) return;
         setError(e.message);
         setDatos([]);
       })
-      .finally(() => setCargando(false));
+      .finally(() => {
+        if (peticion.current !== id) return;
+        setCargando(false);
+      });
   }, []);
 
   // Carga al montar + pull-to-refresh (en la web refresca cada 60 s; aquí basta
   // con recargar al volver o palear)
   useEffect(() => {
     cargar();
+    return () => {
+      cancelado.current = true;
+      peticion.current++;
+    };
   }, [cargar]);
 
   return (

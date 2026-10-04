@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
+import { rutaSegura } from '@/lib/rutas';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -33,7 +34,11 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  // Mismo criterio que el ?redirect del login: solo rutas internas del sitio
+  const url = rutaSegura(
+    (event.notification.data as { url?: string } | undefined)?.url,
+    '/notificaciones',
+  );
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientes) => {
       for (const cliente of clientes) {

@@ -12,6 +12,12 @@
  * generadores lo ponen en el 3), por eso se aceptan los dos.
  */
 
+// Caché corta del feed (se renueva cada 20 s) con single-flight compartido
+import { conCache, type EntradaCache } from './cache';
+
+const TTL_ALERTAS_MS = 20_000;
+const CACHE_ALERTAS = new Map<string, EntradaCache<Buffer>>();
+
 const TIPO_VARINT = 0;
 const TIPO_FIJO64 = 1;
 const TIPO_BLOQUE = 2;
@@ -330,12 +336,22 @@ export function resumirTitulo(textoMensaje: string | null): string | null {
   return frase.trim().replace(/[.!?\s]+$/, '') || null;
 }
 
-/** Descarga el feed con timeout; lanza si la respuesta no es 2xx. */
+/**
+ * Descarga el feed con timeout; lanza si la respuesta no es 2xx. Caché corta
+ * (20 s) con single-flight: los barridos que se solapen comparten el buffer.
+ */
 export async function descargarAlertasGtfsRt(url: string, timeoutMs = 10_000): Promise<Buffer> {
-  const respuesta = await fetch(url, {
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: { accept: 'application/octet-stream' },
+  return conCache(CACHE_ALERTAS, url, TTL_ALERTAS_MS, async () => {
+    const respuesta = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { accept: 'application/octet-stream' },
+    });
+    if (!respuesta.ok) throw new Error(`GTFS_RT_ALERTAS_HTTP_${respuesta.status}`);
+    return Buffer.from(await respuesta.arrayBuffer());
   });
-  if (!respuesta.ok) throw new Error(`GTFS_RT_ALERTAS_HTTP_${respuesta.status}`);
-  return Buffer.from(await respuesta.arrayBuffer());
+}
+
+/** Solo para tests: la caché vive en la memoria del proceso. */
+export function limpiarCacheAlertasGtfsRt(): void {
+  CACHE_ALERTAS.clear();
 }

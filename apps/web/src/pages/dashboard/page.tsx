@@ -25,13 +25,13 @@ export function PaginaDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authConfigurada || (!user && authConfigurada)) return;
-
+    // Sin backend no hay nada que consultar: pintamos listas vacías y salimos
     if (!authConfigurada) {
       setAlertas([]);
       setNotificaciones([]);
       return;
     }
+    if (!user) return;
 
     Promise.all([
       api<AlertaResponse[]>('/alertas'),

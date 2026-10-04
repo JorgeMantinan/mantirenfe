@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { construirAlertaVuelta, etiquetaDiasSemana } from '@/lib/alertas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,12 +15,7 @@ import { SELECT_CLS } from '@/lib/ui-constants';
 import { fechaCorta } from '@/lib/proximoViaje';
 import { BONOS, DIAS_LABORABLES, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
 import type { TFunction } from 'i18next';
-import {
-  horaGtfs,
-  type AlertaResponse,
-  type EstacionResponse,
-  type HorarioTrenResponse,
-} from '@mantirenfe/shared-types';
+import { horaGtfs, type AlertaResponse, type HorarioTrenResponse } from '@mantirenfe/shared-types';
 
 /** Modalidades del bloque "¿Cuándo viajas?": fecha concreta, rango flexible o cotidiano. */
 type Frecuencia = 'fecha' | 'flexible' | 'diaria' | 'dias';
@@ -71,6 +67,29 @@ function letrasDias(t: TFunction): string[] {
   return t('comunes.diasIniciales').split(',');
 }
 
+/**
+ * Deja solo las salidas que aún no han salido (si no es el día de hoy no se
+ * toca nada) y se queda con las 3 próximas, para pintar los chips.
+ */
+function salidasFuturas(
+  lista: HorarioTrenResponse[],
+  fechaEfectiva: string,
+  hoyIso: string,
+): HorarioTrenResponse[] {
+  const horaAhora = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date());
+  const futuros = lista.filter((t) => {
+    if (t.transbordo) return false;
+    if (fechaEfectiva !== hoyIso) return true;
+    return horaGtfs(t.salida) > horaAhora;
+  });
+  return futuros.slice(0, 3);
+}
+
 export function PaginaNuevaAlerta() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -97,8 +116,6 @@ export function PaginaNuevaAlerta() {
   // la respuesta, aplicar la carga lo pisaría. Se bloquea y solo se carga una vez.
   const [cargandoEdicion, setCargandoEdicion] = useState(false);
   const edicionCargada = useRef<string | null>(null);
-  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
-  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -112,56 +129,22 @@ export function PaginaNuevaAlerta() {
   // solo traía las primeras40 alfabéticas y nunca aparecían, p.ej., las de Vigo.
   // Una lista por campo (mismo patrón que la página de trenes): así escribir en
   // Destino no deja a la vista las sugerencias de Origen ni viceversa.
-  const timerOrigen = useRef<number | undefined>(undefined);
-  const timerDestino = useRef<number | undefined>(undefined);
-  const petOrigen = useRef(0);
-  const petDestino = useRef(0);
+  const busOrigen = useBuscadorEstaciones({ limite: 10 });
+  const busDestino = useBuscadorEstaciones({ limite: 10 });
+  const { sugerencias: sugOrigen } = busOrigen;
+  const { sugerencias: sugDestino } = busDestino;
 
   // Cierra los dos desplegables y cancela sus peticiones pendientes: escribir
   // en un campo (o elegir una opción) no debe dejar a la vista la lista del otro.
   const limpiarSugerencias = (conservar?: 'origen' | 'destino') => {
-    if (conservar !== 'origen') {
-      petOrigen.current++;
-      window.clearTimeout(timerOrigen.current);
-      setSugOrigen([]);
-    }
-    if (conservar !== 'destino') {
-      petDestino.current++;
-      window.clearTimeout(timerDestino.current);
-      setSugDestino([]);
-    }
+    if (conservar !== 'origen') busOrigen.limpiar();
+    if (conservar !== 'destino') busDestino.limpiar();
   };
 
   const sugerir = (campo: 'origen' | 'destino', texto: string) => {
-    const timer = campo === 'origen' ? timerOrigen : timerDestino;
-    const peticion = campo === 'origen' ? petOrigen : petDestino;
-    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
     limpiarSugerencias(campo);
-    window.clearTimeout(timer.current);
-    const q = texto.trim();
-    if (q.length < 2) {
-      set([]);
-      return;
-    }
-    timer.current = window.setTimeout(() => {
-      const id = ++peticion.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=10`)
-        .then((r) => {
-          if (peticion.current === id) set(r);
-        })
-        .catch(() => {
-          if (peticion.current === id) set([]);
-        });
-    }, 250);
+    (campo === 'origen' ? busOrigen : busDestino).sugerir(texto);
   };
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(timerOrigen.current);
-      window.clearTimeout(timerDestino.current);
-    },
-    [],
-  );
 
   // Precarga desde la búsqueda de trenes (?origen=&destino=&fecha=&numeroTren=)
   // o carga completa al modo edición (?editar=<id>)
@@ -199,11 +182,21 @@ export function PaginaNuevaAlerta() {
     }
   }, [params, editandoId]);
 
-  // Los 3 próximos trenes de la ruta (para elegir sin escribir el número)
+  // Los 3 próximos trenes de la ruta (para elegir sin escribir el número).
+  // Debounce amplio (800 ms) y mínimo 4 caracteres por campo: mientras el
+  // usuario sigue escribiendo no se dispara ninguna petición.
+  const cacheHorarios = useRef(new Map<string, HorarioTrenResponse[]>());
   useEffect(() => {
     // Con "cualquier fecha" no hay día del que sugerir salidas
-    if (flexible || origen.trim().length < 2 || destino.trim().length < 2 || !fechaEfectiva) {
+    if (flexible || origen.trim().length < 4 || destino.trim().length < 4 || !fechaEfectiva) {
       setTrenesSugeridos([]);
+      return;
+    }
+    const clave = `${origen.trim()}|${destino.trim()}|${fechaEfectiva}`;
+    const enCache = cacheHorarios.current.get(clave);
+    if (enCache) {
+      // Ya pedimos esta combinación: ni debounce ni petición
+      setTrenesSugeridos(salidasFuturas(enCache, fechaEfectiva, hoyIso));
       return;
     }
     const controlador = new AbortController();
@@ -213,30 +206,31 @@ export function PaginaNuevaAlerta() {
         { signal: controlador.signal },
       )
         .then((d) => {
-          const horaAhora = new Intl.DateTimeFormat('es-ES', {
-            timeZone: 'Europe/Madrid',
-            hour: '2-digit',
-            minute: '2-digit',
-            hourCycle: 'h23',
-          }).format(new Date());
-          const futuros = d.trenes.filter((t) => {
-            if (t.transbordo) return false;
-            if (fechaEfectiva !== hoyIso) return true;
-            return horaGtfs(t.salida) > horaAhora;
-          });
-          setTrenesSugeridos(futuros.slice(0, 3));
+          cacheHorarios.current.set(clave, d.trenes);
+          // Caché acotada: como mucho 50 combinaciones por sesión
+          if (cacheHorarios.current.size > 50) {
+            const primera = cacheHorarios.current.keys().next().value;
+            if (primera !== undefined) cacheHorarios.current.delete(primera);
+          }
+          setTrenesSugeridos(salidasFuturas(d.trenes, fechaEfectiva, hoyIso));
         })
         .catch(() => undefined);
-    }, 400);
+    }, 800);
     return () => {
       window.clearTimeout(timer);
       controlador.abort();
     };
   }, [origen, destino, fechaEfectiva, hoyIso, flexible]);
 
+  // Etiquetas i18n: se recalculan solo cuando cambia el idioma
+  const etiquetasBono = useMemo(() => etiquetasBonos(t), [t]);
+  const criteriosCortos = useMemo(() => etiquetasCriterio(t), [t]);
+  const listaFrecuencias = useMemo(() => frecuencias(t), [t]);
+  const inicialesDias = useMemo(() => letrasDias(t), [t]);
+
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (caja + toast final).
-  const criterioEtiqueta = etiquetasCriterio(t)[criterio] ?? criterio;
+  const criterioEtiqueta = criteriosCortos[criterio] ?? criterio;
   const resumenFecha = flexible
     ? t('nuevaAlerta.resumenFlexible')
     : recurrente
@@ -444,7 +438,7 @@ export function PaginaNuevaAlerta() {
             <div className="space-y-2">
               <Label>{t('nuevaAlerta.cuandoViajas')}</Label>
               <div className="flex flex-wrap gap-2">
-                {frecuencias(t).map((f) => (
+                {listaFrecuencias.map((f) => (
                   <Button
                     key={f.valor}
                     type="button"
@@ -466,7 +460,7 @@ export function PaginaNuevaAlerta() {
                 <>
                   <p className="text-xs text-muted-foreground">{t('nuevaAlerta.pistaDias')}</p>
                   <div className="flex flex-wrap gap-2">
-                    {letrasDias(t).map((letra, dia) => {
+                    {inicialesDias.map((letra, dia) => {
                       const marcado = dias.includes(dia);
                       return (
                         <Button
@@ -626,7 +620,7 @@ export function PaginaNuevaAlerta() {
               >
                 {BONOS.map((b) => (
                   <option key={b} value={b}>
-                    {etiquetasBonos(t)[b] ?? b}
+                    {etiquetasBono[b] ?? b}
                   </option>
                 ))}
               </select>

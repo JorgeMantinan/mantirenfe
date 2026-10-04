@@ -13,6 +13,7 @@ import { Logo } from '@/components/layout/Logo';
 import { SelectorIdioma } from '@/components/SelectorIdioma';
 import { GoogleIcon, MicrosoftIcon } from '@/components/ui/marcas-svg';
 import { errorAuth } from '@/i18n/errores-auth';
+import { rutaSegura } from '@/lib/rutas';
 
 export function PaginaLogin() {
   const { t } = useTranslation();
@@ -23,7 +24,8 @@ export function PaginaLogin() {
   const [enviando, setEnviando] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const redirect = params.get('redirect') ?? '/dashboard';
+  // Solo rutas internas: «?redirect=» no debe poder sacar del sitio
+  const redirect = rutaSegura(params.get('redirect'));
 
   if (!cargando && user) {
     return <Navigate to={redirect} replace />;

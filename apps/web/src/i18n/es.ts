@@ -27,6 +27,15 @@ export const es = {
     // Iniciales de los días en orden 0=domingo … 6=sábado (chips y badge)
     diasIniciales: 'D,L,M,X,J,V,S',
     diasCortos: 'Dom,Lun,Mar,Mié,Jue,Vie,Sáb',
+    // Tablas largas: solo se pintan las primeras filas hasta pulsar el botón
+    mostrarMas: 'Mostrar más',
+  },
+
+  // ──────────────────────────────── ErrorBoundary (captura de errores de render)
+  errorBoundary: {
+    titulo: 'Algo ha salido mal',
+    texto: 'La página ha dejado de responder. Puedes recargarla para volver a intentarlo.',
+    recargar: 'Recargar página',
   },
 
   // ──────────────────────────────── cabecera (Header)
@@ -673,6 +682,16 @@ export const es = {
     sinSesion: 'No hay sesión activa: inicia sesión de nuevo',
     status: 'Error {{status}}',
     authNoConfig: 'Autenticación no configurada (VITE_SUPABASE_URL)',
+    // Timeout del fetch (15 s): nunca se pinta el error crudo del navegador
+    timeout: 'La petición ha tardado demasiado: revisa tu conexión y vuelve a intentarlo',
+    // Mensajes por status: el detalle crudo del servidor solo va a console.error
+    status400: 'Datos inválidos: revisa los campos e inténtalo de nuevo',
+    status401: 'Sesión caducada: inicia sesión de nuevo',
+    status403: 'No tienes permisos para hacer esto',
+    status404: 'No se ha encontrado lo que buscabas',
+    status409: 'Conflicto con los datos guardados: actualiza la página e inténtalo de nuevo',
+    status429: 'Demasiadas peticiones: espera unos segundos y vuelve a probar',
+    status500: 'Error del servidor: vuelve a intentarlo en unos minutos',
   },
 
   // ──────────────────────────────── dashboard

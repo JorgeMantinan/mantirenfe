@@ -7,12 +7,13 @@ import {
   extraerListaTrenes,
   mapearTrenesVenta,
   tarifaMasBarata,
+  type EntradaCache,
   type TrenVenta,
 } from './renfe-dwr';
 
 describe('conCache', () => {
   it('calcula una sola vez dentro del TTL y recalcula al caducar', async () => {
-    const cache = new Map<string, { valor: number; caduca: number }>();
+    const cache = new Map<string, EntradaCache<number>>();
     let calculos = 0;
     const calcular = async () => ++calculos;
 
@@ -27,10 +28,41 @@ describe('conCache', () => {
   });
 
   it('no comparte entradas entre claves distintas', async () => {
-    const cache = new Map<string, { valor: string; caduca: number }>();
+    const cache = new Map<string, EntradaCache<string>>();
     expect(await conCache(cache, 'x', 60_000, async () => 'uno')).toBe('uno');
     expect(await conCache(cache, 'y', 60_000, async () => 'dos')).toBe('dos');
     expect(cache.size).toBe(2);
+  });
+
+  it('single-flight: las llamadas concurrentes comparten un único cálculo', async () => {
+    const cache = new Map<string, EntradaCache<number>>();
+    let calculos = 0;
+    const lenta = async () => {
+      calculos += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return calculos;
+    };
+
+    const resultados = await Promise.all(
+      Array.from({ length: 5 }, () => conCache(cache, 'ruta', 60_000, lenta)),
+    );
+
+    expect(calculos).toBe(1);
+    expect(resultados).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('si el cálculo rechaza, borra la entrada y el siguiente vuelve a intentarlo', async () => {
+    const cache = new Map<string, EntradaCache<number>>();
+    let intentos = 0;
+    const inestable = async () => {
+      intentos += 1;
+      if (intentos === 1) throw new Error('red caída');
+      return intentos;
+    };
+
+    await expect(conCache(cache, 'a', 60_000, inestable)).rejects.toThrow('red caída');
+    expect(cache.has('a')).toBe(false);
+    expect(await conCache(cache, 'a', 60_000, inestable)).toBe(2);
   });
 });
 

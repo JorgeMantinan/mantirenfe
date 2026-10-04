@@ -11,6 +11,7 @@ export class TrenesController {
 
   @Get('horarios')
   @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 30 } })
   horarios(
     @Query('origen') origen?: string,
     @Query('destino') destino?: string,

@@ -9,6 +9,26 @@ export interface ResultadoRegistroPush {
   error?: string;
 }
 
+/** Estado del permiso de notificaciones del sistema (el que ve Android). */
+export interface EstadoPermisoPush {
+  concedido: boolean;
+  puedePreguntar: boolean;
+}
+
+/**
+ * Lee el permiso actual sin pedirlo: sirve para pintar el interruptor de
+ * Ajustes con el estado real y para saber si aún se puede preguntar.
+ */
+export async function leerPermisoPush(): Promise<EstadoPermisoPush> {
+  try {
+    const permiso = await Notifications.getPermissionsAsync();
+    return { concedido: permiso.granted, puedePreguntar: permiso.canAskAgain };
+  } catch {
+    // Sin información fiable no interferimos: se decide solo con la preferencia
+    return { concedido: true, puedePreguntar: true };
+  }
+}
+
 /** Los errores crudos de Firebase no ayudan: los traducimos a una acción concreta */
 function traducirErrorPush(error: unknown): string {
   const mensaje = error instanceof Error ? error.message : String(error);
@@ -66,11 +86,14 @@ export async function registrarPushMovil(): Promise<ResultadoRegistroPush> {
 
     const permisos = await Notifications.getPermissionsAsync();
     let concedido = permisos.granted;
-    if (!concedido) {
+    // Si el sistema ya no deja preguntar («no volver a preguntar»), el diálogo
+    // no aparecería: se devuelve el error y Ajustes ofrece abrir los ajustes.
+    if (!concedido && permisos.canAskAgain) {
       const solicitud = await Notifications.requestPermissionsAsync();
       concedido = solicitud.granted;
     }
     if (!concedido) {
+      // Sin permiso no se pide el token: FCM daría uno que nunca se usará
       return { ok: false, error: t('push.permisoDenegado') };
     }
 

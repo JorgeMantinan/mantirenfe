@@ -121,6 +121,10 @@ model Alerta {
 
   @@index([usuarioId, estado])
   @@index([estado, ultimoSondeoEn])
+  // Listado propio del usuario ordenado por creación (con take) y barridos por
+  // fecha de viaje: sin estos, se barre y ordena toda la tabla del usuario.
+  @@index([usuarioId, creadaEn])
+  @@index([fechaViaje])
 }
 
 // Historial de precios de disponibilidad por alerta: el worker solo inserta un
@@ -153,6 +157,9 @@ model Notificacion {
   alerta     Alerta?   @relation(fields: [alertaId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId, leida, creadaEn])
+  // Digests y dedupes filtran solo por fecha; el DELETE de alerta toca el FK.
+  @@index([creadaEn])
+  @@index([alertaId])
 }
 
 model SuscripcionPush {
@@ -223,7 +230,9 @@ model ParadaHorario {
   // feeds: AV/LD y CER no comparten ningún trip_id (0 solapes de 7.148+114.348).
   @@id([tripId, orden])
   // Origen de la query de horarios: paradas de una estación en viajes concretos
-  @@index([estacionId])
+  // (el filtro estacionId + tripId IN (...) necesita los dos; solo estacionId
+  // dejaba el cruce en memoria sobre decenas de miles de paradas).
+  @@index([estacionId, tripId])
 }
 
 model PosicionTren {

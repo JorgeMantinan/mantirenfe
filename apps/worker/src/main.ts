@@ -3,14 +3,16 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '../../.env' });
 
+import type { Server } from 'node:http';
 import pino from 'pino';
-import { Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { getPrisma, Prisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
 import {
   ahoraRelojGtfs,
   esDiaAplicable,
+  hoyGtfs,
   procesarRecordatorios,
   procesarResumenes,
 } from './processors/recordatorios';
@@ -19,6 +21,7 @@ import { abrirServicioSalud } from './health-servidor';
 import { sincronizarIncidencias } from './processors/incidencias';
 import { enviarResumenSemanal } from './processors/resumen-semanal';
 import { enviarDigestDiario } from './processors/digest-email';
+import { podarNotificaciones } from './notificaciones/poda';
 import { persistirSuprimidos } from './processors/suprimidos';
 
 const logger = pino({
@@ -33,6 +36,22 @@ const conexion = {
   maxRetriesPerRequest: null as null,
 };
 
+/** Tope del cierre ordenado: un recurso que se atasca no bloquea el exit. */
+const CIERRE_TIMEOUT_MS = 10_000;
+
+function dormir(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Cierra un worker/cola/servidor esperando como mucho `CIERRE_TIMEOUT_MS`. */
+async function cerrarConRecurso(cierre: Promise<unknown>): Promise<void> {
+  const blindado = cierre.then(
+    () => undefined,
+    (err: unknown) => logger.error({ err }, 'Un recurso no se cerró limpiamente'),
+  );
+  await Promise.race([blindado, dormir(CIERRE_TIMEOUT_MS)]);
+}
+
 // Base de la API para el snapshot periódico de posiciones (la persistencia de la
 // traza y la puntualidad vive en el GET /trenes/posiciones de la API)
 const API_BASE_URL =
@@ -46,7 +65,9 @@ let contadorMemoriaWorker = 0;
 
 async function snapshotPosiciones(logger: pino.Logger): Promise<void> {
   try {
-    const respuesta = await fetch(`${API_BASE_URL}/trenes/posiciones`);
+    const respuesta = await fetch(`${API_BASE_URL}/trenes/posiciones`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!respuesta.ok) {
       logger.warn({ status: respuesta.status }, 'Snapshot de posiciones: la API respondió error');
     }
@@ -55,10 +76,17 @@ async function snapshotPosiciones(logger: pino.Logger): Promise<void> {
   }
 }
 
-async function programarTareas() {
-  const { Queue } = await import('bullmq');
-  const colaSondeo = new Queue(COLA_SONDEO, { connection: conexion });
+/** Reintentos de los jobs diarios/semanales: un fallo puntual de BD o SMTP no debe perder el aviso. */
+const REINTENTOS_PROGRAMADOS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 60_000 },
+} as const;
+
+async function programarTareas(): Promise<Queue[]> {
   const colaMasiva = new Queue(COLA_SONDEO_MASIVO, { connection: conexion });
+  colaMasiva.on('error', (err) => {
+    logger.error({ err }, 'Error en la cola de sondeo masivo');
+  });
 
   await colaMasiva.add(
     'barrido',
@@ -113,6 +141,7 @@ async function programarTareas() {
       jobId: 'resumen-semanal-lunes',
       removeOnComplete: 10,
       removeOnFail: 20,
+      ...REINTENTOS_PROGRAMADOS,
     },
   );
 
@@ -128,13 +157,28 @@ async function programarTareas() {
       jobId: 'digest-email-diario',
       removeOnComplete: 10,
       removeOnFail: 20,
+      ...REINTENTOS_PROGRAMADOS,
+    },
+  );
+
+  // Poda diaria de notificaciones (se conservan 90 días; sin esto la tabla
+  // crece sin límite y el histórico acaba pesando más que las alertas)
+  await colaMasiva.add(
+    'poda-notificaciones',
+    {},
+    {
+      repeat: { pattern: '0 4 * * *' },
+      jobId: 'poda-notificaciones-diaria',
+      removeOnComplete: 10,
+      removeOnFail: 20,
+      ...REINTENTOS_PROGRAMADOS,
     },
   );
 
   logger.info(
-    'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes, digest-email 07:00/08:00)',
+    'Tareas repetibles programadas (barrido 1min, incidencias 1min, suprimidos 5min, sync GTFS 04:00, resumen semanal lunes, digest-email 07:00/08:00, poda notificaciones 05:00)',
   );
-  return { colaSondeo, colaMasiva };
+  return [colaMasiva];
 }
 
 async function main() {
@@ -142,10 +186,14 @@ async function main() {
 
   // Servicio de salud (solo en Render: PORT asignado): el health check mantiene
   // el servicio worker despierto en el plan free y expone su memoria.
+  let servidorSalud: Server | null = null;
   if (process.env.PORT) {
-    abrirServicioSalud(Number(process.env.PORT), logger);
+    servidorSalud = abrirServicioSalud(Number(process.env.PORT), logger);
+    servidorSalud.on('error', (err) => {
+      logger.error({ err }, 'Error en el servidor de salud');
+    });
   }
-  await programarTareas();
+  const colas = await programarTareas();
 
   const workerSondeo = new Worker(
     COLA_SONDEO,
@@ -187,13 +235,24 @@ async function main() {
         return;
       }
 
+      // Mismo queue que el barrido, otro job repetible: la poda de
+      // notificaciones antiguas corre una vez al día sin tocar el resto
+      if (job.name === 'poda-notificaciones') {
+        await podarNotificaciones(logger);
+        return;
+      }
+
       const prisma = getPrisma();
+
+      // Día peninsular en curso: alimenta el reset de medianoche, el cierre de
+      // alertas caducadas y el filtro de "no sondear viajes de otro día"
+      const hoyIso = hoyGtfs();
+      const hoy00 = new Date(`${hoyIso}T00:00:00Z`);
 
       // Reset diario de los trayectos recurrentes: al cruzar la medianoche
       // peninsular se limpia el estado y los avisos del día para que cada día
       // haya baseline nuevo y se re-avisen recordatorios y resúmenes.
       try {
-        const hoy00 = new Date(`${ahoraRelojGtfs().toISOString().slice(0, 10)}T00:00:00Z`);
         const reseteadas = await prisma.alerta.updateMany({
           where: {
             recurrente: true,
@@ -227,8 +286,6 @@ async function main() {
       // Las recurrentes (trayecto cotidiano) nunca caducan; las de fecha flexible
       // se agotan cuando termina su rango (hoy … hoy + 180 días).
       try {
-        const hoyIso = ahoraRelojGtfs().toISOString().slice(0, 10);
-        const hoy00 = new Date(`${hoyIso}T00:00:00Z`);
         const completadas = await prisma.alerta.updateMany({
           where: {
             estado: 'ACTIVA',
@@ -252,11 +309,7 @@ async function main() {
       const alertas = await prisma.alerta.findMany({
         where: {
           estado: 'ACTIVA',
-          OR: [
-            { fechaViaje: { gte: new Date(new Date().toISOString().slice(0, 10)) } },
-            { recurrente: true },
-            { fechaFlexible: true },
-          ],
+          OR: [{ fechaViaje: { gte: hoy00 } }, { recurrente: true }, { fechaFlexible: true }],
         },
         select: {
           id: true,
@@ -331,17 +384,49 @@ async function main() {
     worker.on('failed', (job, err) => {
       logger.error({ jobId: job?.id, err }, 'Job fallido');
     });
+    // Un EventEmitter 'error' sin listener mata el proceso: se loguea aquí y
+    // el cierre ordenado se encarga del resto.
+    worker.on('error', (err) => {
+      logger.error({ err }, 'Error en el worker');
+    });
   }
 
-  const cerrar = async (senal: string) => {
+  let cerrando = false;
+  const cerrar = async (senal: string, codigoSalida = 0) => {
+    if (cerrando) return;
+    cerrando = true;
     logger.info({ senal }, 'Cerrando workers');
-    await Promise.all(trabajadores.map((w) => w.close()));
-    await getPrisma().$disconnect();
-    process.exit(0);
+    try {
+      await Promise.all([
+        ...trabajadores.map((w) => cerrarConRecurso(w.close())),
+        ...colas.map((c) => cerrarConRecurso(c.close())),
+      ]);
+      const servidor = servidorSalud;
+      if (servidor) {
+        await cerrarConRecurso(new Promise<void>((resolve) => servidor.close(() => resolve())));
+      }
+    } catch (error) {
+      logger.error({ err: error }, 'Error durante el cierre del worker');
+    } finally {
+      try {
+        await getPrisma().$disconnect();
+      } catch (error) {
+        logger.error({ err: error }, 'No se pudo desconectar la base de datos');
+      }
+      process.exit(codigoSalida);
+    }
   };
 
   process.on('SIGINT', () => void cerrar('SIGINT'));
   process.on('SIGTERM', () => void cerrar('SIGTERM'));
+  process.on('unhandledRejection', (motivo) => {
+    logger.error({ err: motivo }, 'Promesa rechazada sin manejar');
+    void cerrar('unhandledRejection', 1);
+  });
+  process.on('uncaughtException', (error) => {
+    logger.error({ err: error }, 'Excepción no capturada');
+    void cerrar('uncaughtException', 1);
+  });
 }
 
 main().catch((error) => {

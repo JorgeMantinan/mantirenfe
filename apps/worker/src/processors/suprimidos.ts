@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import { parsearCancelados } from '@mantirenfe/shared-types';
+import { descargarTripUpdates } from '../fuentes/gtfs-rt';
 import { hoyGtfs } from './reloj';
 
 // Mismo par de feeds que consulta la API para retrasos y cancelaciones:
@@ -10,6 +11,22 @@ const URL_TRIP_UPDATES_DEFECTO =
 
 /** Días que se conserva una cancelación antes de podarla. */
 export const DIAS_CONSERVACION = 7;
+
+/** Minutos que se cachea el horario del día (solo lo mueve el sync GTFS). */
+const TTL_HORARIO_DIA_MS = 45 * 60_000;
+
+interface HorarioDia {
+  fecha: string;
+  caduca: number;
+  viajes: Array<{ tripId: string | null; numeroTren: string }>;
+}
+
+let horarioDia: HorarioDia | null = null;
+
+/** Solo para tests: la caché vive en la memoria del proceso. */
+export function limpiarCacheHorarioDia(): void {
+  horarioDia = null;
+}
 
 export interface CancelacionPlaneada {
   tripId: string;
@@ -43,21 +60,6 @@ export function limitePoda(fecha: string): Date {
   return new Date(Date.UTC(anio, mes - 1, dia - DIAS_CONSERVACION));
 }
 
-async function descargarTripUpdates(url: string): Promise<unknown> {
-  const controlador = new AbortController();
-  const timeout = setTimeout(() => controlador.abort(), 10_000);
-  try {
-    const respuesta = await fetch(url, {
-      signal: controlador.signal,
-      headers: { accept: 'application/json' },
-    });
-    if (!respuesta.ok) throw new Error(`GTFS_RT_HTTP_${respuesta.status}`);
-    return await respuesta.json();
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 /**
  * Registra en la tabla `Cancelacion` los trips con `scheduleRelationship =
  * CANCELED` de los feeds GTFS-RT, poda lo anterior a 7 días y resuelve el
@@ -85,10 +87,21 @@ export async function persistirSuprimidos(logger: Logger): Promise<void> {
   const fecha = hoyGtfs();
   const dia = new Date(`${fecha}T00:00:00Z`);
 
-  const viajes = await prisma.horarioTren.findMany({
-    where: { fecha: dia, tripId: { not: null } },
-    select: { tripId: true, numeroTren: true },
-  });
+  // El horario del día solo cambia con el sync: el set de tripIds se cachea
+  // (con `select` mínimo) para no traerse los HorarioTren en cada pasada
+  const cacheado = horarioDia;
+  const enCache = cacheado !== null && cacheado.fecha === fecha && cacheado.caduca > Date.now();
+  const viajes =
+    enCache && cacheado
+      ? cacheado.viajes
+      : await prisma.horarioTren.findMany({
+          where: { fecha: dia, tripId: { not: null } },
+          select: { tripId: true, numeroTren: true },
+        });
+  if (!enCache && viajes.length > 0) {
+    // Un horario vacío no se cachea: suele significar que el sync aún no corrió
+    horarioDia = { fecha, caduca: Date.now() + TTL_HORARIO_DIA_MS, viajes };
+  }
   const delDia = new Set<string>();
   const numeroPorTrip = new Map<string, string | null>();
   for (const viaje of viajes) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -89,6 +89,8 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
     explorar: true,
     cuenta: true,
   });
+  // El menú solo cambia de texto al cambiar el idioma
+  const menu = useMemo(() => grupos(t), [t]);
 
   const contenido = (
     <div className="flex h-full flex-col bg-sidebar">
@@ -118,7 +120,7 @@ export function Sidebar({ authConfigurada }: { authConfigurada: boolean }) {
       </div>
 
       <nav className="flex-1 space-y-4 overflow-y-auto p-3" aria-label={t('menu.navegar')}>
-        {grupos(t).map((grupo) => {
+        {menu.map((grupo) => {
           const itemsVisibles = grupo.items.filter((item) => !item.soloAuth || authConfigurada);
           if (itemsVisibles.length === 0) return null;
           const abierto = gruposAbiertos[grupo.id] ?? true;

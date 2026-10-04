@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { buscarEstaciones, getPrisma, Prisma } from '@mantirenfe/database';
@@ -9,6 +9,7 @@ import {
   ActualizarAlertaInput,
   DIAS_LABORABLES,
   HORIZONTE_FLEXIBLE_DIAS,
+  fechaGtfs,
   fechaIso,
   normalizarDiasSemana,
   type AvisoAlertaResponse,
@@ -16,6 +17,7 @@ import {
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
 import { UsuarioRequest } from '../common/usuario-actual.decorator';
+import { asegurarUsuario } from '../common/utilidades';
 import { juntarConteoAvisos, formatearAvisos } from './avisos';
 import { formatearPuntosPrecio } from './precios';
 
@@ -176,13 +178,10 @@ function formatearAlerta(alerta: {
   };
 }
 
-/** Fecha (YYYY-MM-DD) del día actual, la referencia de "hoy" del formulario. */
-function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 @Injectable()
 export class AlertasService {
+  private readonly logger = new Logger(AlertasService.name);
+
   constructor(@InjectQueue(COLA_SONDEO) private readonly colaSondeo: Queue) {}
 
   async listar(usuario: UsuarioRequest): Promise<AlertaResponse[]> {
@@ -274,22 +273,31 @@ export class AlertasService {
   }
 
   async crear(usuario: UsuarioRequest, datos: CrearAlertaInput): Promise<AlertaResponse> {
+    // Sin Redis no hay cola de sondeo: se responde ANTES de crear la alerta para
+    // no dejar filas huérfanas que nadie va a mirar (antes se creaba y el error
+    // llegaba después).
+    if (!process.env.REDIS_URL || !this.colaSondeo) {
+      throw new ServiceUnavailableException('Servicio de sondeo no disponible');
+    }
     const prisma = getPrisma();
-    await prisma.usuario.upsert({
-      where: { id: usuario.sub },
-      update: {},
-      create: { id: usuario.sub, email: usuario.email || `${usuario.sub}@placeholder` },
-    });
+    await asegurarUsuario(prisma, usuario);
 
     const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
     const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
 
     // Trayecto cotidiano o "cualquier fecha": la fecha del formulario se ignora
     // y se ancla a hoy, así ninguna query por fecha (barrido, sondeo) caduca.
+    // "Hoy" es el día peninsular (`fechaGtfs`), el mismo reloj que usa el
+    // worker para los avisos, no el día UTC.
     const recurrente = datos.fechaFlexible ? false : datos.recurrente;
     const diasSemana = diasSemanaDe({ ...datos, recurrente });
-    const rango = rangoFlexible(datos.fechaFlexible, datos.fechaDesde, datos.fechaHasta, hoyIso());
-    const fechaViaje = recurrente || datos.fechaFlexible ? hoyIso() : datos.fechaViaje;
+    const rango = rangoFlexible(
+      datos.fechaFlexible,
+      datos.fechaDesde,
+      datos.fechaHasta,
+      fechaGtfs(),
+    );
+    const fechaViaje = recurrente || datos.fechaFlexible ? fechaGtfs() : datos.fechaViaje;
 
     const alerta = await prisma.alerta.create({
       data: {
@@ -329,6 +337,9 @@ export class AlertasService {
     datos: ActualizarAlertaInput,
   ): Promise<AlertaResponse> {
     const prisma = getPrisma();
+    // Lectura SOLO para fusionar los cambios con lo que ya hay guardado; la
+    // escritura de abajo vuelve a filtrar por `usuarioId` y responde 404 si la
+    // alerta ha desaparecido en el medio (sin carreras ni P2025).
     const existente = await prisma.alerta.findFirst({ where: { id, usuarioId: usuario.sub } });
     if (!existente) throw new NotFoundException('Alerta no encontrada');
 
@@ -410,7 +421,7 @@ export class AlertasService {
       if (recurrente || flexibleFinal) {
         // El trayecto cotidiano / el rango flexible se anclan a hoy: la fecha
         // dejó de ser relevante
-        data.fechaViaje = new Date(`${hoyIso()}T00:00:00Z`);
+        data.fechaViaje = new Date(`${fechaGtfs()}T00:00:00Z`);
       }
       // Frecuencia nueva: se re-arman los avisos del día (igual que un cambio de ruta)
       data.recordatorioEnviadoEn = null;
@@ -432,7 +443,7 @@ export class AlertasService {
         true,
         datos.fechaDesde ?? (existente.fechaDesde ? fechaIso(existente.fechaDesde) : undefined),
         datos.fechaHasta ?? (existente.fechaHasta ? fechaIso(existente.fechaHasta) : undefined),
-        hoyIso(),
+        fechaGtfs(),
       );
       if (rango) {
         data.fechaDesde = new Date(`${rango.desde}T00:00:00Z`);
@@ -457,14 +468,18 @@ export class AlertasService {
       data.recordatorioTrenesEnviados = [];
     }
 
-    const alerta = await prisma.alerta.update({
-      where: { id },
+    // `updateMany` con el dueño en el WHERE: si entre la lectura y esta línea
+    // otra petición ha borrado la alerta no hay P2025 que explote (count 0 = 404)
+    const actualizadas = await prisma.alerta.updateMany({
+      where: { id, usuarioId: usuario.sub },
       data: data as never,
     });
+    if (actualizadas.count === 0) throw new NotFoundException('Alerta no encontrada');
+    const alerta = await prisma.alerta.findUnique({ where: { id } });
+    if (!alerta) throw new NotFoundException('Alerta no encontrada');
 
     if (datos.estado === 'PAUSA' || datos.estado === 'COMPLETADA') {
-      const jobs = await this.colaSondeo.getJobs(['delayed', 'waiting', 'prioritized']);
-      await Promise.all(jobs.filter((job) => job.data?.alertaId === id).map((job) => job.remove()));
+      await this.quitarSondeo(id);
     } else if (datos.estado === 'ACTIVA' || cambioRuta) {
       await this.encolarSondeo(id);
     }
@@ -473,32 +488,58 @@ export class AlertasService {
   }
 
   async eliminar(usuario: UsuarioRequest, id: string): Promise<void> {
-    const prisma = getPrisma();
-    const existente = await prisma.alerta.findFirst({ where: { id, usuarioId: usuario.sub } });
-    if (!existente) throw new NotFoundException('Alerta no encontrada');
-    await prisma.alerta.delete({ where: { id } });
-    const jobs = await this.colaSondeo.getJobs(['delayed', 'waiting', 'prioritized']);
-    await Promise.all(jobs.filter((job) => job.data?.alertaId === id).map((job) => job.remove()));
+    // Sin lectura previa: el borrado ya lleva al dueño en el WHERE (count 0 = 404)
+    const borradas = await getPrisma().alerta.deleteMany({
+      where: { id, usuarioId: usuario.sub },
+    });
+    if (borradas.count === 0) throw new NotFoundException('Alerta no encontrada');
+    await this.quitarSondeo(id);
   }
 
-  private async encolarSondeo(alertaId: string) {
-    if (!process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
-      throw new BadRequestException('Redis no configurado');
+  /**
+   * Encola el sondeo con un jobId DETERMINISTA (`sondeo-<id>`): es lo que
+   * permite localizar el job con `getJob` para retirarlo, y evita amontonar un
+   * job distinto por cada edición (el id ya no lleva `Date.now()`).
+   */
+  private async encolarSondeo(alertaId: string): Promise<void> {
+    const jobId = `sondeo-${alertaId}`;
+    if (!process.env.REDIS_URL) {
+      // Sin Redis no hay cola: el sweep masivo del worker (cada minuto) se encarga
+      this.logger.warn({ alertaId }, 'Sin REDIS_URL: el sondeo no se ha encolado');
+      return;
     }
     try {
+      // BullMQ IGNORA un `add` cuyo jobId ya existe (aunque esté completado):
+      // se retira el previo para que una edición vuelva a disparar el sondeo
+      const previo = await this.colaSondeo.getJob(jobId);
+      if (previo) await previo.remove().catch(() => undefined);
       await this.colaSondeo.add(
         'sondeo',
         { alertaId },
         {
-          jobId: `sondeo-${alertaId}-${Date.now()}`,
+          jobId,
           removeOnComplete: 100,
           removeOnFail: 500,
           attempts: 3,
           backoff: { type: 'exponential', delay: 5_000 },
         },
       );
-    } catch {
-      // Redis no disponible en desarrollo: el sweep masivo del worker se encargará
+    } catch (error) {
+      // Redis no disponible: no se tumba la petición, el sweep del worker lo retoma
+      this.logger.warn({ alertaId, error: String(error) }, 'No se pudo encolar el sondeo');
+    }
+  }
+
+  /** Retira el sondeo de una alerta (pausa, completada o borrado) por su id. */
+  private async quitarSondeo(alertaId: string): Promise<void> {
+    try {
+      const job = await this.colaSondeo.getJob(`sondeo-${alertaId}`);
+      if (job) await job.remove();
+    } catch (error) {
+      this.logger.warn(
+        { alertaId, error: String(error) },
+        'No se pudo retirar el sondeo de la cola',
+      );
     }
   }
 }

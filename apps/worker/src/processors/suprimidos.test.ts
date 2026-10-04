@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Logger } from 'pino';
+import { limpiarCacheTripUpdates } from '../fuentes/gtfs-rt';
 import { hoyGtfs } from './reloj';
-import { limitePoda, persistirSuprimidos, planearCancelaciones } from './suprimidos';
+import {
+  limitePoda,
+  limpiarCacheHorarioDia,
+  persistirSuprimidos,
+  planearCancelaciones,
+} from './suprimidos';
 
 const { getPrismaMock } = vi.hoisted(() => ({ getPrismaMock: vi.fn() }));
 
@@ -70,6 +76,10 @@ describe('persistirSuprimidos', () => {
   beforeEach(() => {
     prisma = prismaFalso();
     getPrismaMock.mockReturnValue(prisma);
+    // Las cachés en memoria se comparten entre tests: se vacían para que cada
+    // uno vea su propio horario y su propia descarga
+    limpiarCacheHorarioDia();
+    limpiarCacheTripUpdates();
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     logger = loggerFalso();
@@ -178,5 +188,19 @@ describe('persistirSuprimidos', () => {
     expect(prisma.cancelacion.upsert).not.toHaveBeenCalled();
     expect(prisma.cancelacion.deleteMany).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('cachea el horario del día y la descarga del feed entre pasadas', async () => {
+    prisma.horarioTren.findMany.mockResolvedValue([{ tripId: 'T1', numeroTren: '11111' }]);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => feed(['T1']) });
+
+    await persistirSuprimidos(logger);
+    await persistirSuprimidos(logger);
+
+    // El set de tripIds del día se consulta una sola vez (TTL de 45 min)...
+    expect(prisma.horarioTren.findMany).toHaveBeenCalledTimes(1);
+    // ...y las dos URLs del feed se descargan una sola vez (TTL de 20 s)
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(prisma.cancelacion.upsert).toHaveBeenCalledTimes(2);
   });
 });

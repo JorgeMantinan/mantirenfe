@@ -1,10 +1,68 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { getPrisma } from '@mantirenfe/database';
+import { Redis } from 'ioredis';
 import { EsPublico } from '../common/es-publico.decorator';
 
 /** Minutos sin sondear a partir de los cuales el worker se considera caído. */
 const UMBRAL_RETRASO_MINUTOS = 120;
+/** Tope del ping a Redis: Render exige la respuesta del health en 5 s. */
+const TIMEOUT_PING_MS = 1_500;
+
+/**
+ * Cliente Redis ÚNICO para todos los chequeos (lazy init): montar y tirar una
+ * conexión TCP por petición es lo más caro del health y gasta file descriptors.
+ * El listener de `error` es obligatorio: sin él, un corte del socket emitiría
+ * un evento sin manejar y tumbaba el proceso.
+ */
+let clienteRedis: Redis | null = null;
+
+function clienteRedisCompartido(url: string): Redis {
+  if (!clienteRedis) {
+    const redis = new Redis(url, {
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+      connectTimeout: TIMEOUT_PING_MS,
+      commandTimeout: TIMEOUT_PING_MS,
+      // Sin cola de comandos: si Redis está caído el ping falla ya y no se acumulan
+      enableOfflineQueue: false,
+    });
+    redis.on('error', () => undefined);
+    clienteRedis = redis;
+  }
+  return clienteRedis;
+}
+
+/** Ping con tope de tiempo: el health no puede quedarse esperando al socket. */
+async function pingConTimeout(redis: Redis): Promise<void> {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      redis.ping(),
+      new Promise<never>((_, rechazar) => {
+        temporizador = setTimeout(
+          () => rechazar(new Error(`Ping a Redis > ${TIMEOUT_PING_MS} ms`)),
+          TIMEOUT_PING_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (temporizador) clearTimeout(temporizador);
+  }
+}
+
+/** Estado del ping a Redis para el health (`ok` o `error`). */
+async function comprobarRedis(url: string): Promise<'ok' | 'error'> {
+  try {
+    const redis = clienteRedisCompartido(url);
+    // Con `lazyConnect` el cliente no conecta solo: lo abre el primer chequeo
+    if (redis.status === 'wait') await redis.connect();
+    await pingConTimeout(redis);
+    return 'ok';
+  } catch {
+    return 'error';
+  }
+}
 
 type ResumenAlertas = {
   /** Alertas en estado ACTIVA (null si la consulta falló). */
@@ -39,22 +97,7 @@ export class HealthController {
 
     const redisUrl = process.env.REDIS_URL;
     if (redisUrl) {
-      const { default: IORedis } = await import('ioredis');
-      const redis = new IORedis(redisUrl, {
-        maxRetriesPerRequest: 1,
-        lazyConnect: true,
-        connectTimeout: 1_500,
-        commandTimeout: 1_500,
-      });
-      try {
-        await redis.connect();
-        await redis.ping();
-        estado.redis = 'ok';
-      } catch {
-        estado.redis = 'error';
-      } finally {
-        redis.disconnect();
-      }
+      estado.redis = await comprobarRedis(redisUrl);
     } else {
       estado.redis = 'no-configurado';
     }

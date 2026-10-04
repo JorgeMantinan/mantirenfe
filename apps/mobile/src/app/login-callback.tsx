@@ -6,14 +6,28 @@ import { supabase } from '@/lib/supabase';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 
+/** Formato admisible del `code` de PKCE (base64url + separadores). */
+const CODIGO_SEGURO = /^[A-Za-z0-9._~-]+$/;
+
 /**
  * Destino del deep link `mantirenfe://login-callback`: aterriza aquí el OAuth
  * cuando el navegador vuelve a la app (PKCE). Intercambia el código por una
  * sesión y entra. Si ya hay sesión (el navegador la creó antes), solo navega.
+ *
+ * Los detalles crudos del proveedor (`error_description`, mensajes de
+ * supabase-js) no se pintan: van al log y la persona ve un mensaje nuestro de
+ * i18n. Sobre `state`: este flujo no lo guarda en la app, porque la protección
+ * contra CSRF la hace supabase-js con el `code_verifier` PKCE que él mismo
+ * custodia; aquí solo se comprueba que, si viene, no venga vacío o corrupto.
  */
 export default function LoginCallback() {
-  const { code, error_description: errorDesc } = useLocalSearchParams<{
+  const {
+    code,
+    state,
+    error_description: errorDesc,
+  } = useLocalSearchParams<{
     code?: string;
+    state?: string;
     error_description?: string;
   }>();
   const { paleta } = useTema();
@@ -23,6 +37,10 @@ export default function LoginCallback() {
 
   useEffect(() => {
     let vivo = true;
+    const fallar = (clave: 'login.oauthError' | 'login.errorGenerico', detalle: unknown) => {
+      console.warn('login-callback:', detalle);
+      if (vivo) setMensaje(t(clave));
+    };
     const entrar = async () => {
       if (!supabase) {
         router.replace('/login');
@@ -35,11 +53,20 @@ export default function LoginCallback() {
           return;
         }
         if (errorDesc) {
-          if (vivo) setMensaje(String(errorDesc));
+          fallar('login.oauthError', errorDesc);
+          return;
+        }
+        // `state` presente pero vacío o con tipos raros: deep link manipulado
+        if (state !== undefined && (typeof state !== 'string' || state.length === 0)) {
+          fallar('login.errorGenerico', `state inválido: ${JSON.stringify(state)}`);
           return;
         }
         if (!code) {
-          if (vivo) setMensaje(t('login.oauthError'));
+          fallar('login.oauthError', 'el deep link no trae code');
+          return;
+        }
+        if (!CODIGO_SEGURO.test(code)) {
+          fallar('login.errorGenerico', 'code con caracteres no permitidos');
           return;
         }
         const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -50,19 +77,19 @@ export default function LoginCallback() {
             router.replace('/(tabs)');
             return;
           }
-          if (vivo) setMensaje(error.message);
+          fallar('login.errorGenerico', error.message);
           return;
         }
         router.replace('/(tabs)');
       } catch (e) {
-        if (vivo) setMensaje(e instanceof Error ? e.message : String(e));
+        fallar('login.errorGenerico', e);
       }
     };
     void entrar();
     return () => {
       vivo = false;
     };
-  }, [code, errorDesc, t]);
+  }, [code, state, errorDesc, t]);
 
   return (
     <View style={s.pantalla}>

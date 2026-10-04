@@ -74,7 +74,8 @@ export async function enviarPushMovil(
             where: { token },
             data: { activa: false },
           });
-          logger.warn({ token }, 'Token móvil caducado, desactivado');
+          // El token completo no debe salir en los logs (es un secreto del usuario)
+          logger.warn({ token: token.slice(0, 12) + '…' }, 'Token móvil caducado, desactivado');
         }
       }
     } catch (error) {

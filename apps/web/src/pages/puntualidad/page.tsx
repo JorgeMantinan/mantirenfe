@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock } from 'lucide-react';
 import { api } from '@/lib/api';
+import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { locale } from '@/i18n';
+import { FILAS_INICIALES_TABLA } from '@/lib/ui-constants';
 import type { PuntualidadTrenResponse } from '@mantirenfe/shared-types';
 
 function mesActual(): string {
@@ -23,19 +25,21 @@ export function PaginaPuntualidad() {
   const [orden, setOrden] = useState<'veces' | 'impuntualidad'>('veces');
   const [datos, setDatos] = useState<PuntualidadTrenResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mostrarMas, setMostrarMas] = useState(FILAS_INICIALES_TABLA);
 
   const cargar = useCallback(() => {
     setDatos(null);
+    setMostrarMas(FILAS_INICIALES_TABLA);
     api<PuntualidadTrenResponse[]>(`/trenes/puntualidad?mes=${mes}&orden=${orden}`)
       .then((d) => {
         setDatos(d);
         setError(null);
       })
-      .catch((e: Error) => {
-        setError(e.message);
+      .catch((e: unknown) => {
+        setError(e instanceof Error && e.message ? e.message : t('comunes.error'));
         setDatos([]);
       });
-  }, [mes, orden]);
+  }, [mes, orden, t]);
 
   useEffect(() => {
     cargar();
@@ -133,7 +137,7 @@ export function PaginaPuntualidad() {
                   </tr>
                 </thead>
                 <tbody>
-                  {datos.map((f, i) => (
+                  {datos.slice(0, mostrarMas).map((f, i) => (
                     <tr key={f.clave ?? f.vehiculoId} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 text-muted-foreground">{i + 1}</td>
                       <td className="py-2 pr-3 font-medium">{f.numeroTren ?? f.vehiculoId}</td>
@@ -157,6 +161,7 @@ export function PaginaPuntualidad() {
                 </tbody>
               </table>
             </div>
+            <BotonMostrarMas total={datos.length} visible={mostrarMas} onAmpliar={setMostrarMas} />
             <p className="mt-3 text-xs text-muted-foreground">{t('puntualidad.nota')}</p>
           </CardContent>
         </Card>

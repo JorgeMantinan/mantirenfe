@@ -7,11 +7,11 @@ import {
   DIAS_LABORABLES,
   INTERVALOS_SONDEO_MIN,
   horaGtfs,
-  type EstacionResponse,
   type HorarioTrenResponse,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
+import { useSugerenciasEstacion } from '@/hooks/useSugerenciasEstacion';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import {
@@ -169,44 +169,8 @@ export default function NuevaAlerta() {
     return () => clearTimeout(timerTrenes.current);
   }, [origen, destino, fechaEfectiva, hoyIso, flexible]);
 
-  // Una lista de sugerencias por campo (mismo patrón que la pantalla de trenes):
-  // con una sola lista compartida, escribir en Destino pintaba también las
-  // sugerencias debajo de Origen y viceversa.
-  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
-  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
-  const timerSugerencias = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticionSugerencias = useRef(0);
-
-  /** Cierra las dos listas y cancela la petición pendiente (si la hay). */
-  const limpiarSugerencias = () => {
-    peticionSugerencias.current++;
-    clearTimeout(timerSugerencias.current);
-    setSugOrigen([]);
-    setSugDestino([]);
-  };
-
-  const buscarSugerencias = (campo: 'origen' | 'destino', texto: string) => {
-    clearTimeout(timerSugerencias.current);
-    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
-    // Invalida cualquier respuesta pendiente y cierra la lista del otro campo
-    peticionSugerencias.current++;
-    (campo === 'origen' ? setSugDestino : setSugOrigen)([]);
-    const q = texto.trim();
-    if (q.length < 2) {
-      set([]);
-      return;
-    }
-    timerSugerencias.current = setTimeout(() => {
-      const id = ++peticionSugerencias.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(q)}&limite=5`)
-        .then((r) => {
-          if (peticionSugerencias.current === id) set(r);
-        })
-        .catch(() => undefined);
-    }, 250);
-  };
-
-  useEffect(() => () => clearTimeout(timerSugerencias.current), []);
+  // Sugerencias de estación: hook compartido con la pantalla de trenes
+  const { sugOrigen, sugDestino, buscarSugerencias, limpiarSugerencias } = useSugerenciasEstacion();
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (tarjeta + aviso final).

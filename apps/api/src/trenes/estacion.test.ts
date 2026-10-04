@@ -75,23 +75,31 @@ function parada(
 
 /** Doble en memoria: aplica los mismos filtros que Prisma a las paradas. */
 function dobleParadas(filas: ParadaTest[]) {
+  // La estación primero se piden SOLO los tripId distintos (sin tripId en el
+  // where y sin salidaMin); después, los de los viajes del día con salidaMin.
   paradaFindManyMock.mockImplementation(
     async (args: {
-      where: { estacionId: string; tripId: { in: string[] }; salidaMin?: { not: null } };
+      where: { estacionId: string; tripId?: { in: string[] }; salidaMin?: { not: null } };
     }) =>
       filas.filter(
         (p) =>
           p.estacionId === args.where.estacionId &&
-          args.where.tripId.in.includes(p.tripId) &&
+          (!args.where.tripId || args.where.tripId.in.includes(p.tripId)) &&
           (args.where.salidaMin ? p.salidaMin !== null : true),
       ),
   );
 }
 
-/** Doble en memoria: `HorarioTren` solo devuelve los viajes de la fecha pedida. */
+/** Doble en memoria: `HorarioTren` solo devuelve los viajes de la fecha pedida
+ *  y, si el filtro trae tripId, solo los de la estación consultada. */
 function dobleHorarios(filas: ViajeTest[]) {
-  horarioFindManyMock.mockImplementation(async (args: { where: { fecha: Date } }) =>
-    filas.filter((h) => h.fecha.getTime() === args.where.fecha.getTime()),
+  horarioFindManyMock.mockImplementation(
+    async (args: { where: { fecha: Date; tripId?: { in: string[] } } }) =>
+      filas.filter(
+        (h) =>
+          h.fecha.getTime() === args.where.fecha.getTime() &&
+          (!args.where.tripId || args.where.tripId.in.includes(h.tripId)),
+      ),
   );
 }
 
@@ -138,9 +146,19 @@ describe('TrenesService.salidasEstacion', () => {
         operador: 'MD',
       },
     ]);
-    // Sin filtro por origen: la estación no tiene por qué ser el extremo del viaje
+    // Sin filtro por origen: la estación no tiene por qué ser el extremo del
+    // viaje, y solo se piden los horarios de los viajes de ESTA estación
     expect(horarioFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { fecha: DIA } }),
+      expect.objectContaining({
+        where: { fecha: DIA, tripId: { in: ['T-pasa'] } },
+      }),
+    );
+    // El primer paso es la estación: tripId distintos que paran en ella
+    expect(paradaFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { estacionId: '23002' },
+        distinct: ['tripId'],
+      }),
     );
     expect(paradaFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({

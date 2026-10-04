@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -129,7 +129,7 @@ export default function DetalleAlerta() {
     }, [cargar]),
   );
 
-  const trenes = alerta?.ultimoEstado ?? [];
+  const trenes = useMemo(() => alerta?.ultimoEstado ?? [], [alerta]);
   const seriesPrecios = useMemo(() => agruparPrecios(precios), [precios]);
   /** Igual que en la web: la evolución se enseña en disponibilidad, en precio o si hay datos. */
   const verEvolucion =
@@ -137,7 +137,7 @@ export default function DetalleAlerta() {
     alerta?.criterio === 'PRECIO' ||
     seriesPrecios.length > 0;
 
-  const compartir = async () => {
+  const compartir = useCallback(async () => {
     if (!alerta) return;
     const url = `https://mantirenfe.vercel.app/alertas/nueva?origen=${encodeURIComponent(
       alerta.origenNombre,
@@ -147,10 +147,10 @@ export default function DetalleAlerta() {
     } catch {
       Alert.alert(t('detalle.compartirTitulo'), url);
     }
-  };
+  }, [alerta, t]);
 
   /** Comparte el `.ics` generado: en Android suele abrirlo la app de calendario. */
-  const anadirAlCalendario = async () => {
+  const anadirAlCalendario = useCallback(async () => {
     if (!alerta) return;
     try {
       await Share.share({
@@ -160,228 +160,244 @@ export default function DetalleAlerta() {
     } catch {
       Alert.alert(t('detalle.calendarioTitulo'), t('detalle.calendarioError'));
     }
-  };
+  }, [alerta, t]);
 
-  const cabecera = (
-    <View style={{ gap: espaciado.sm }}>
-      {error ? (
-        <Tarjeta style={{ borderColor: paleta.error }}>
-          <Text style={{ color: paleta.error }}>{error}</Text>
-        </Tarjeta>
-      ) : null}
-
-      {alerta ? (
-        <Tarjeta>
-          <View style={s.fila}>
-            <Text style={s.ruta}>
-              {alerta.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
-              {alerta.destinoNombre}
-            </Text>
-            <View style={s.etiquetas}>
-              <Etiqueta
-                tono={
-                  alerta.estado === 'ACTIVA'
-                    ? 'exito'
-                    : alerta.estado === 'PAUSA'
-                      ? 'aviso'
-                      : 'neutro'
-                }
-              >
-                {etiquetaEstado(alerta.estado)}
-              </Etiqueta>
-              {alerta.fechaFlexible ? (
-                <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
-              ) : null}
-              {alerta.recurrente ? (
-                <Etiqueta tono="primario">{etiquetaDiasSemana(alerta.diasSemana)}</Etiqueta>
-              ) : null}
-            </View>
-          </View>
-          <Text style={s.detalle}>
-            {t('detalle.metaAlerta', {
-              fecha: alerta.fechaFlexible
-                ? t('detalle.rangoFechas', {
-                    desde: fechaCorta(alerta.fechaDesde ?? alerta.fechaViaje),
-                    hasta: fechaCorta(alerta.fechaHasta ?? alerta.fechaViaje),
-                  })
-                : alerta.fechaViaje,
-              criterio: etiquetaCriterio(alerta.criterio),
-              min: alerta.intervaloSondeoMin,
-              bono: alerta.bono,
-            })}
-          </Text>
-          {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null ? (
-            <Text style={s.detalle}>
-              {t('detalle.objetivo', { precio: formatearPrecio(alerta.precioObjetivo) })}
-            </Text>
-          ) : null}
-          {alerta.horaDesde || alerta.horaHasta ? (
-            <Text style={s.detalle}>
-              {t('detalle.franja', {
-                desde: alerta.horaDesde ?? '00:00',
-                hasta: alerta.horaHasta ?? '23:59',
-              })}
-              {alerta.numeroTren ? t('detalle.trenSufijo', { tren: alerta.numeroTren }) : ''}
-            </Text>
-          ) : alerta.numeroTren ? (
-            <Text style={s.detalle}>{t('detalle.tren', { tren: alerta.numeroTren })}</Text>
-          ) : null}
-          <Text style={s.detalle}>
-            {t('detalle.ultimoSondeo', {
-              valor: alerta.ultimoSondeoEn
-                ? new Date(alerta.ultimoSondeoEn).toLocaleString(locale())
-                : t('detalle.ninguno'),
-            })}
-          </Text>
-          <View style={s.acciones}>
-            <Boton
-              titulo={t('comunes.compartir')}
-              variante="contorno"
-              onPress={compartir}
-              style={s.compartir}
-            />
-            <Boton
-              titulo={t('detalle.calendarioTitulo')}
-              variante="contorno"
-              onPress={anadirAlCalendario}
-              style={s.compartir}
-            />
-          </View>
-        </Tarjeta>
-      ) : null}
-
-      {alerta ? (
-        <>
-          <Text style={s.subtitulo}>
-            {alerta.criterio === 'RETRASO' ? t('detalle.hoyRetrasos') : t('detalle.hoyPlazas')}
-          </Text>
-          <Tarjeta>
-            {trenes.length > 0 ? (
-              trenes.map((tren) => {
-                const extras = detalleFila(tren, t);
-                return (
-                  <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
-                    <View style={s.plazaInfo}>
-                      <Text style={s.plazaTren}>
-                        {horaGtfs(tren.salida)} · {tren.numeroTren || '—'}
-                      </Text>
-                      {extras ? <Text style={s.detalle}>{extras}</Text> : null}
-                      {tren.tramo === 'conexion' ? (
-                        <Text style={s.detalle}>{textoConexion(tren)}</Text>
-                      ) : null}
-                      {tren.precioMin !== null ? (
-                        <Text style={s.precio}>
-                          {t('detalle.desde', { precio: formatearPrecio(tren.precioMin) })}
-                          {tren.tarifa ? ` · ${tren.tarifa}` : ''}
-                        </Text>
-                      ) : null}
-                      {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
-                        <Text style={s.noPara}>
-                          {t('detalle.noPara', { lista: tren.paradasSuprimidas.join(', ') })}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {tren.cancelado ? (
-                      <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta>
-                    ) : (
-                      <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
-                        {tren.disponible ? t('comunes.hayPlazas') : t('comunes.completo')}
-                      </Etiqueta>
-                    )}
-                  </View>
-                );
-              })
-            ) : (
-              <>
-                <Text style={s.detalle}>{mensajeEstadoVacio(alerta, t)}</Text>
-                {alerta.ultimoSondeoEn ? (
-                  <Text style={s.fecha}>
-                    {t('detalle.ultimoSondeo', { valor: haceCuanto(alerta.ultimoSondeoEn, t) })}
-                  </Text>
-                ) : null}
-              </>
-            )}
+  // Cabecera memoizada: al refrescar solo cambia `cargando`, y la lista no
+  // debe repintar la ficha, la tabla de trenes ni la evolución de precios.
+  const cabecera = useMemo(
+    () => (
+      <View style={{ gap: espaciado.sm }}>
+        {error ? (
+          <Tarjeta style={{ borderColor: paleta.error }}>
+            <Text style={{ color: paleta.error }}>{error}</Text>
           </Tarjeta>
-        </>
-      ) : null}
+        ) : null}
 
-      {alerta && verEvolucion ? (
-        <>
-          <Text style={s.subtitulo}>{t('detalle.evolucionTitulo')}</Text>
+        {alerta ? (
           <Tarjeta>
-            <Text style={s.detalle}>{t('detalle.evolucionSubtitulo')}</Text>
-            {seriesPrecios.length === 0 ? (
-              <Text style={s.detalle}>{t('detalle.sinEvolucion')}</Text>
-            ) : (
-              seriesPrecios.map((serie) => {
-                const plana = esSeriePlana(serie.puntos);
-                const { visibles, sondeosOcultos } = recortarContagos(
-                  agruparContagos(serie.puntos),
-                );
-                if (plana) {
+            <View style={s.fila}>
+              <Text style={s.ruta}>
+                {alerta.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+                {alerta.destinoNombre}
+              </Text>
+              <View style={s.etiquetas}>
+                <Etiqueta
+                  tono={
+                    alerta.estado === 'ACTIVA'
+                      ? 'exito'
+                      : alerta.estado === 'PAUSA'
+                        ? 'aviso'
+                        : 'neutro'
+                  }
+                >
+                  {etiquetaEstado(alerta.estado)}
+                </Etiqueta>
+                {alerta.fechaFlexible ? (
+                  <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
+                ) : null}
+                {alerta.recurrente ? (
+                  <Etiqueta tono="primario">{etiquetaDiasSemana(alerta.diasSemana)}</Etiqueta>
+                ) : null}
+              </View>
+            </View>
+            <Text style={s.detalle}>
+              {t('detalle.metaAlerta', {
+                fecha: alerta.fechaFlexible
+                  ? t('detalle.rangoFechas', {
+                      desde: fechaCorta(alerta.fechaDesde ?? alerta.fechaViaje),
+                      hasta: fechaCorta(alerta.fechaHasta ?? alerta.fechaViaje),
+                    })
+                  : alerta.fechaViaje,
+                criterio: etiquetaCriterio(alerta.criterio),
+                min: alerta.intervaloSondeoMin,
+                bono: alerta.bono,
+              })}
+            </Text>
+            {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null ? (
+              <Text style={s.detalle}>
+                {t('detalle.objetivo', { precio: formatearPrecio(alerta.precioObjetivo) })}
+              </Text>
+            ) : null}
+            {alerta.horaDesde || alerta.horaHasta ? (
+              <Text style={s.detalle}>
+                {t('detalle.franja', {
+                  desde: alerta.horaDesde ?? '00:00',
+                  hasta: alerta.horaHasta ?? '23:59',
+                })}
+                {alerta.numeroTren ? t('detalle.trenSufijo', { tren: alerta.numeroTren }) : ''}
+              </Text>
+            ) : alerta.numeroTren ? (
+              <Text style={s.detalle}>{t('detalle.tren', { tren: alerta.numeroTren })}</Text>
+            ) : null}
+            <Text style={s.detalle}>
+              {t('detalle.ultimoSondeo', {
+                valor: alerta.ultimoSondeoEn
+                  ? new Date(alerta.ultimoSondeoEn).toLocaleString(locale())
+                  : t('detalle.ninguno'),
+              })}
+            </Text>
+            <View style={s.acciones}>
+              <Boton
+                titulo={t('comunes.compartir')}
+                variante="contorno"
+                onPress={compartir}
+                style={s.compartir}
+              />
+              <Boton
+                titulo={t('detalle.calendarioTitulo')}
+                variante="contorno"
+                onPress={anadirAlCalendario}
+                style={s.compartir}
+              />
+            </View>
+          </Tarjeta>
+        ) : null}
+
+        {alerta ? (
+          <>
+            <Text style={s.subtitulo}>
+              {alerta.criterio === 'RETRASO' ? t('detalle.hoyRetrasos') : t('detalle.hoyPlazas')}
+            </Text>
+            <Tarjeta>
+              {trenes.length > 0 ? (
+                trenes.map((tren) => {
+                  const extras = detalleFila(tren, t);
                   return (
-                    <Text key={serie.clave} style={s.detalle}>
-                      {textoSerieCompacta(serie)}
-                      {' · '}
-                      <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
-                    </Text>
-                  );
-                }
-                return (
-                  <View key={serie.clave} style={s.serie}>
-                    <View style={s.serieCabecera}>
-                      <Text style={s.plazaTren}>
-                        {horaGtfs(serie.salida)}
-                        {serie.numeroTren
-                          ? t('detalle.trenSufijo', { tren: serie.numeroTren })
-                          : ''}
-                      </Text>
-                      <Text style={s.fecha}>
-                        {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
-                      </Text>
+                    <View key={`${tren.trenId}-${tren.salida}`} style={s.fila}>
+                      <View style={s.plazaInfo}>
+                        <Text style={s.plazaTren}>
+                          {horaGtfs(tren.salida)} · {tren.numeroTren || '—'}
+                        </Text>
+                        {extras ? <Text style={s.detalle}>{extras}</Text> : null}
+                        {tren.tramo === 'conexion' ? (
+                          <Text style={s.detalle}>{textoConexion(tren)}</Text>
+                        ) : null}
+                        {tren.precioMin !== null ? (
+                          <Text style={s.precio}>
+                            {t('detalle.desde', { precio: formatearPrecio(tren.precioMin) })}
+                            {tren.tarifa ? ` · ${tren.tarifa}` : ''}
+                          </Text>
+                        ) : null}
+                        {tren.paradasSuprimidas && tren.paradasSuprimidas.length > 0 ? (
+                          <Text style={s.noPara}>
+                            {t('detalle.noPara', { lista: tren.paradasSuprimidas.join(', ') })}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {tren.cancelado ? (
+                        <Etiqueta tono="error">{t('comunes.cancelado')}</Etiqueta>
+                      ) : (
+                        <Etiqueta tono={tren.disponible ? 'exito' : 'neutro'}>
+                          {tren.disponible ? t('comunes.hayPlazas') : t('comunes.completo')}
+                        </Etiqueta>
+                      )}
                     </View>
-                    {visibles.map((grupo, indice) => (
-                      <View key={`${grupo.registradoEn}-${indice}`} style={s.barraFila}>
-                        <View style={s.barra}>
+                  );
+                })
+              ) : (
+                <>
+                  <Text style={s.detalle}>{mensajeEstadoVacio(alerta, t)}</Text>
+                  {alerta.ultimoSondeoEn ? (
+                    <Text style={s.fecha}>
+                      {t('detalle.ultimoSondeo', { valor: haceCuanto(alerta.ultimoSondeoEn, t) })}
+                    </Text>
+                  ) : null}
+                </>
+              )}
+            </Tarjeta>
+          </>
+        ) : null}
+
+        {alerta && verEvolucion ? (
+          <>
+            <Text style={s.subtitulo}>{t('detalle.evolucionTitulo')}</Text>
+            <Tarjeta>
+              <Text style={s.detalle}>{t('detalle.evolucionSubtitulo')}</Text>
+              {seriesPrecios.length === 0 ? (
+                <Text style={s.detalle}>{t('detalle.sinEvolucion')}</Text>
+              ) : (
+                seriesPrecios.map((serie) => {
+                  const plana = esSeriePlana(serie.puntos);
+                  const { visibles, sondeosOcultos } = recortarContagos(
+                    agruparContagos(serie.puntos),
+                  );
+                  if (plana) {
+                    return (
+                      <Text key={serie.clave} style={s.detalle}>
+                        {textoSerieCompacta(serie)}
+                        {' · '}
+                        <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
+                      </Text>
+                    );
+                  }
+                  return (
+                    <View key={serie.clave} style={s.serie}>
+                      <View style={s.serieCabecera}>
+                        <Text style={s.plazaTren}>
+                          {horaGtfs(serie.salida)}
+                          {serie.numeroTren
+                            ? t('detalle.trenSufijo', { tren: serie.numeroTren })
+                            : ''}
+                        </Text>
+                        <Text style={s.fecha}>
+                          {formatearPrecio(serie.minimo)} – {formatearPrecio(serie.maximo)}
+                        </Text>
+                      </View>
+                      {visibles.map((grupo, indice) => (
+                        <View key={`${grupo.registradoEn}-${indice}`} style={s.barraFila}>
+                          <View style={s.barra}>
+                            <View
+                              style={[
+                                s.barraRelleno,
+                                {
+                                  width: `${anchoBarra(grupo.precioMin, serie.minimo, serie.maximo)}%`,
+                                },
+                              ]}
+                            />
+                          </View>
                           <View
                             style={[
-                              s.barraRelleno,
+                              s.puntoFinal,
                               {
-                                width: `${anchoBarra(grupo.precioMin, serie.minimo, serie.maximo)}%`,
+                                backgroundColor: grupo.disponible
+                                  ? paleta.exito
+                                  : paleta.textoSecundario,
                               },
                             ]}
                           />
+                          <Text style={s.barraPrecio}>{formatearPrecio(grupo.precioMin)}</Text>
+                          <Text style={s.multiplicador}>
+                            {grupo.cantidad > 1 ? `×${grupo.cantidad}` : ''}
+                          </Text>
                         </View>
-                        <View
-                          style={[
-                            s.puntoFinal,
-                            {
-                              backgroundColor: grupo.disponible
-                                ? paleta.exito
-                                : paleta.textoSecundario,
-                            },
-                          ]}
-                        />
-                        <Text style={s.barraPrecio}>{formatearPrecio(grupo.precioMin)}</Text>
-                        <Text style={s.multiplicador}>
-                          {grupo.cantidad > 1 ? `×${grupo.cantidad}` : ''}
-                        </Text>
-                      </View>
-                    ))}
-                    {sondeosOcultos > 0 ? (
-                      <Text style={s.resumen}>{textoSondeosOcultos(sondeosOcultos)}</Text>
-                    ) : null}
-                    <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
-                  </View>
-                );
-              })
-            )}
-          </Tarjeta>
-        </>
-      ) : null}
+                      ))}
+                      {sondeosOcultos > 0 ? (
+                        <Text style={s.resumen}>{textoSondeosOcultos(sondeosOcultos)}</Text>
+                      ) : null}
+                      <Text style={s.consejo}>{consejoPrecio(serie.puntos)}</Text>
+                    </View>
+                  );
+                })
+              )}
+            </Tarjeta>
+          </>
+        ) : null}
 
-      <Text style={s.subtitulo}>{t('detalle.avisosTitulo')}</Text>
-    </View>
+        <Text style={s.subtitulo}>{t('detalle.avisosTitulo')}</Text>
+      </View>
+    ),
+    [
+      error,
+      alerta,
+      t,
+      paleta,
+      s,
+      trenes,
+      seriesPrecios,
+      verEvolucion,
+      compartir,
+      anadirAlCalendario,
+    ],
   );
 
   return (
@@ -392,22 +408,34 @@ export default function DetalleAlerta() {
       refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
       contentContainerStyle={s.lista}
       ListHeaderComponent={cabecera}
+      initialNumToRender={10}
       ListEmptyComponent={
         cargando || error ? null : <Text style={s.vacio}>{t('detalle.sinAvisos')}</Text>
       }
-      renderItem={({ item }) => (
-        <Tarjeta>
-          <View style={s.fila}>
-            <Text style={s.notiTitulo}>{item.titulo}</Text>
-            {!item.leida ? <Etiqueta tono="primario">{t('comunes.nuevo')}</Etiqueta> : null}
-          </View>
-          <Text style={s.detalle}>{item.cuerpo}</Text>
-          <Text style={s.fecha}>{new Date(item.creadaEn).toLocaleString(locale())}</Text>
-        </Tarjeta>
-      )}
+      renderItem={({ item }) => <FilaNotificacion aviso={item} />}
     />
   );
 }
+
+/**
+ * Fila de avisos de la lista: con `React.memo` el pull-to-refresh (que solo
+ * cambia `cargando`) no vuelve a construir cada tarjeta.
+ */
+const FilaNotificacion = memo(function FilaNotificacion({ aviso }: { aviso: AvisoAlertaResponse }) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  return (
+    <Tarjeta style={aviso.leida ? { opacity: 0.75 } : undefined}>
+      <View style={s.fila}>
+        <Text style={s.notiTitulo}>{aviso.titulo}</Text>
+        {!aviso.leida ? <Etiqueta tono="primario">{t('comunes.nuevo')}</Etiqueta> : null}
+      </View>
+      <Text style={s.detalle}>{aviso.cuerpo}</Text>
+      <Text style={s.fecha}>{new Date(aviso.creadaEn).toLocaleString(locale())}</Text>
+    </Tarjeta>
+  );
+});
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({

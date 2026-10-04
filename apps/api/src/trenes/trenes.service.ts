@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
+import { buscarEstaciones, getPrisma, type Prisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
   cruzarConexiones,
+  fechaGtfs,
   horaGtfs,
   HorarioTrenResponse,
   HorariosResponse,
@@ -393,26 +394,25 @@ export class TrenesService {
     try {
       const prisma = getPrisma();
       const ahora = new Date();
-      for (const posicion of datos) {
-        await prisma.posicionTren.upsert({
-          where: { id: posicion.id },
-          update: {
-            numeroTren: posicion.numeroTren,
-            latitud: posicion.latitud,
-            longitud: posicion.longitud,
-            velocidadKmh: posicion.velocidadKmh,
-            retrasoSeg: posicion.retrasoSeg,
-            actualizadaEn: ahora,
-          },
-          create: {
-            id: posicion.id,
-            numeroTren: posicion.numeroTren,
-            latitud: posicion.latitud,
-            longitud: posicion.longitud,
-            velocidadKmh: posicion.velocidadKmh,
-            retrasoSeg: posicion.retrasoSeg,
-            actualizadaEn: ahora,
-          },
+
+      // Snapshot en lote (antes: un upsert por tren = N+1 de escritura).
+      // `skipDuplicates` NO actualiza las filas que ya existen, así que se
+      // borran primero los ids del snapshot y se reinsertan enteras: al final
+      // la tabla refleja el último snapshot con la misma semántica que el
+      // upsert, pero en dos escrituras y sin idas y venidas por tren.
+      const filas = datos.map((posicion) => ({
+        id: posicion.id,
+        numeroTren: posicion.numeroTren,
+        latitud: posicion.latitud,
+        longitud: posicion.longitud,
+        velocidadKmh: posicion.velocidadKmh,
+        retrasoSeg: posicion.retrasoSeg,
+        actualizadaEn: ahora,
+      }));
+      if (filas.length > 0) {
+        await prisma.$transaction(async (tx) => {
+          await tx.posicionTren.deleteMany({ where: { id: { in: filas.map((f) => f.id) } } });
+          await tx.posicionTren.createMany({ data: filas, skipDuplicates: true });
         });
       }
 
@@ -433,8 +433,10 @@ export class TrenesService {
 
       // Impuntualidad: un registro por servicio (tripId) y día con el retraso máximo visto
       const umbralSeg = Number(process.env.PUNTUALIDAD_UMBRAL_SEG ?? '300');
-      const hoy = new Date(ahora);
-      hoy.setHours(0, 0, 0, 0);
+      // El "día" de impuntualidad es el peninsular (`fechaGtfs`), el mismo que
+      // usan el worker y el resto de tablas con columna `fecha`: un servicio de
+      // la madrugada (00:00-02:00 peninsular) no debe caer en el día UTC anterior
+      const hoy = new Date(`${fechaGtfs(ahora)}T00:00:00Z`);
       const impuntuales = datos.filter(
         (p) =>
           p.tripId &&
@@ -458,27 +460,38 @@ export class TrenesService {
           take: 5_000,
         });
         const previos = new Map(existentes.map((e) => [e.tripId, e.retrasoMaxSeg]));
+
+        // En vez de un create/update por viaje: altas en un solo lote y subidas
+        // agrupadas por retraso (un updateMany por cada conjunto de valores iguales)
+        const aCrear: Prisma.ImpuntualidadTrenCreateManyInput[] = [];
+        const aSubir = new Map<number, string[]>();
         for (const [viaje, retraso] of maxPorViaje) {
           const previo = previos.get(viaje);
           if (previo === undefined) {
             const primera = impuntuales.find((p) => p.tripId === viaje);
-            await prisma.impuntualidadTren
-              .create({
-                data: {
-                  tripId: viaje,
-                  vehiculoId: primera?.id ?? 'desconocido',
-                  numeroTren: primera?.numeroTren ?? null,
-                  fecha: hoy,
-                  retrasoMaxSeg: retraso,
-                },
-              })
-              .catch(() => undefined);
-          } else if (retraso > previo) {
-            await prisma.impuntualidadTren.updateMany({
-              where: { tripId: viaje, fecha: hoy },
-              data: { retrasoMaxSeg: retraso },
+            aCrear.push({
+              tripId: viaje,
+              vehiculoId: primera?.id ?? 'desconocido',
+              numeroTren: primera?.numeroTren ?? null,
+              fecha: hoy,
+              retrasoMaxSeg: retraso,
             });
+          } else if (retraso > previo) {
+            const viajes = aSubir.get(retraso) ?? [];
+            viajes.push(viaje);
+            aSubir.set(retraso, viajes);
           }
+        }
+        if (aCrear.length > 0) {
+          // `skipDuplicates` cubre la carrera con otro proceso que inserte el
+          // mismo (tripId, fecha): antes se tragaba el error del create
+          await prisma.impuntualidadTren.createMany({ data: aCrear, skipDuplicates: true });
+        }
+        for (const [retraso, viajes] of aSubir) {
+          await prisma.impuntualidadTren.updateMany({
+            where: { fecha: hoy, tripId: { in: viajes } },
+            data: { retrasoMaxSeg: retraso },
+          });
         }
       }
 
@@ -565,14 +578,14 @@ export class TrenesService {
    * trenes que paran en la estación se resuelven con `ParadaHorario` (sin
    * fecha) restringido a los viajes que operan ese día.
    *
-   * Orden medido en la BD real (2026-09-29) — se elige el de menos volumen:
-   *  - **Día primero (elegido)**: 6.512 filas de `HorarioTren` (todas con
-   *    tripId) y después paradas de la estación en esos viajes: 19 filas para
-   *    Arcade, 1.202 para Chamartín (la más transitada). El `take` de 20.000 es
-   *    red de seguridad: con 500 se perderían viajes (6.512 > 500 y sin orden
-   *    fijo, la query corta arbitrariamente).
-   *  - Parada primero (descartado): 29.857 filas de `ParadaHorario` para
-   *    Chamartín más un `tripId IN` de 29.857 ids.
+   * Orden de las consultas — **estación primero**: la versión anterior cargaba
+   * 20.000 filas de `HorarioTren` de TODAS las estaciones para después
+   * descartar casi todas; ahora solo se piden ids de viaje de ESTA estación:
+   *  1. `ParadaHorario` de la estación con `distinct: tripId` → qué viajes
+   *     paran aquí (solo los ids, sin horarios).
+   *  2. `HorarioTren` de la fecha filtrado por esos tripId → una fila por viaje
+   *     que opera ese día Y pasa por la estación.
+   *  3. Las paradas de la estación en esos viajes (solo con `salidaMin`).
    *
    * Semántica de la fila devuelta (tipo `HorarioTrenResponse`):
    *  - `origenNombre` = **la estación consultada**: la ficha es de SUS salidas,
@@ -590,10 +603,23 @@ export class TrenesService {
     const mejor = encontradas[0];
     if (!mejor) return [];
 
-    // Viajes que operan ese día (una fila por trip + fecha). Sin filtro de
-    // origen: la estación puede ser parada intermedia de cualquiera de ellos.
+    // Viajes con parada en ESTA estación: solo ids distintos (`ParadaHorario`
+    // no tiene fecha, así que traen todos los días a la vez).
+    const deLaEstacion = await prisma.paradaHorario.findMany({
+      where: { estacionId: mejor.id },
+      distinct: ['tripId'],
+      orderBy: { tripId: 'asc' },
+      select: { tripId: true },
+      // Red de seguridad: la estación más transitada (Chamartín) ronda los 30k
+      // viajes distintos; el tope descartaría viajes enteros, nunca sueltos.
+      take: 100_000,
+    });
+    const tripsDeLaEstacion = deLaEstacion.map((p) => p.tripId);
+    if (tripsDeLaEstacion.length === 0) return [];
+
+    // De esos, solo los que operan ese día (una fila por trip + fecha).
     const delDia = await prisma.horarioTren.findMany({
-      where: { fecha: new Date(`${fecha}T00:00:00Z`) },
+      where: { fecha: new Date(`${fecha}T00:00:00Z`), tripId: { in: tripsDeLaEstacion } },
       select: {
         tripId: true,
         numeroTren: true,

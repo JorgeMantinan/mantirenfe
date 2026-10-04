@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { BellPlus, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { BloqueBilletes } from '@/components/BloqueBilletes';
+import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { FILAS_INICIALES_TABLA } from '@/lib/ui-constants';
 import {
   esOuigo,
   horaGtfs,
-  type EstacionResponse,
   type HorarioTrenResponse,
   type HorariosResponse,
   type MotivoHorarios,
@@ -44,16 +46,17 @@ export function PaginaTrenes() {
   // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
   const [motivo, setMotivo] = useState<MotivoHorarios | null>(null);
   const [sinEstacion, setSinEstacion] = useState<string[]>([]);
-  const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
-  const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
+  // Una lista por campo: escribir en Origen no deja a la vista las
+  // sugerencias de Destino ni viceversa (mismo patrón que en alertas/nueva)
+  const busOrigen = useBuscadorEstaciones({ limite: 5 });
+  const busDestino = useBuscadorEstaciones({ limite: 5 });
+  const { sugerencias: sugOrigen } = busOrigen;
+  const { sugerencias: sugDestino } = busDestino;
   // Franja de salida (HH:MM, vacío = sin límite): filtra solo lo que ya está
   // cargado, sin volver a consultar la API.
   const [franjaDesde, setFranjaDesde] = useState('');
   const [franjaHasta, setFranjaHasta] = useState('');
-  const timerOrigen = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const timerDestino = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const petOrigen = useRef(0);
-  const petDestino = useRef(0);
+  const [mostrarMas, setMostrarMas] = useState(FILAS_INICIALES_TABLA);
 
   // Operadores presentes en los resultados (para poder compararlos)
   const operadoresEncontrados = useMemo(() => {
@@ -84,52 +87,19 @@ export function PaginaTrenes() {
     setFranjaHasta('');
   };
 
-  useEffect(
-    () => () => {
-      clearTimeout(timerOrigen.current);
-      clearTimeout(timerDestino.current);
-    },
-    [],
-  );
-
   // Cierra los dos desplegables y cancela sus peticiones pendientes: escribir
   // en un campo (o elegir una opción) no debe dejar a la vista la lista del otro.
   const limpiarSugerencias = (conservar?: 'origen' | 'destino') => {
-    if (conservar !== 'origen') {
-      petOrigen.current++;
-      clearTimeout(timerOrigen.current);
-      setSugOrigen([]);
-    }
-    if (conservar !== 'destino') {
-      petDestino.current++;
-      clearTimeout(timerDestino.current);
-      setSugDestino([]);
-    }
+    if (conservar !== 'origen') busOrigen.limpiar();
+    if (conservar !== 'destino') busDestino.limpiar();
   };
 
   // Búsqueda con debounce mientras se escribe (patrón del móvil)
   const sugerir = (campo: 'origen' | 'destino', texto: string) => {
-    const timer = campo === 'origen' ? timerOrigen : timerDestino;
-    const peticion = campo === 'origen' ? petOrigen : petDestino;
-    const set = campo === 'origen' ? setSugOrigen : setSugDestino;
     if (campo === 'origen') setOrigen(texto);
     else setDestino(texto);
     limpiarSugerencias(campo);
-    clearTimeout(timer.current);
-    if (texto.trim().length < 2) {
-      set([]);
-      return;
-    }
-    timer.current = setTimeout(() => {
-      const id = ++peticion.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(texto.trim())}&limite=5`)
-        .then((r) => {
-          if (peticion.current === id) set(r);
-        })
-        .catch(() => {
-          if (peticion.current === id) set([]);
-        });
-    }, 250);
+    (campo === 'origen' ? busOrigen : busDestino).sugerir(texto);
   };
 
   const elegir = (campo: 'origen' | 'destino', nombre: string) => {
@@ -146,6 +116,7 @@ export function PaginaTrenes() {
     setError(null);
     setMotivo(null);
     setSinEstacion([]);
+    setMostrarMas(FILAS_INICIALES_TABLA);
     try {
       const datos = await api<HorariosResponse>(
         `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
@@ -421,53 +392,63 @@ export function PaginaTrenes() {
                     </Button>
                   </div>
                 ) : (
-                  <ul className="divide-y">
-                    {resultadosVisibles.map((tren) => (
-                      <li
-                        key={`${tren.numeroTren}-${tren.salida}`}
-                        className="flex flex-wrap items-center justify-between gap-3 py-3"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {horaGtfs(tren.salida)} → {horaGtfs(tren.llegada)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {tren.origenNombre} · {tren.destinoNombre} · {tren.duracionMin} min
-                          </p>
-                          {tren.transbordo && (
-                            <div className="mt-1 space-y-0.5">
-                              <Badge
-                                variant="outline"
-                                className="border-amber-500 text-amber-700 dark:text-amber-400"
-                              >
-                                {t('trayecto.transbordoEn', { estacion: tren.transbordo.estacion })}
+                  <>
+                    <ul className="divide-y">
+                      {resultadosVisibles.slice(0, mostrarMas).map((tren) => (
+                        <li
+                          key={`${tren.numeroTren}-${tren.salida}`}
+                          className="flex flex-wrap items-center justify-between gap-3 py-3"
+                        >
+                          <div>
+                            <p className="font-medium">
+                              {horaGtfs(tren.salida)} → {horaGtfs(tren.llegada)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {tren.origenNombre} · {tren.destinoNombre} · {tren.duracionMin} min
+                            </p>
+                            {tren.transbordo && (
+                              <div className="mt-1 space-y-0.5">
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500 text-amber-700 dark:text-amber-400"
+                                >
+                                  {t('trayecto.transbordoEn', {
+                                    estacion: tren.transbordo.estacion,
+                                  })}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground">
+                                  {t('trenes.transbordoDetalle', {
+                                    tren1: tren.transbordo.trenPrimera,
+                                    llegada1: horaGtfs(tren.transbordo.llegadaPrimera),
+                                    minutos: tren.transbordo.esperaMin,
+                                    tren2: tren.transbordo.trenSegunda,
+                                    salida2: horaGtfs(tren.transbordo.salidaSegunda),
+                                  })}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{tren.numeroTren}</Badge>
+                            {tren.operador && (
+                              <Badge variant={esOuigo(tren.operador) ? 'aviso' : 'secondary'}>
+                                {tren.operador}
                               </Badge>
-                              <p className="text-xs text-muted-foreground">
-                                {t('trenes.transbordoDetalle', {
-                                  tren1: tren.transbordo.trenPrimera,
-                                  llegada1: horaGtfs(tren.transbordo.llegadaPrimera),
-                                  minutos: tren.transbordo.esperaMin,
-                                  tren2: tren.transbordo.trenSegunda,
-                                  salida2: horaGtfs(tren.transbordo.salidaSegunda),
-                                })}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{tren.numeroTren}</Badge>
-                          {tren.operador && (
-                            <Badge variant={esOuigo(tren.operador) ? 'aviso' : 'secondary'}>
-                              {tren.operador}
-                            </Badge>
-                          )}
-                          <Button variant="outline" size="sm" onClick={() => navegarAlerta(tren)}>
-                            <BellPlus className="h-4 w-4" aria-hidden="true" /> {t('trenes.alerta')}
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => navegarAlerta(tren)}>
+                              <BellPlus className="h-4 w-4" aria-hidden="true" />{' '}
+                              {t('trenes.alerta')}
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <BotonMostrarMas
+                      total={resultadosVisibles.length}
+                      visible={mostrarMas}
+                      onAmpliar={setMostrarMas}
+                    />
+                  </>
                 )}
               </>
             )}

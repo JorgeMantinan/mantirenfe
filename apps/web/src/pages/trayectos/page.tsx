@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BellRing, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,30 +63,12 @@ function BuscadorEstacion({
   onTexto?: () => void;
 }) {
   const [texto, setTexto] = useState('');
-  const [sugerencias, setSugerencias] = useState<EstacionResponse[]>([]);
-  const timer = useRef<number | undefined>(undefined);
-  const peticion = useRef(0);
+  const { sugerencias, sugerir, limpiar } = useBuscadorEstaciones({ limite: 8 });
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  const sugerir = (valor: string) => {
+  const cambiar = (valor: string) => {
     setTexto(valor);
     onTexto?.();
-    window.clearTimeout(timer.current);
-    if (valor.trim().length < 2) {
-      setSugerencias([]);
-      return;
-    }
-    timer.current = window.setTimeout(() => {
-      const idPeticion = ++peticion.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(valor.trim())}&limite=8`)
-        .then((r) => {
-          if (peticion.current === idPeticion) setSugerencias(r);
-        })
-        .catch(() => {
-          if (peticion.current === idPeticion) setSugerencias([]);
-        });
-    }, 250);
+    sugerir(valor);
   };
 
   return (
@@ -94,7 +77,7 @@ function BuscadorEstacion({
       <Input
         id={id}
         value={texto}
-        onChange={(e) => sugerir(e.target.value)}
+        onChange={(e) => cambiar(e.target.value)}
         placeholder="Madrid-Atocha, Vigo, Sevilla..."
         autoComplete="off"
       />
@@ -107,7 +90,7 @@ function BuscadorEstacion({
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
                 onClick={() => {
                   setTexto(e.nombre);
-                  setSugerencias([]);
+                  limpiar();
                   onElegir(e);
                 }}
               >

@@ -50,6 +50,7 @@ vi.mock('@mantirenfe/database', () => ({
         numeroTren: null,
         criterio: 'APERTURA_VENTA',
         estado: 'ACTIVA',
+        intervaloSondeoMin: 10,
         ultimoEstado: mundo.ultimoEstado,
         usuario: { email: null, preferencias: '{}', suscripciones: [], tokensMovil: [] },
       }),
@@ -60,6 +61,8 @@ vi.mock('@mantirenfe/database', () => ({
         }
         return args.data;
       },
+      // El claim de sondeo siempre gana en este mundo (sin carreras en el test)
+      updateMany: async () => ({ count: 1 }),
     },
     notificacion: {
       create: async (args: { data: { titulo: string; cuerpo: string; datos: unknown } }) => {
@@ -68,6 +71,8 @@ vi.mock('@mantirenfe/database', () => ({
       },
     },
     precioTren: { createMany: async () => 0, deleteMany: async () => 0 },
+    // El estado y los avisos se guardan juntos: el mock ejecuta cada operación
+    $transaction: async (operaciones: Array<Promise<unknown>>) => Promise.all(operaciones),
   }),
 }));
 

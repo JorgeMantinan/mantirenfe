@@ -15,7 +15,9 @@ export class EstacionesService {
   async buscar(q?: string, limite = 20, offset = 0): Promise<EstacionResponse[]> {
     const prisma = getPrisma();
     const tope = Math.min(Math.max(Number.isFinite(limite) ? Math.trunc(limite) : 20, 1), 50);
-    const desde = Number.isFinite(offset) && offset > 0 ? Math.trunc(offset) : 0;
+    // `offset` acotado: sin techo, un `?offset=` enorme obligaría a buscarEstaciones
+    // a materializar decenas de miles de filas para descartarlas todas
+    const desde = Math.min(Number.isFinite(offset) && offset > 0 ? Math.trunc(offset) : 0, 10_000);
     const estaciones = q
       ? (await buscarEstaciones(prisma, q, desde + tope)).slice(desde, desde + tope)
       : await prisma.estacion.findMany({

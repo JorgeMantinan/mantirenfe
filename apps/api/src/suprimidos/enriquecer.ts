@@ -1,4 +1,9 @@
 import { fechaIso, horaGtfs, type SuprimidoResponse } from '@mantirenfe/shared-types';
+import { horaDesdeMinutos } from '../common/utilidades';
+
+// Única implementación de la conversión minutos GTFS → HH:MM (compartida con
+// `trenes/puntualidad.ts`); se reexporta para no romper a sus consumidores.
+export { horaDesdeMinutos };
 
 /** Fila de `Cancelacion` ya leída de la BD. */
 export interface CancelacionFila {
@@ -24,18 +29,6 @@ export interface ParadaExtremo {
   salidaMin: number | null;
   llegadaMin: number | null;
   estacion: { nombre: string };
-}
-
-/**
- * Minutos desde medianoche GTFS → hora peninsular `HH:MM`. Las paradas que
- * acaban tras la medianoche traen valores > 1440 y se vuelven a envolver.
- */
-export function horaDesdeMinutos(minutos: number | null | undefined): string | null {
-  if (minutos === null || minutos === undefined || !Number.isFinite(minutos)) return null;
-  const total = ((Math.trunc(minutos) % 1440) + 1440) % 1440;
-  const horas = Math.floor(total / 60);
-  const resto = total % 60;
-  return `${String(horas).padStart(2, '0')}:${String(resto).padStart(2, '0')}`;
 }
 
 interface Extremos {

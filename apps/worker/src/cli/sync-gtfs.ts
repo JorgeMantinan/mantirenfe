@@ -5,6 +5,7 @@ dotenv.config({ path: '../../.env' });
 
 import pino from 'pino';
 import { sincronizarEstaciones, sincronizarHorarios } from '../processors/sync-gtfs';
+import { hoyGtfs } from '../processors/reloj';
 
 /**
  * CLI de sync GTFS para GitHub Actions (`.github/workflows/sync-gtfs.yml`).
@@ -36,9 +37,11 @@ async function podaEspacio(): Promise<void> {
   try {
     const { getPrisma } = await import('@mantirenfe/database');
     const prisma = getPrisma();
-    const hoy = new Date();
-    hoy.setUTCHours(0, 0, 0, 0);
+    // Día peninsular en curso (mismo reloj que el worker y las tablas GTFS)
+    const hoy = new Date(`${hoyGtfs()}T00:00:00Z`);
     const hace90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    // El histórico de precios se conserva 45 días (igual que en el sondeo)
+    const hace45d = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
     const hace12m = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
 
     const horarios = await prisma.horarioTren.deleteMany({ where: { fecha: { lt: hoy } } });
@@ -50,7 +53,7 @@ async function podaEspacio(): Promise<void> {
       where: { fecha: { lt: hace12m } },
     });
     const precio = await prisma.precioTren.deleteMany({
-      where: { registradoEn: { lt: hace45d(hace90d) } },
+      where: { registradoEn: { lt: hace45d } },
     });
     logger.info(
       {
@@ -65,10 +68,6 @@ async function podaEspacio(): Promise<void> {
     // La poda nunca debe romper el sync
     logger.warn({ err: error }, 'Poda de espacio falló (continúa)');
   }
-}
-
-function hace45d(_referencia: Date): Date {
-  return new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
 }
 
 main()

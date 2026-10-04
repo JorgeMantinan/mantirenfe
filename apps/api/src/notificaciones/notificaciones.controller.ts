@@ -12,9 +12,15 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { pushTokenMovilSchema, suscripcionPushSchema } from '@mantirenfe/shared-types';
+import { z } from 'zod';
 import { EsPublico } from '../common/es-publico.decorator';
 import { UsuarioActual, UsuarioRequest } from '../common/usuario-actual.decorator';
 import { NotificacionesService } from './notificaciones.service';
+
+/** Lote de ids a marcar como leídos (acotado para no martillear la BD). */
+const marcarLeidasSchema = z.object({
+  ids: z.array(z.string().min(1).max(40)).min(1).max(500),
+});
 
 @ApiTags('notificaciones')
 @ApiBearerAuth()
@@ -41,11 +47,11 @@ export class NotificacionesController {
   @Patch('marcar-leidas')
   @HttpCode(200)
   async marcarLeidas(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
-    const ids = (cuerpo as { ids?: unknown }).ids;
-    if (!Array.isArray(ids) || ids.length === 0 || !ids.every((i) => typeof i === 'string')) {
-      throw new BadRequestException('Se espera un array de ids');
+    const parsed = marcarLeidasSchema.safeParse(cuerpo);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
     }
-    return this.notificacionesService.marcarLeida(usuario, ids as string[]);
+    return this.notificacionesService.marcarLeida(usuario, parsed.data.ids);
   }
 
   @Delete()

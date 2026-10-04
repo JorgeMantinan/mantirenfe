@@ -29,6 +29,15 @@ export const en: MismoArbol<Claves> = {
     // Day initials in 0=Sunday … 6=Saturday order (chips and badge)
     diasIniciales: 'S,M,T,W,T,F,S',
     diasCortos: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
+    // Long tables: only the first rows are painted until the button is pressed
+    mostrarMas: 'Show more',
+  },
+
+  // ──────────────────────────────── ErrorBoundary (render error catcher)
+  errorBoundary: {
+    titulo: 'Something went wrong',
+    texto: 'The page stopped responding. You can reload it to try again.',
+    recargar: 'Reload page',
   },
 
   // ──────────────────────────────── cabecera (Header)
@@ -672,6 +681,16 @@ export const en: MismoArbol<Claves> = {
     sinSesion: 'No active session: please sign in again',
     status: 'Error {{status}}',
     authNoConfig: 'Authentication not configured (VITE_SUPABASE_URL)',
+    // Fetch timeout (15 s): the raw browser error is never shown
+    timeout: 'The request took too long: check your connection and try again',
+    // Messages per status: the raw server detail only goes to console.error
+    status400: 'Invalid data: check the fields and try again',
+    status401: 'Your session has expired: please sign in again',
+    status403: 'You do not have permission to do this',
+    status404: 'The page you are looking for was not found',
+    status409: 'This conflicts with the saved data: reload the page and try again',
+    status429: 'Too many requests: wait a few seconds and try again',
+    status500: 'Server error: please try again in a few minutes',
   },
 
   // ──────────────────────────────── dashboard

@@ -126,6 +126,9 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
         },
       },
     },
+    // Orden fijo: con `take` sin orden el lote de 200 salía arbitrario y una
+    // alerta podía quedarse siempre fuera
+    orderBy: [{ id: 'asc' }],
     take: 200,
   });
   const pendientes = alertas.filter(
@@ -147,6 +150,8 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
           origenEstacionId: origen[0].id,
           destinoEstacionId: destino[0].id,
           fecha: new Date(`${hoyIso}T00:00:00Z`),
+          // Solo lo que aún no ha salido: lo demás `elegirSalidaDelDia` lo descarta igual
+          salida: { gt: ahora },
           ...(alerta.numeroTren ? { numeroTren: alerta.numeroTren } : {}),
         },
         orderBy: { salida: 'asc' },
@@ -216,8 +221,9 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
 
 /**
  * Envía el recordatorio de salida de las alertas ACTIVAS cuyo viaje es hoy y
- * todavía no se ha avisado. Se ejecuta en cada barrido (1 min); el aviso se
- * marca antes de enviar para no duplicar entre barridos.
+ * todavía no se ha avisado. Se ejecuta en cada barrido (1 min); los servicios
+ * ya avisados se guardan con UN único updateMany al final de cada alerta y lo
+ * que falle se queda fuera del set para reintentarse en el siguiente barrido.
  */
 export async function procesarRecordatorios(logger: Logger): Promise<number> {
   const prisma = getPrisma();
@@ -244,6 +250,9 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
         },
       },
     },
+    // Orden fijo: con `take` sin orden el lote de 200 salía arbitrario y una
+    // alerta podía quedarse siempre fuera
+    orderBy: [{ id: 'asc' }],
     take: 200,
   });
   // Preferencias en memoria (el path-filter de SQL excluye el default "{}")
@@ -262,11 +271,15 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
       ]);
       if (!origen[0] || !destino[0]) continue;
 
+      const ventanaMin = minutosDePreferencias(alerta.usuario.preferencias);
       const horarios = await prisma.horarioTren.findMany({
         where: {
           origenEstacionId: origen[0].id,
           destinoEstacionId: destino[0].id,
           fecha: new Date(`${hoyIso}T00:00:00Z`),
+          // La ventana de aviso se filtra en SQL: sin ella el lote traía todos
+          // los trenes del día para descartarlos después en memoria
+          salida: { gt: ahora, lte: new Date(ahora.getTime() + ventanaMin * 60_000) },
           ...(alerta.numeroTren ? { numeroTren: alerta.numeroTren } : {}),
         },
         orderBy: { salida: 'asc' },
@@ -274,12 +287,10 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
       });
       if (horarios.length === 0) continue;
 
-      const candidatos = elegirTrenesRecordatorio(
-        horarios,
-        ahora,
-        minutosDePreferencias(alerta.usuario.preferencias),
-        { horaDesde: alerta.horaDesde, horaHasta: alerta.horaHasta },
-      ).filter(
+      const candidatos = elegirTrenesRecordatorio(horarios, ahora, ventanaMin, {
+        horaDesde: alerta.horaDesde,
+        horaHasta: alerta.horaHasta,
+      }).filter(
         (c) => !alerta.recordatorioTrenesEnviados.includes(claveServicioRecordatorio(c.tren)),
       );
 
@@ -290,16 +301,6 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
         const clave = claveServicioRecordatorio(candidato.tren);
         if (serviciosRecordados.includes(clave)) continue;
         serviciosRecordados = [...serviciosRecordados, clave];
-        // Marca primero para que un segundo barrido no duplique el envío
-        const marcado = await prisma.alerta.updateMany({
-          where: { id: alerta.id },
-          data: {
-            recordatorioTrenesEnviados: { set: serviciosRecordados },
-            recordatorioEnviadoEn: new Date(),
-          },
-        });
-        if (marcado.count === 0) continue;
-
         try {
           await notificar(
             alerta,
@@ -324,14 +325,25 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
             'Recordatorio de salida enviado',
           );
         } catch (error) {
-          // Reintenta en el próximo barrido: deshace la marca de este servicio
+          // No se marca: el próximo barrido vuelve a intentarlo
           serviciosRecordados = serviciosRecordados.filter((c) => c !== clave);
-          await prisma.alerta.updateMany({
-            where: { id: alerta.id },
-            data: { recordatorioTrenesEnviados: { set: serviciosRecordados } },
-          });
-          throw error;
+          logger.error(
+            { alertaId: alerta.id, tren: candidato.tren.numeroTren, err: error },
+            'Fallo enviando recordatorio',
+          );
         }
+      }
+
+      // Un único updateMany por alerta (en vez de uno por tren) con el set
+      // completo y la marca de "ya se avisó hoy"
+      if (serviciosRecordados.length !== alerta.recordatorioTrenesEnviados.length) {
+        await prisma.alerta.updateMany({
+          where: { id: alerta.id },
+          data: {
+            recordatorioTrenesEnviados: { set: serviciosRecordados },
+            recordatorioEnviadoEn: new Date(),
+          },
+        });
       }
     } catch (error) {
       logger.error({ alertaId: alerta.id, err: error }, 'Fallo enviando recordatorio');

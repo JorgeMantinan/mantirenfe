@@ -14,6 +14,10 @@ const mundo = vi.hoisted(() => ({
   trenes: [] as EstadoTrenDisponible[],
   ultimoEstado: undefined as EstadoSerializado[] | undefined,
   avisos: [] as Array<{ titulo: string; cuerpo: string; datos: unknown }>,
+  /** Resultado del claim atómico: 1 = reclamada, 0 = ya sondeada. */
+  reclamada: 1,
+  /** Consultas que llegan a la fuente (el claim corta antes). */
+  consultas: 0,
 }));
 
 vi.mock('@mantirenfe/database', () => ({
@@ -34,6 +38,7 @@ vi.mock('@mantirenfe/database', () => ({
         criterio: mundo.criterio,
         precioObjetivo: mundo.precioObjetivo,
         estado: 'ACTIVA',
+        intervaloSondeoMin: 10,
         ultimoEstado: mundo.ultimoEstado,
         usuario: { email: null, preferencias: '{}', suscripciones: [], tokensMovil: [] },
       }),
@@ -43,6 +48,8 @@ vi.mock('@mantirenfe/database', () => ({
         }
         return args.data;
       },
+      // El claim de sondeo siempre gana en este mundo (sin carreras en el test)
+      updateMany: async () => ({ count: mundo.reclamada }),
     },
     notificacion: {
       create: async (args: { data: { titulo: string; cuerpo: string; datos: unknown } }) => {
@@ -51,17 +58,22 @@ vi.mock('@mantirenfe/database', () => ({
       },
     },
     precioTren: { createMany: async () => 0, deleteMany: async () => 0 },
+    // El estado y los avisos se guardan juntos: el mock ejecuta cada operación
+    $transaction: async (operaciones: Array<Promise<unknown>>) => Promise.all(operaciones),
   }),
 }));
 
 vi.mock('../fuentes', () => ({
   crearFuenteDatos: () => ({
     nombre: 'mock',
-    getDisponibilidad: async () => ({
-      consulta: {},
-      consultadoEn: new Date().toISOString(),
-      trenes: mundo.trenes,
-    }),
+    getDisponibilidad: async () => {
+      mundo.consultas += 1;
+      return {
+        consulta: {},
+        consultadoEn: new Date().toISOString(),
+        trenes: mundo.trenes,
+      };
+    },
   }),
 }));
 
@@ -115,6 +127,8 @@ beforeEach(() => {
   mundo.trenes = [];
   mundo.ultimoEstado = undefined;
   mundo.avisos = [];
+  mundo.reclamada = 1;
+  mundo.consultas = 0;
 });
 
 describe('sondeo con criterio PRECIO', () => {
@@ -185,5 +199,15 @@ describe('sondeo con criterio PRECIO', () => {
 
     expect(mundo.avisos).toHaveLength(1);
     expect(mundo.avisos[0]!.cuerpo).toContain('≤45,00 €');
+  });
+
+  it('el claim atómico corta el sondeo si otro job ya lo reclamó', async () => {
+    mundo.reclamada = 0;
+    await sondear([guardado(40)], [32]);
+
+    // Ni consulta la fuente ni pisa el estado ni notifica
+    expect(mundo.consultas).toBe(0);
+    expect(mundo.ultimoEstado).toEqual([guardado(40)]);
+    expect(mundo.avisos).toHaveLength(0);
   });
 });

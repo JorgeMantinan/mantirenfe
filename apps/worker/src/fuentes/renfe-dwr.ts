@@ -6,7 +6,12 @@ import type {
 import { cruzarConexiones, type TramoHorario } from '@mantirenfe/shared-types';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import json5 from 'json5';
+// Caché con single-flight, compartida con el resto de fuentes (gtfs-rt)
+import { conCache, type EntradaCache } from './cache';
 import type { FuenteDatosTren } from './tipos';
+
+// Re-exportado para no romper a nadie que lo importara de este fichero
+export { conCache, type EntradaCache };
 
 /**
  * Consulta de disponibilidad y precios contra la venta de Renfe usando el
@@ -347,7 +352,15 @@ async function textoConTimeout(
   const timeout = setTimeout(() => controlador.abort(), timeoutMs);
   try {
     const respuesta = await fetch(url, { ...init, signal: controlador.signal });
-    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status} en ${new URL(url).pathname}`);
+    if (!respuesta.ok) {
+      // El status viaja en el error: el 429/503 de la venta no es un fallo
+      // de red normal y se trata aparte (ver `getDisponibilidad`)
+      const error = new Error(`HTTP ${respuesta.status} en ${new URL(url).pathname}`) as Error & {
+        status?: number;
+      };
+      error.status = respuesta.status;
+      throw error;
+    }
     return respuesta;
   } finally {
     clearTimeout(timeout);
@@ -367,43 +380,18 @@ export function extraerListaTrenes(respuesta: string): RespuestaLista {
   return json5.parse(json) as RespuestaLista;
 }
 
-export interface EntradaCache<T> {
-  valor: T;
-  caduca: number;
-}
-
-/**
- * Caché genérica con TTL: si la entrada está viva no se vuelve a calcular.
- * Poda entradas caducadas cuando crece demasiado.
- */
-export async function conCache<T>(
-  cache: Map<string, EntradaCache<T>>,
-  clave: string,
-  ttlMs: number,
-  calcular: () => Promise<T>,
-): Promise<T> {
-  const ahora = Date.now();
-  const entrada = cache.get(clave);
-  if (entrada && entrada.caduca > ahora) return entrada.valor;
-
-  const valor = await calcular();
-  if (cache.size > 200) {
-    for (const [k, v] of cache) {
-      if (v.caduca <= ahora) cache.delete(k);
-    }
-  }
-  cache.set(clave, { valor, caduca: Date.now() + ttlMs });
-  return valor;
-}
-
-// Compartida entre instancias: varias alertas de la misma ruta+fecha
+// Caché compartida entre instancias: varias alertas de la misma ruta+fecha
 // comparten una única consulta a venta.renfe.com.
 const CACHE_VENTA = new Map<string, EntradaCache<EstadoTrenDisponible[]>>();
 
-// Protección anti-rate-limit: si la venta responde con errores repetidos,
-// suspendemos las consultas durante un rato en vez de seguir martillearla.
+// Protección anti-rate-limit: si la venta responde con errores repetidos se
+// suspenden las consultas con backoff exponencial (1, 2, 5 y 10 min) en vez de
+// seguir martillearla. El contador solo lo limpia una consulta REAL exitosa:
+// un acierto de caché no demuestra que la venta vuelva a responder.
 const FALLOS_MAXIMOS = 4;
-const SUSPENSION_MS = 10 * 60_000;
+const BACKOFF_MS = [60_000, 120_000, 300_000, 600_000];
+/** Pausa fija cuando la venta responde 429/503 (nos pide parar ya). */
+const SUSPENSION_RATE_LIMIT_MS = 10 * 60_000;
 let fallosConsecutivos = 0;
 let suspendidoHasta = 0;
 
@@ -431,6 +419,10 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
 
     const ttlMs = Number(process.env.DWR_CACHE_SEG ?? '120') * 1000;
     const claveCache = `${origen.codigo}-${destino.codigo}-${consulta.fecha}`;
+    const previa = CACHE_VENTA.get(claveCache);
+    // Si la entrada ya estaba viva, esta llamada no toca la venta: no cuenta
+    // como consulta real (ni para limpiar el contador de fallos)
+    const desdeCache = previa !== undefined && previa.caduca > Date.now();
     let trenes: EstadoTrenDisponible[];
     try {
       trenes = await conCache(CACHE_VENTA, claveCache, ttlMs, () =>
@@ -448,13 +440,20 @@ export class FuenteRenfeDwr implements FuenteDatosTren {
         );
         if (porConexion) trenes = porConexion;
       }
-      fallosConsecutivos = 0;
+      if (!desdeCache) fallosConsecutivos = 0;
     } catch (error) {
-      fallosConsecutivos += 1;
-      if (fallosConsecutivos >= FALLOS_MAXIMOS) {
-        suspendidoHasta = Date.now() + SUSPENSION_MS;
-        fallosConsecutivos = 0;
+      const status = (error as { status?: number }).status;
+      if (status === 429 || status === 503) {
+        // La venta nos pide pausa: se corta de inmediato y sin sumar al
+        // contador de fallos normales (eso dispararía el backoff dos veces)
+        suspendidoHasta = Math.max(suspendidoHasta, Date.now()) + SUSPENSION_RATE_LIMIT_MS;
+        throw error;
       }
+      fallosConsecutivos += 1;
+      const indice = Math.min(fallosConsecutivos - 1, BACKOFF_MS.length - 1);
+      const esperaMs = BACKOFF_MS[indice] ?? SUSPENSION_RATE_LIMIT_MS;
+      suspendidoHasta = Math.max(suspendidoHasta, Date.now()) + esperaMs;
+      if (fallosConsecutivos >= FALLOS_MAXIMOS) fallosConsecutivos = 0;
       throw error;
     }
 

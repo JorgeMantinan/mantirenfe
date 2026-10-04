@@ -38,7 +38,9 @@ export async function enviarPush(
             keys: { p256dh: suscripcion.p256dh, auth: suscripcion.auth },
           },
           JSON.stringify(payload),
-          { TTL: 3600 },
+          // TTL 1 h: un aviso de tren caducado no sirve para nada; timeout para
+          // que un push service colgado no bloquee el sondeo
+          { TTL: 3600, timeout: 10_000 },
         );
       } catch (error) {
         const codigo = (error as { statusCode?: number }).statusCode;

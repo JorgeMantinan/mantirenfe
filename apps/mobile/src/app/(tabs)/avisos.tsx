@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,20 +19,38 @@ export default function Avisos() {
   const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
+  // `cancelado` evita setState tras desmontar; `peticion` evita que una
+  // respuesta vieja pise la de una recarga más reciente.
+  const cancelado = useRef(false);
+  const peticion = useRef(0);
+
   const cargar = useCallback(() => {
+    cancelado.current = false;
+    const id = ++peticion.current;
     setCargando(true);
     api<NotificacionResponse[]>('/notificaciones')
       .then((datos) => {
+        if (cancelado.current || peticion.current !== id) return;
         setNotificaciones(datos);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setCargando(false));
+      .catch((e: Error) => {
+        if (cancelado.current || peticion.current !== id) return;
+        setError(e.message);
+      })
+      .finally(() => {
+        if (peticion.current !== id) return;
+        setCargando(false);
+      });
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       cargar();
+      return () => {
+        cancelado.current = true;
+        peticion.current++;
+      };
     }, [cargar]),
   );
 

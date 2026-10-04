@@ -229,9 +229,13 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
 export async function notificarIncidencias(logger: Logger): Promise<void> {
   const prisma = getPrisma();
   try {
+    // Mínimo necesario para cruzar y redactar el aviso (el feed corre cada 60 s
+    // y la tabla histórica crece: no hace falta traerse el resto de columnas)
     const incidencias = await prisma.incidencia.findMany({
       where: { activa: true },
+      select: { id: true, titulo: true, mensaje: true, estacionesAfectadas: true },
       orderBy: { actualizadaEn: 'desc' },
+      take: 500,
     });
     if (incidencias.length === 0) return;
 
@@ -243,14 +247,24 @@ export async function notificarIncidencias(logger: Logger): Promise<void> {
         estado: 'ACTIVA',
         OR: [{ recurrente: true }, { fechaFlexible: true }, { fechaViaje: { gte: hoy } }],
       },
-      include: {
+      select: {
+        id: true,
+        usuarioId: true,
+        origenNombre: true,
+        destinoNombre: true,
+        fechaViaje: true,
+        criterio: true,
+        incidenciasNotificadas: true,
         usuario: {
-          include: {
+          select: {
+            preferencias: true,
             suscripciones: { where: { activa: true } },
             tokensMovil: { where: { activa: true }, select: { id: true, token: true } },
           },
         },
       },
+      orderBy: [{ id: 'asc' }],
+      take: 500,
     });
     if (alertas.length === 0) return;
 
@@ -258,6 +272,16 @@ export async function notificarIncidencias(logger: Logger): Promise<void> {
     let enviados = 0;
     for (const { incidencia, alertas: afectadas } of avisos) {
       for (const alerta of afectadas) {
+        // Marca ANTES de avisar (y solo si nadie la ha marcado ya entre
+        // instancias): el dedupe vive en BD, no en la copia local
+        const marcadas = [...alerta.incidenciasNotificadas, incidencia.id];
+        const marcado = await prisma.alerta.updateMany({
+          where: { id: alerta.id, NOT: { incidenciasNotificadas: { has: incidencia.id } } },
+          data: { incidenciasNotificadas: { set: marcadas } },
+        });
+        if (marcado.count === 0) continue;
+        alerta.incidenciasNotificadas = marcadas;
+
         try {
           await notificar(
             alerta,
@@ -266,17 +290,24 @@ export async function notificarIncidencias(logger: Logger): Promise<void> {
             { tipo: 'incidencia', incidenciaId: incidencia.id },
             logger,
           );
-          // Prisma no admite `push` en arrays de Postgres: se reescribe el array
-          // completo (el worker corre secuencial, sin carreras). La copia local
-          // evita repetir dentro del mismo barrido si dos incidencias tocan la
-          // misma alerta.
-          alerta.incidenciasNotificadas = [...alerta.incidenciasNotificadas, incidencia.id];
-          await prisma.alerta.updateMany({
-            where: { id: alerta.id },
-            data: { incidenciasNotificadas: { set: alerta.incidenciasNotificadas } },
-          });
           enviados++;
         } catch (error) {
+          // El aviso se ha perdido: se deshace la marca para reintentarlo en el
+          // próximo barrido (la copia local también vuelve atrás)
+          alerta.incidenciasNotificadas = alerta.incidenciasNotificadas.filter(
+            (id) => id !== incidencia.id,
+          );
+          try {
+            await prisma.alerta.updateMany({
+              where: { id: alerta.id },
+              data: { incidenciasNotificadas: { set: alerta.incidenciasNotificadas } },
+            });
+          } catch (deshacer) {
+            logger.warn(
+              { alertaId: alerta.id, incidenciaId: incidencia.id, err: deshacer },
+              'No se pudo deshacer la marca del aviso de incidencia',
+            );
+          }
           logger.warn(
             { alertaId: alerta.id, incidenciaId: incidencia.id, err: error },
             'Aviso de incidencia no enviado',

@@ -16,12 +16,13 @@ import { api } from '@/lib/api';
 import { locale } from '@/i18n';
 import { etiquetaCriterio, etiquetaDiasSemana } from '@/lib/alertas';
 import { fechaCorta } from '@/lib/proximoViaje';
+import { ListaIncidencias } from '@/components/ListaIncidencias';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { construirIcs, descargarIcs, nombreFicheroIcs } from '@/lib/ics';
-import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
+import { incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import {
   agruparContagos,
   agruparPrecios,
@@ -185,39 +186,21 @@ export function PaginaDetalleAlerta() {
       ) : (
         alerta && (
           <>
-            {incidencias.length > 0 && (
-              <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+            <ListaIncidencias
+              incidencias={incidencias}
+              variante="caja"
+              cabecera={
                 <p className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
                   <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
                   {t('detalleAlerta.incidenciaTitulo')}
                 </p>
-                <ul className="mt-2 space-y-3">
-                  {incidencias.map((incidencia) => (
-                    <li key={incidencia.id} className="space-y-1">
-                      <p className="font-medium">
-                        {incidencia.titulo ?? t('incidencias.tituloFallback')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatoPeriodo(incidencia.desde, incidencia.hasta)}
-                      </p>
-                      {incidencia.estacionesAfectadas.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {t('estaciones.estacionesList', {
-                            lista: incidencia.estacionesAfectadas.join(', '),
-                          })}
-                        </p>
-                      )}
-                      {incidencia.mensaje && (
-                        <p className="text-muted-foreground">{incidencia.mensaje}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              }
+              pie={
                 <Link to="/incidencias" className="mt-2 inline-block font-medium underline">
                   {t('detalleAlerta.verTodas')}
                 </Link>
-              </div>
-            )}
+              }
+            />
 
             <Card>
               <CardHeader>

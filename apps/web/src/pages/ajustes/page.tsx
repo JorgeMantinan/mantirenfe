@@ -28,12 +28,15 @@ export function PaginaAjustes() {
 
   useEffect(() => {
     if (!authConfigurada) return;
+    let cancelado = false;
     api<PreferenciasUsuario>('/auth/preferencias')
       .then((p) => {
+        if (cancelado) return;
         setPreferencias(p);
         if (p.tema && !edicionTemaReciente()) setTheme(aNextTheme(p.tema));
       })
-      .catch(() =>
+      .catch(() => {
+        if (cancelado) return;
         setPreferencias({
           notificacionesPush: true,
           notificacionesEmail: false,
@@ -41,9 +44,12 @@ export function PaginaAjustes() {
           resumenViaje: true,
           minutosRecordatorio: 50,
           tema: 'sistema',
-        }),
-      );
-  }, [authConfigurada]);
+        });
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [authConfigurada, setTheme]);
 
   const elegirTema = (tema: TemaDom) => {
     marcarEdicionTema();
@@ -56,13 +62,16 @@ export function PaginaAjustes() {
       preferencias ?? (await api<PreferenciasUsuario>('/auth/preferencias').catch(() => null));
     if (!base) return;
     const siguiente = { ...base, tema: temaActual, ...parcial };
+    // Se pinta ya para que el cambio se note al instante
     setPreferencias(siguiente);
     setGuardando(true);
     try {
       await api('/auth/preferencias', { method: 'POST', json: siguiente });
       toast.success(t('ajustes.guardadas'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('ajustes.noGuardar'));
+      // El servidor no se quedó con el cambio: se revierte al valor anterior
+      setPreferencias(base);
+      toast.error(e instanceof Error && e.message ? e.message : t('ajustes.noGuardar'));
     } finally {
       setGuardando(false);
     }

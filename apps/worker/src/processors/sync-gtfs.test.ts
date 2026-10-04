@@ -54,7 +54,8 @@ const { prismaMock, store } = vi.hoisted(() => {
     estaciones: new Map<string, EstacionGuardada>(),
     horarios: [] as HorarioGuardado[],
     paradas: [] as ParadaGuardada[],
-    estacionesUpsert: [] as string[],
+    /** Lotes de códigos actualizados con `estacion.updateMany`. */
+    estacionesUpdateMany: [] as string[][],
     estacionesCreateMany: [] as string[],
     /** Llamadas a findMany del mecanismo de reparación de tripIds. */
     consultasReparacion: [] as number[],
@@ -64,26 +65,26 @@ const { prismaMock, store } = vi.hoisted(() => {
 
   const prismaMock = {
     estacion: {
-      upsert: async (args: {
-        where: { codigo: string };
-        update: Partial<EstacionGuardada>;
-        create: EstacionGuardada;
-      }) => {
-        const existente = store.estaciones.get(args.where.codigo);
-        if (existente) {
-          Object.assign(existente, args.update);
-        } else {
-          store.estaciones.set(args.where.codigo, args.create);
-        }
-        store.estacionesUpsert.push(args.where.codigo);
-        return existente ?? args.create;
-      },
       createMany: async (args: { data: EstacionGuardada[] }) => {
         let count = 0;
         for (const fila of args.data) {
           store.estacionesCreateMany.push(fila.codigo);
           if (store.estaciones.has(fila.codigo)) continue;
           store.estaciones.set(fila.codigo, fila);
+          count++;
+        }
+        return { count };
+      },
+      updateMany: async (args: {
+        where: { codigo: { in: string[] } };
+        data: Partial<EstacionGuardada>;
+      }) => {
+        store.estacionesUpdateMany.push(args.where.codigo.in);
+        let count = 0;
+        for (const codigo of args.where.codigo.in) {
+          const existente = store.estaciones.get(codigo);
+          if (!existente) continue;
+          Object.assign(existente, args.data);
           count++;
         }
         return { count };
@@ -275,7 +276,7 @@ beforeEach(() => {
   store.estaciones.clear();
   store.horarios.length = 0;
   store.paradas.length = 0;
-  store.estacionesUpsert.length = 0;
+  store.estacionesUpdateMany.length = 0;
   store.estacionesCreateMany.length = 0;
   store.consultasReparacion.length = 0;
   store.reparaciones.length = 0;
@@ -343,12 +344,13 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
     await sincronizarEstaciones(logger);
     await sincronizarHorarios(logger);
 
-    // El feed principal crea la estación con su nombre...
+    // El feed principal da de alta las estaciones que falten (createMany en
+    // lote, sin un upsert por fila) y no deja nada por actualizar
     expect(store.estaciones.get('17000')?.nombre).toBe('Madrid-Chamartín-Clara Campoamor');
-    expect(store.estacionesUpsert).toEqual(['17000', '28000']);
+    expect(store.estacionesCreateMany).toEqual(['17000', '28000', '66000']);
+    expect(store.estacionesUpdateMany).toEqual([]);
     // ...y el feed OUIGO pasa por createMany sin actualizar lo que ya existe,
     // aunque el mismo código venga con otra denominación
-    expect(store.estacionesCreateMany).toEqual(['17000', '66000']);
     expect(store.estaciones.get('17000')?.nombre).not.toBe('MADRID CHAMARTIN');
     // Las estaciones que solo existen en OUIGO sí se dan de alta
     expect(store.estaciones.get('66000')?.nombre).toBe('LYON PART DIEU');
@@ -376,6 +378,31 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
     // La ApiKey del NAP no se filtra a otros hosts (2 feeds × 2 pasadas)
     expect(peticiones).toHaveLength(4);
     for (const peticion of peticiones) expect(peticion.apikey).toBeUndefined();
+  });
+
+  it('actualiza por lotes las estaciones existentes cuyos datos cambiaron', async () => {
+    process.env.GTFS_ZIP_URLS = `${base}/renfe.zip`;
+    process.env.GTFS_ZIP_URLS_OUIGO = '';
+
+    // Estación heredada con el nombre antiguo y sin coordenadas
+    store.estaciones.set('17000', {
+      id: '17000',
+      codigo: '17000',
+      nombre: 'Madrid-Chamartín',
+      latitud: null,
+      longitud: null,
+    });
+
+    await sincronizarEstaciones(logger);
+
+    // Un único updateMany con los códigos que cambian (28000 es alta, no update)
+    expect(store.estacionesUpdateMany).toEqual([['17000']]);
+    expect(store.estacionesCreateMany).toEqual(['28000']);
+    expect(store.estaciones.get('17000')).toMatchObject({
+      nombre: 'Madrid-Chamartín-Clara Campoamor',
+      latitud: 40.47,
+      longitud: -3.68,
+    });
   });
 
   it('repara el tripId de otra publicación que choca en la unique', async () => {

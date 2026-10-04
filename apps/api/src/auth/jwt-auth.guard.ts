@@ -25,12 +25,18 @@ interface PayloadJwt extends JWTPayload {
 export class JwtAuthGuard implements CanActivate {
   private readonly supabaseUrl: string;
   private readonly jwks: ReturnType<typeof createRemoteJWKSet> | null;
+  /** `iss` del token: SOLO de ConfigService (misma fuente que el JWKS). */
+  private readonly issuer: string | null;
+  /** `aud` del token: fijo por Supabase Auth, configurable por ConfigService. */
+  private readonly audience: string;
 
   constructor(
     private readonly reflector: Reflector,
     config: ConfigService,
   ) {
     this.supabaseUrl = (config.get<string>('SUPABASE_URL') ?? '').replace(/\/+$/, '');
+    this.issuer = this.supabaseUrl ? `${this.supabaseUrl}/auth/v1` : null;
+    this.audience = config.get<string>('SUPABASE_JWT_AUDIENCE') ?? 'authenticated';
     this.jwks = this.supabaseUrl
       ? createRemoteJWKSet(new URL(`${this.supabaseUrl}/auth/v1/.well-known/jwks.json`), {
           timeoutDuration: 8_000,
@@ -51,7 +57,7 @@ export class JwtAuthGuard implements CanActivate {
       .switchToHttp()
       .getRequest<{ headers: Record<string, string | undefined>; user?: unknown }>();
 
-    if (!this.supabaseUrl || !this.jwks) {
+    if (!this.supabaseUrl || !this.jwks || !this.issuer) {
       throw new UnauthorizedException('SUPABASE_URL no configurada en la API');
     }
     const token = extraerToken(request.headers.authorization);
@@ -60,15 +66,12 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const opciones: { algorithms: string[]; issuer?: string; audience?: string } = {
+      const { payload } = await jwtVerify(token, this.jwks, {
         algorithms: ['ES256'],
-      };
-      if (process.env.SUPABASE_URL) {
         // Restringe el token a NUESTRO proyecto (iss/aud de Supabase Auth)
-        opciones.issuer = `${process.env.SUPABASE_URL}/auth/v1`;
-        opciones.audience = 'authenticated';
-      }
-      const { payload } = await jwtVerify(token, this.jwks, opciones);
+        issuer: this.issuer,
+        audience: this.audience,
+      });
       const p = payload as PayloadJwt;
       if (!p.sub) throw new UnauthorizedException('Token sin sujeto');
       request.user = {
@@ -81,17 +84,13 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
-      const mensaje = error instanceof Error ? error.message : String(error);
-      if (mensaje.includes('expir')) {
+      // jose cataloga cada fallo con un `code` estable: no se decide por textos
+      const codigo =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      if (codigo === 'ERR_JWT_EXPIRED') {
         throw new UnauthorizedException('La sesión ha expirado: vuelve a iniciar sesión');
-      }
-      if (
-        mensaje.includes('JWKS') ||
-        mensaje.includes('fetch') ||
-        mensaje.includes('network') ||
-        mensaje.includes('ENOTFOUND')
-      ) {
-        throw new UnauthorizedException('Token inválido');
       }
       throw new UnauthorizedException('Token inválido');
     }

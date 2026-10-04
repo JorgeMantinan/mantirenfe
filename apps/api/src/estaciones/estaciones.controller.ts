@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { EsPublico } from '../common/es-publico.decorator';
 import { EstacionesService } from './estaciones.service';
 
@@ -23,9 +24,10 @@ export class EstacionesController {
     );
   }
 
-  /** Ficha enriquecida: pública y limitada por el ThrottlerGuard global. */
+  /** Ficha enriquecida: consulta dos fuentes externas de Renfe, más restrictiva. */
   @Get('detalle')
   @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 10 } })
   detalle(@Query('codigo') codigo?: string, @Query('q') q?: string) {
     return this.estacionesService.detalle(codigo, q);
   }

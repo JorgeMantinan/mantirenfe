@@ -20,9 +20,19 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule, { logger: new NestPinoLogger(logger) });
-  // Con Vercel/Render delante, la IP real viene en X-Forwarded-For:1 salto para
-  // que el rate limit por IP funcione (si no, todos los usuarios comparten bucket).
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Con Vercel/Render delante, la IP real viene en X-Forwarded-For y hay que
+  // decirle a Express en cuántos saltos confiar: en local basta 1, en producción
+  // la petición pasa por el edge de Vercel y luego por Render (TRUST_PROXY_HOPS=2).
+  // Si el número de saltos no coincide, el rate limit por IP agrupa a todos los
+  // usuarios en el mismo bucket (o confía en una IP que el cliente puede falsear).
+  const saltosProxy = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set(
+      'trust proxy',
+      Number.isFinite(saltosProxy) && saltosProxy >= 0 ? Math.trunc(saltosProxy) : 1,
+    );
   // No fingerprintar el stack (audit de seguridad)
   app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.use(
@@ -49,8 +59,13 @@ async function bootstrap() {
     }),
   );
 
-  const orígenes = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',');
-  app.enableCors({ origin: orígenes, credentials: true });
+  // La API solo acepta Bearer (sin cookies): `credentials` sobra y abre la
+  // puerta a CSRF si algún día se colase una cookie.
+  const orígenes = (process.env.WEB_ORIGIN ?? 'http://localhost:5173')
+    .split(',')
+    .map((origen) => origen.trim())
+    .filter((origen) => origen !== '');
+  app.enableCors({ origin: orígenes });
   app.setGlobalPrefix('api');
 
   // Swagger fuera en producción salvo que se habilite explícitamente

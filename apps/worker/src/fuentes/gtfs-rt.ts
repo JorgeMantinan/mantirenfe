@@ -8,10 +8,42 @@ import {
   type EstadoDisponibilidad,
   type EstadoTrenDisponible,
 } from '@mantirenfe/shared-types';
+import { conCache, type EntradaCache } from './cache';
 import type { FuenteDatosTren } from './tipos';
 
 const URL_TRIP_UPDATES_DEFECTO =
   'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
+
+/**
+ * El feed de trip_updates se renueva cada 15-30 s: 20 s de TTL + single-flight
+ * hacen que varias alertas sondeadas a la vez compartan una única descarga
+ * (el sondeo de retrasos, los suprimidos y el resto de consumidores).
+ */
+const TTL_TRIP_UPDATES_MS = 20_000;
+const CACHE_TRIP_UPDATES = new Map<string, EntradaCache<unknown>>();
+
+/** Descarga un feed GTFS-RT JSON con la caché corta compartida. */
+export async function descargarTripUpdates(url: string): Promise<unknown> {
+  return conCache(CACHE_TRIP_UPDATES, url, TTL_TRIP_UPDATES_MS, async () => {
+    const controlador = new AbortController();
+    const timeout = setTimeout(() => controlador.abort(), 10_000);
+    try {
+      const respuesta = await fetch(url, {
+        signal: controlador.signal,
+        headers: { accept: 'application/json' },
+      });
+      if (!respuesta.ok) throw new Error(`GTFS_RT_HTTP_${respuesta.status}`);
+      return await respuesta.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+/** Solo para tests: la caché vive en la memoria del proceso. */
+export function limpiarCacheTripUpdates(): void {
+  CACHE_TRIP_UPDATES.clear();
+}
 
 export interface HorarioRetraso {
   numeroTren: string;
@@ -89,7 +121,7 @@ export class FuenteGtfsRt implements FuenteDatosTren {
       .map((u) => u.trim())
       .filter(Boolean);
     const tripIds = new Set(horarios.map((h) => h.numeroTren));
-    const feeds = await Promise.all(urls.map((u) => this.descargarFeed(u)));
+    const feeds = await Promise.all(urls.map((u) => descargarTripUpdates(u)));
     const retrasos = new Map<string, number>();
     const cancelados = new Set<string>();
     const suprimidas = new Map<string, string[]>();
@@ -110,21 +142,6 @@ export class FuenteGtfsRt implements FuenteDatosTren {
       ...estacionesDestino,
     ]);
     return construirEstadoRetrasos(consulta, horarios, retrasos, cancelados, paradasSuprimidas);
-  }
-
-  private async descargarFeed(url: string): Promise<unknown> {
-    const controlador = new AbortController();
-    const timeout = setTimeout(() => controlador.abort(), 10_000);
-    try {
-      const respuesta = await fetch(url, {
-        signal: controlador.signal,
-        headers: { accept: 'application/json' },
-      });
-      if (!respuesta.ok) throw new Error(`GTFS_RT_HTTP_${respuesta.status}`);
-      return await respuesta.json();
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 }
 

@@ -77,7 +77,8 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: true,
+      // Sourcemaps solo en desarrollo: en producción pesan más que el propio JS
+      sourcemap: mode !== 'production',
     },
   };
 });

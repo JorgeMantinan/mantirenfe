@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Bell, LogOut, Moon, Settings, Sun, SunMoon, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/hooks/useAuth';
+import { useRefresco } from '@/hooks/useRefresco';
 import { api } from '@/lib/api';
 import { desuscribirPush } from '@/lib/push';
 import { aNextTheme, marcarEdicionTema, type TemaDom } from '@/lib/tema';
@@ -80,26 +81,17 @@ export function Header() {
   const navigate = useNavigate();
   const [noLeidas, setNoLeidas] = useState(0);
 
-  useEffect(() => {
+  // Contador de avisos cada minuto, en pausa con la pestaña oculta
+  const cargar = useCallback(() => {
     if (!user) {
       setNoLeidas(0);
       return;
     }
-    let vivo = true;
-    const cargar = () => {
-      api<{ noLeidas: number }>('/notificaciones/contador')
-        .then((d) => {
-          if (vivo) setNoLeidas(d.noLeidas);
-        })
-        .catch(() => undefined);
-    };
-    cargar();
-    const intervalo = window.setInterval(cargar, 60_000);
-    return () => {
-      vivo = false;
-      window.clearInterval(intervalo);
-    };
+    api<{ noLeidas: number }>('/notificaciones/contador')
+      .then((d) => setNoLeidas(d.noLeidas))
+      .catch(() => undefined);
   }, [user]);
+  useRefresco(cargar, 60_000);
 
   const cerrarSesion = async () => {
     await desuscribirPush();

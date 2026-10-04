@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { PreferenciasUsuario } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
@@ -8,7 +8,12 @@ import { Tarjeta } from '@/components/Tarjeta';
 import { useAuth } from '@/hooks/useAuth';
 import { cambiarIdioma, IDIOMAS, type Idioma } from '@/i18n';
 import { api } from '@/lib/api';
-import { desregistrarPushMovil, registrarPushMovil } from '@/lib/push';
+import {
+  desregistrarPushMovil,
+  leerPermisoPush,
+  registrarPushMovil,
+  type EstadoPermisoPush,
+} from '@/lib/push';
 import { useTema, type ModoTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
 import { repintarWidget } from '@/widget/actualizarWidget';
@@ -28,6 +33,9 @@ export default function Ajustes() {
   const [resumen, setResumen] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [estadoPush, setEstadoPush] = useState<string | null>(null);
+  // Estado real del permiso del sistema: manda sobre el interruptor, que no
+  // debe enseñar «activado» con las notificaciones bloqueadas por Android.
+  const [permiso, setPermiso] = useState<EstadoPermisoPush | null>(null);
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   const idiomaActual: Idioma = i18n.language === 'en' ? 'en' : 'es';
@@ -37,10 +45,18 @@ export default function Ajustes() {
     sistema: t('ajustes.temaSistema'),
   };
 
+  // `cancelado` evita que la respuesta pinte preferencias de una pantalla ya
+  // desmontada (o pisar las de una recarga posterior).
+  const cancelado = useRef(false);
+  const peticion = useRef(0);
+
   useEffect(() => {
     if (!authConfigurada) return;
+    cancelado.current = false;
+    const id = ++peticion.current;
     api<PreferenciasUsuario>('/auth/preferencias')
       .then((p) => {
+        if (cancelado.current || peticion.current !== id) return;
         setPref(p);
         setPush(p.notificacionesPush);
         setRecordatorio(p.recordatorioSalida);
@@ -50,11 +66,74 @@ export default function Ajustes() {
       .catch(() => {
         // sin preferencias guardadas: se mantienen los valores por defecto
       });
+    return () => {
+      cancelado.current = true;
+      peticion.current++;
+    };
   }, [authConfigurada]);
 
+  // Permiso de notificaciones al montar (y se vuelve a leer tras cada intento)
+  useEffect(() => {
+    let vivo = true;
+    void leerPermisoPush().then((estado) => {
+      if (vivo) setPermiso(estado);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  /**
+   * Guarda las preferencias en el servidor y devuelve si ha salido bien.
+   * No hace el POST hasta haber cargado `pref` (si el GET falló o sigue en
+   * vuelo, no hay con qué construir el cuerpo) ni si el propio POST falla.
+   */
+  const guardar = async (parcial: Partial<PreferenciasUsuario>): Promise<boolean> => {
+    if (!pref) return false;
+    setGuardando(true);
+    try {
+      const siguiente: PreferenciasUsuario = {
+        notificacionesPush: parcial.notificacionesPush ?? pref.notificacionesPush,
+        notificacionesEmail: parcial.notificacionesEmail ?? pref.notificacionesEmail,
+        recordatorioSalida: parcial.recordatorioSalida ?? pref.recordatorioSalida,
+        resumenViaje: parcial.resumenViaje ?? pref.resumenViaje,
+        minutosRecordatorio: parcial.minutosRecordatorio ?? pref.minutosRecordatorio,
+        tema: modo,
+      };
+      const guardado = await api<PreferenciasUsuario>('/auth/preferencias', {
+        method: 'POST',
+        json: siguiente,
+      });
+      setPref(guardado);
+      return true;
+    } catch {
+      // preferencias opcionales: no bloquean la UI; quien llama revierte
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  /**
+   * Aplica el cambio en pantalla y, si no se ha guardado, lo deshace y avisa:
+   * la interfaz no debe enseñar un estado que el servidor no tiene.
+   */
+  const guardarConReversion = async (
+    aplicar: () => void,
+    revertir: () => void,
+    parcial: Partial<PreferenciasUsuario>,
+  ): Promise<void> => {
+    aplicar();
+    if (await guardar(parcial)) return;
+    revertir();
+    Alert.alert(t('comunes.error'), t('comunes.errorActualizar'));
+  };
+
   const cambiarPush = async (activo: boolean) => {
+    const anterior = push;
     setPush(activo);
     const resultado = activo ? await registrarPushMovil() : await desregistrarPushMovil();
+    setPermiso(await leerPermisoPush());
     setEstadoPush(
       resultado.ok
         ? activo
@@ -62,30 +141,25 @@ export default function Ajustes() {
           : t('ajustes.pushKo')
         : (resultado.error ?? t('ajustes.pushError')),
     );
-    if (!resultado.ok && activo) setPush(false);
-    void guardar({ notificacionesPush: activo && resultado.ok });
-  };
-
-  const guardar = async (parcial: Partial<PreferenciasUsuario>) => {
-    setGuardando(true);
-    try {
-      const siguiente = { ...(pref ?? {}), ...parcial, tema: modo } as PreferenciasUsuario;
-      const guardado = await api<PreferenciasUsuario>('/auth/preferencias', {
-        method: 'POST',
-        json: siguiente,
-      });
-      setPref(guardado);
-    } catch {
-      // preferencias opcionales: no bloquear la UI
-    } finally {
-      setGuardando(false);
+    if (!resultado.ok) {
+      // El dispositivo sigue como estaba: se revierte el interruptor y no se
+      // escribe nada en el servidor (antes se apagaba allí sin querer).
+      setPush(anterior);
+      return;
     }
+    // Solo con el dispositivo ya en el estado pedido se guarda la preferencia
+    if (await guardar({ notificacionesPush: activo })) return;
+    setPush(anterior);
+    Alert.alert(t('comunes.error'), t('comunes.errorActualizar'));
   };
 
   const cerrarSesion = async () => {
     await salir();
     router.replace('/login');
   };
+
+  /** Interruptor real: preferencia del servidor y permiso del sistema. */
+  const pushActivo = push && (permiso?.concedido ?? true);
 
   return (
     <View style={s.pantalla}>
@@ -136,7 +210,7 @@ export default function Ajustes() {
         <View style={s.fila}>
           <Text style={s.etiqueta}>{t('ajustes.pushDisponibilidad')}</Text>
           <Switch
-            value={push}
+            value={pushActivo}
             onValueChange={(v) => {
               void cambiarPush(v);
             }}
@@ -145,13 +219,27 @@ export default function Ajustes() {
           />
         </View>
         {estadoPush ? <Text style={s.pie}>{estadoPush}</Text> : null}
+        {permiso && !permiso.concedido && !estadoPush ? (
+          <Text style={s.pie}>{t('push.permisoDenegado')}</Text>
+        ) : null}
+        {permiso && !permiso.concedido && !permiso.puedePreguntar ? (
+          <Boton
+            titulo={t('ajustes.abrirAjustes')}
+            variante="contorno"
+            onPress={() => void Linking.openSettings().catch(() => undefined)}
+            style={s.botonAjustes}
+          />
+        ) : null}
         <View style={s.fila}>
           <Text style={s.etiqueta}>{t('ajustes.recordatorio')}</Text>
           <Switch
             value={recordatorio}
             onValueChange={(v) => {
-              setRecordatorio(v);
-              void guardar({ recordatorioSalida: v });
+              void guardarConReversion(
+                () => setRecordatorio(v),
+                () => setRecordatorio(recordatorio),
+                { recordatorioSalida: v },
+              );
             }}
             trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
             thumbColor="#fff"
@@ -165,8 +253,11 @@ export default function Ajustes() {
                 <Text
                   key={n}
                   onPress={() => {
-                    setMinutos(n);
-                    void guardar({ minutosRecordatorio: n });
+                    void guardarConReversion(
+                      () => setMinutos(n),
+                      () => setMinutos(minutos),
+                      { minutosRecordatorio: n },
+                    );
                   }}
                   style={{
                     paddingHorizontal: 12,
@@ -190,8 +281,11 @@ export default function Ajustes() {
           <Switch
             value={resumen}
             onValueChange={(v) => {
-              setResumen(v);
-              void guardar({ resumenViaje: v });
+              void guardarConReversion(
+                () => setResumen(v),
+                () => setResumen(resumen),
+                { resumenViaje: v },
+              );
             }}
             trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
             thumbColor="#fff"
@@ -276,5 +370,11 @@ const estilos = (c: Paleta) =>
     pie: {
       fontSize: 12,
       color: c.textoSecundario,
+    },
+    botonAjustes: {
+      alignSelf: 'flex-start',
+      minHeight: 40,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
     },
   });

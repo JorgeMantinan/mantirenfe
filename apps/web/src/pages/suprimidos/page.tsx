@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { CircleSlash, Search } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { Badge } from '@/components/ui/badge';
+import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fechaGtfs, type EstacionResponse, type SuprimidoResponse } from '@mantirenfe/shared-types';
+import { FILAS_INICIALES_TABLA } from '@/lib/ui-constants';
+import { fechaGtfs, type SuprimidoResponse } from '@mantirenfe/shared-types';
 
 /** Días de histórico que conserva la API (el worker poda a los 7). */
 const DIAS_HISTORICO = 7;
@@ -33,23 +36,21 @@ export function PaginaSuprimidos() {
   const [texto, setTexto] = useState('');
   const [estacion, setEstacion] = useState('');
   const [fecha, setFecha] = useState(fechaGtfs);
-  const [sugerencias, setSugerencias] = useState<EstacionResponse[]>([]);
+  const {
+    sugerencias,
+    sugerir: buscarEstaciones,
+    limpiar: cerrarSugerencias,
+  } = useBuscadorEstaciones({ limite: 5 });
   const [datos, setDatos] = useState<SuprimidoResponse[] | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticion = useRef(0);
-
-  useEffect(
-    () => () => {
-      clearTimeout(timer.current);
-    },
-    [],
-  );
+  const [mostrarMas, setMostrarMas] = useState(FILAS_INICIALES_TABLA);
 
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
+    // Cada consulta empieza con la tabla al tope: los filtros cambian el listado
+    setMostrarMas(FILAS_INICIALES_TABLA);
     try {
       const params = new URLSearchParams({ fecha });
       if (estacion.trim()) params.set('estacion', estacion.trim());
@@ -61,41 +62,21 @@ export function PaginaSuprimidos() {
     } finally {
       setCargando(false);
     }
-  }, [fecha, estacion]);
+  }, [fecha, estacion, t]);
 
   useEffect(() => {
     void cargar();
   }, [cargar]);
 
-  // Autocompletado con debounce (mismo patrón que la búsqueda de trenes)
-  const sugerir = (valor: string) => {
-    setTexto(valor);
-    const id = ++peticion.current;
-    clearTimeout(timer.current);
-    if (valor.trim().length < 2) {
-      setSugerencias([]);
-      return;
-    }
-    timer.current = setTimeout(() => {
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(valor.trim())}&limite=5`)
-        .then((r) => {
-          if (peticion.current === id) setSugerencias(r);
-        })
-        .catch(() => {
-          if (peticion.current === id) setSugerencias([]);
-        });
-    }, 250);
-  };
-
   const buscar = (evento: FormEvent) => {
     evento.preventDefault();
-    setSugerencias([]);
+    cerrarSugerencias();
     setEstacion(texto.trim());
   };
 
   const quitarEstacion = () => {
     setTexto('');
-    setSugerencias([]);
+    cerrarSugerencias();
     setEstacion('');
   };
 
@@ -123,7 +104,10 @@ export function PaginaSuprimidos() {
               <Input
                 id="estacion"
                 value={texto}
-                onChange={(e) => sugerir(e.target.value)}
+                onChange={(e) => {
+                  setTexto(e.target.value);
+                  buscarEstaciones(e.target.value);
+                }}
                 placeholder="Madrid-Atocha"
                 autoComplete="off"
               />
@@ -136,7 +120,7 @@ export function PaginaSuprimidos() {
                         className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
                         onClick={() => {
                           setTexto(e.nombre);
-                          setSugerencias([]);
+                          cerrarSugerencias();
                           setEstacion(e.nombre);
                         }}
                       >
@@ -231,46 +215,55 @@ export function PaginaSuprimidos() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colTren')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colOrigenDestino')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colSalida')}</th>
-                      <th className="py-2 pr-3 font-medium">{t('suprimidos.colLlegada')}</th>
-                      <th className="py-2 font-medium text-right">{t('suprimidos.colDatos')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {datos.map((fila) => (
-                      <tr key={fila.tripId} className="border-b last:border-b-0">
-                        <td className="py-2 pr-3 font-medium">
-                          {fila.numeroTren ?? (
-                            <span className="font-normal text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">
-                          {fila.origen && fila.destino ? (
-                            <>
-                              {fila.origen} → {fila.destino}
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">{fila.salida ?? '—'}</td>
-                        <td className="py-2 pr-3">{fila.llegada ?? '—'}</td>
-                        <td className="py-2 text-right">
-                          {sinDatos(fila) ? (
-                            <Badge variant="aviso">{t('suprimidos.sinDatos')}</Badge>
-                          ) : null}
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">{t('suprimidos.colTren')}</th>
+                        <th className="py-2 pr-3 font-medium">
+                          {t('suprimidos.colOrigenDestino')}
+                        </th>
+                        <th className="py-2 pr-3 font-medium">{t('suprimidos.colSalida')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('suprimidos.colLlegada')}</th>
+                        <th className="py-2 font-medium text-right">{t('suprimidos.colDatos')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {datos.slice(0, mostrarMas).map((fila) => (
+                        <tr key={fila.tripId} className="border-b last:border-b-0">
+                          <td className="py-2 pr-3 font-medium">
+                            {fila.numeroTren ?? (
+                              <span className="font-normal text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {fila.origen && fila.destino ? (
+                              <>
+                                {fila.origen} → {fila.destino}
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">{fila.salida ?? '—'}</td>
+                          <td className="py-2 pr-3">{fila.llegada ?? '—'}</td>
+                          <td className="py-2 text-right">
+                            {sinDatos(fila) ? (
+                              <Badge variant="aviso">{t('suprimidos.sinDatos')}</Badge>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <BotonMostrarMas
+                  total={datos.length}
+                  visible={mostrarMas}
+                  onAmpliar={setMostrarMas}
+                />
+              </>
             )}
           </CardContent>
         </Card>

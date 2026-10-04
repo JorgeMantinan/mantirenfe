@@ -1,24 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  BellPlus,
-  ExternalLink,
-  Map,
-  MapPin,
-  RefreshCw,
-  Search,
-  TrainFront,
-  TriangleAlert,
-} from 'lucide-react';
+import { BellPlus, ExternalLink, Map, MapPin, RefreshCw, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
+import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatoPeriodo, incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
+import { FILAS_INICIALES_TABLA } from '@/lib/ui-constants';
+import { incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
+import { ListaIncidencias } from '@/components/ListaIncidencias';
 import { locale } from '@/i18n';
 import {
   horaGtfs,
@@ -68,16 +63,19 @@ function FilaEstacion({
 export function PaginaEstaciones() {
   const { t } = useTranslation();
   const [texto, setTexto] = useState('');
-  const [sugerencias, setSugerencias] = useState<EstacionResponse[]>([]);
+  const {
+    sugerencias,
+    sugerir: buscarEstaciones,
+    limpiar: cerrarSugerencias,
+  } = useBuscadorEstaciones({ limite: 8 });
   const [sel, setSel] = useState<EstacionResponse | null>(null);
   const [detalle, setDetalle] = useState<EstacionDetalleResponse | null>(null);
   const [detalleListo, setDetalleListo] = useState(false);
   const [salidas, setSalidas] = useState<HorarioTrenResponse[] | null>(null);
   const [cargando, setCargando] = useState(false);
+  const [mostrarMas, setMostrarMas] = useState(FILAS_INICIALES_TABLA);
   const [error, setError] = useState<string | null>(null);
   const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const peticion = useRef(0);
   const peticionSalidas = useRef(0);
   const peticionDetalle = useRef(0);
 
@@ -144,13 +142,6 @@ export function PaginaEstaciones() {
     return () => observador.disconnect();
   }, [sinBusqueda, listadoCargando, listadoFin, cargarListado]);
 
-  useEffect(
-    () => () => {
-      clearTimeout(timer.current);
-    },
-    [],
-  );
-
   // El feed de incidencias es independiente: si falla, la página sigue útil
   useEffect(() => {
     api<IncidenciaResponse[]>('/incidencias')
@@ -167,26 +158,12 @@ export function PaginaEstaciones() {
       setSalidas(null);
       setError(null);
     }
-    clearTimeout(timer.current);
-    if (valor.trim().length < 2) {
-      setSugerencias([]);
-      return;
-    }
-    timer.current = setTimeout(() => {
-      const id = ++peticion.current;
-      api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(valor.trim())}&limite=8`)
-        .then((r) => {
-          if (peticion.current === id) setSugerencias(r);
-        })
-        .catch(() => {
-          if (peticion.current === id) setSugerencias([]);
-        });
-    }, 250);
+    buscarEstaciones(valor);
   };
 
   const elegir = (estacion: EstacionResponse) => {
     setTexto(estacion.nombre);
-    setSugerencias([]);
+    cerrarSugerencias();
     setDetalle(null);
     setDetalleListo(false);
     setSel(estacion);
@@ -196,6 +173,7 @@ export function PaginaEstaciones() {
     if (!sel) return;
     const id = ++peticionSalidas.current;
     setCargando(true);
+    setMostrarMas(FILAS_INICIALES_TABLA);
     setError(null);
     api<HorarioTrenResponse[]>(
       `/trenes/estacion?estacion=${encodeURIComponent(sel.nombre)}&fecha=${hoy()}`,
@@ -442,26 +420,12 @@ export function PaginaEstaciones() {
           </Card>
 
           {afectadas.map((incidencia) => (
-            <div
+            <ListaIncidencias
               key={incidencia.id}
-              className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm"
-            >
-              <p className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
-                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {incidencia.titulo ?? t('incidencias.tituloFallback')}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatoPeriodo(incidencia.desde, incidencia.hasta)}
-              </p>
-              {incidencia.mensaje && <p className="mt-2">{incidencia.mensaje}</p>}
-              {incidencia.estacionesAfectadas.length > 0 && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {t('estaciones.estacionesList', {
-                    lista: incidencia.estacionesAfectadas.join(', '),
-                  })}
-                </p>
-              )}
-            </div>
+              incidencias={[incidencia]}
+              variante="caja"
+              destacada
+            />
           ))}
 
           <Card>
@@ -512,60 +476,69 @@ export function PaginaEstaciones() {
                   {t('estaciones.sinSalidas')}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">{t('tabla.salida')}</th>
-                        <th className="py-2 pr-3 font-medium">{t('tabla.destino')}</th>
-                        <th className="py-2 pr-3 font-medium">{t('tabla.tren')}</th>
-                        <th className="py-2 pr-3 font-medium">{t('tabla.operador')}</th>
-                        <th className="py-2 font-medium text-right">
-                          {t('estaciones.crearAlertaFila')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {salidas.map((salida) => (
-                        <tr
-                          key={`${salida.numeroTren}-${salida.salida}`}
-                          className="border-b last:border-b-0"
-                        >
-                          <td className="py-2 pr-3 font-medium">{horaGtfs(salida.salida)}</td>
-                          <td className="py-2 pr-3">{salida.destinoNombre}</td>
-                          <td className="py-2 pr-3">
-                            <Badge variant="outline">{salida.numeroTren}</Badge>
-                          </td>
-                          <td className="py-2 pr-3">
-                            {salida.operador ?? <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="py-2 pr-3 text-right">{salida.duracionMin} min</td>
-                          <td className="py-2 text-right">
-                            {sel && salida.destinoNombre !== sel.nombre ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                asChild
-                                className="text-muted-foreground"
-                              >
-                                <Link
-                                  to={
-                                    `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
-                                    `&destino=${encodeURIComponent(salida.destinoNombre)}` +
-                                    `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
-                                  }
-                                >
-                                  <BellPlus className="h-4 w-4" aria-hidden="true" />
-                                  <span className="sr-only">{t('estaciones.crearAlertaFila')}</span>
-                                </Link>
-                              </Button>
-                            ) : null}
-                          </td>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="py-2 pr-3 font-medium">{t('tabla.salida')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('tabla.destino')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('tabla.tren')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('tabla.operador')}</th>
+                          <th className="py-2 font-medium text-right">
+                            {t('estaciones.crearAlertaFila')}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {salidas.slice(0, mostrarMas).map((salida) => (
+                          <tr
+                            key={`${salida.numeroTren}-${salida.salida}`}
+                            className="border-b last:border-b-0"
+                          >
+                            <td className="py-2 pr-3 font-medium">{horaGtfs(salida.salida)}</td>
+                            <td className="py-2 pr-3">{salida.destinoNombre}</td>
+                            <td className="py-2 pr-3">
+                              <Badge variant="outline">{salida.numeroTren}</Badge>
+                            </td>
+                            <td className="py-2 pr-3">
+                              {salida.operador ?? <span className="text-muted-foreground">—</span>}
+                            </td>
+                            <td className="py-2 pr-3 text-right">{salida.duracionMin} min</td>
+                            <td className="py-2 text-right">
+                              {sel && salida.destinoNombre !== sel.nombre ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  asChild
+                                  className="text-muted-foreground"
+                                >
+                                  <Link
+                                    to={
+                                      `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
+                                      `&destino=${encodeURIComponent(salida.destinoNombre)}` +
+                                      `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
+                                    }
+                                  >
+                                    <BellPlus className="h-4 w-4" aria-hidden="true" />
+                                    <span className="sr-only">
+                                      {t('estaciones.crearAlertaFila')}
+                                    </span>
+                                  </Link>
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <BotonMostrarMas
+                    total={salidas.length}
+                    visible={mostrarMas}
+                    onAmpliar={setMostrarMas}
+                  />
+                </>
               )}
             </CardContent>
           </Card>
