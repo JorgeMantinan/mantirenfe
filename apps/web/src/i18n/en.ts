@@ -861,9 +861,12 @@ export const en: MismoArbol<Claves> = {
     accionVuelta: 'Create the return leg',
     tambienVuelta: 'Also the return leg',
     tambienVueltaDesc:
-      'We will create the return alert with the same criteria and time window, on the same date.',
+      'We will create the return alert with the same criteria and time window, on the date you choose below.',
     tambienVueltaRiesgo:
-      'The return alert will use the SAME date as the outbound leg: if you come back another day, edit it afterwards.',
+      'The return alert is independent with its own date: you can edit or pause it separately.',
+    fechaVueltaLabel: 'Return date',
+    errorFechaVuelta: 'Enter the return date.',
+    errorFechaVueltaOrden: 'The return date cannot be before the outbound trip.',
     toastCreadasVuelta:
       '2 alerts created: outbound and return ({{resumen}}). We have started watching them.',
     errorVuelta: 'Outbound alert created; the return leg failed: please try again.',

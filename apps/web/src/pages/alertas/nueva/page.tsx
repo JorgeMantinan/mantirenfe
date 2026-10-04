@@ -110,6 +110,7 @@ export function PaginaNuevaAlerta() {
   const [numeroTren, setNumeroTren] = useState('');
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
+  const [fechaVuelta, setFechaVuelta] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Mientras carga la alerta en modo edición el formulario viene "vacío" (criterio
   // DISPONIBILIDAD por defecto); si el usuario toca el selector antes de que llegue
@@ -271,6 +272,14 @@ export function PaginaNuevaAlerta() {
       toast.error(t('nuevaAlerta.errorDias'));
       return;
     }
+    if (tambienVuelta && !fechaVuelta) {
+      toast.error(t('nuevaAlerta.errorFechaVuelta'));
+      return;
+    }
+    if (tambienVuelta && frecuencia === 'fecha' && fecha && fechaVuelta < fecha) {
+      toast.error(t('nuevaAlerta.errorFechaVueltaOrden'));
+      return;
+    }
     const objetivo = Number(precioObjetivo);
     if (criterio === 'PRECIO' && !(Number.isFinite(objetivo) && objetivo > 0)) {
       toast.error(t('nuevaAlerta.errorPrecio'));
@@ -306,7 +315,7 @@ export function PaginaNuevaAlerta() {
       const rutaVuelta = `/alertas/nueva?origen=${encodeURIComponent(
         datos.destinoNombre,
       )}&destino=${encodeURIComponent(datos.origenNombre)}&fecha=${encodeURIComponent(
-        fechaEfectiva,
+        fechaVuelta || fechaEfectiva,
       )}`;
       const resultado = await api<{ id?: string; error?: unknown }>(url, {
         method: metodo,
@@ -328,7 +337,7 @@ export function PaginaNuevaAlerta() {
         try {
           const vuelta = await api<{ id?: string; error?: unknown }>('/alertas', {
             method: 'POST',
-            json: construirAlertaVuelta(datos),
+            json: construirAlertaVuelta({ ...datos, fechaViaje: fechaVuelta || datos.fechaViaje }),
           });
           vueltaCreada = !vuelta?.error;
         } catch {
@@ -645,7 +654,17 @@ export function PaginaNuevaAlerta() {
                     id="tambienVuelta"
                     type="checkbox"
                     checked={tambienVuelta}
-                    onChange={(e) => setTambienVuelta(e.target.checked)}
+                    onChange={(e) => {
+                      const activo = e.target.checked;
+                      setTambienVuelta(activo);
+                      if (activo && !fechaVuelta) {
+                        // Por defecto, dos días después de la ida (o de hoy)
+                        const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
+                        const d = new Date(`${base}T12:00:00Z`);
+                        d.setUTCDate(d.getUTCDate() + 2);
+                        setFechaVuelta(d.toISOString().slice(0, 10));
+                      }
+                    }}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
                   />
                   <div className="space-y-1">
@@ -658,6 +677,19 @@ export function PaginaNuevaAlerta() {
                     </p>
                   </div>
                 </div>
+                {tambienVuelta && (
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="fechaVuelta">{t('nuevaAlerta.fechaVueltaLabel')}</Label>
+                    <Input
+                      id="fechaVuelta"
+                      type="date"
+                      min={fechaMin}
+                      value={fechaVuelta}
+                      onChange={(e) => setFechaVuelta(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
               </div>
             )}
 

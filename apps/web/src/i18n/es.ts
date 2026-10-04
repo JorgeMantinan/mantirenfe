@@ -862,9 +862,12 @@ export const es = {
     accionVuelta: 'Crear la vuelta',
     tambienVuelta: 'También la vuelta',
     tambienVueltaDesc:
-      'Crearemos la alerta de vuelta con el mismo criterio y franja, en la misma fecha.',
+      'Crearemos la alerta de vuelta con el mismo criterio y franja, en la fecha que elijas abajo.',
     tambienVueltaRiesgo:
-      'La vuelta se creará con la MISMA fecha que la ida: si vuelves otro día, edítala después.',
+      'La vuelta es una alerta independiente con su propia fecha: puedes editarla o pausarla por separado.',
+    fechaVueltaLabel: 'Fecha de la vuelta',
+    errorFechaVuelta: 'Indica la fecha de la vuelta.',
+    errorFechaVueltaOrden: 'La vuelta no puede ser anterior a la ida.',
     toastCreadasVuelta: '2 alertas creadas: ida y vuelta ({{resumen}}). Empezamos a vigilarlas.',
     errorVuelta: 'Alerta de ida creada; la de vuelta falló: reintenta.',
   },

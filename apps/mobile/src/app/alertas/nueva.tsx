@@ -39,6 +39,7 @@ export default function NuevaAlerta() {
   const [bono, setBono] = useState<string>('GENERAL');
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
+  const [fechaVuelta, setFechaVuelta] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
@@ -203,6 +204,17 @@ export default function NuevaAlerta() {
     .join(' · ');
   const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
 
+  /** Activa la vuelta con una fecha por defecto (ida +2 días) si aún no hay. */
+  const alternarVuelta = (activo: boolean) => {
+    setTambienVuelta(activo);
+    if (activo && !fechaVuelta) {
+      const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
+      const d = new Date(`${base}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 2);
+      setFechaVuelta(d.toISOString().slice(0, 10));
+    }
+  };
+
   const enviar = async () => {
     if (frecuencia === 'dias' && dias.length === 0) {
       Alert.alert(t('nueva.revisaCampos'), t('nueva.errorDias'));
@@ -237,6 +249,14 @@ export default function NuevaAlerta() {
       );
       return;
     }
+    if (tambienVuelta && !fechaVuelta) {
+      Alert.alert(t('nueva.revisaCampos'), t('nueva.errorFechaVuelta'));
+      return;
+    }
+    if (tambienVuelta && frecuencia === 'fecha' && fecha && fechaVuelta < fecha) {
+      Alert.alert(t('nueva.revisaCampos'), t('nueva.errorFechaVueltaOrden'));
+      return;
+    }
 
     setEnviando(true);
     try {
@@ -252,7 +272,10 @@ export default function NuevaAlerta() {
         try {
           await api('/alertas', {
             method: 'POST',
-            json: construirAlertaVuelta(validacion.data),
+            json: construirAlertaVuelta({
+              ...validacion.data,
+              fechaViaje: fechaVuelta || validacion.data.fechaViaje,
+            }),
           });
           Alert.alert(t('nueva.creadasTitulo'), t('nueva.creadasCuerpo', { resumen }), [
             { text: t('nueva.entendido') },
@@ -531,19 +554,33 @@ export default function NuevaAlerta() {
               style={s.cajaVueltaTitulo}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: tambienVuelta }}
-              onPress={() => setTambienVuelta((v) => !v)}
+              onPress={() => alternarVuelta(!tambienVuelta)}
             >
               {t('nueva.tambienVuelta')}
             </Text>
             <Switch
               value={tambienVuelta}
-              onValueChange={setTambienVuelta}
+              onValueChange={alternarVuelta}
               trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
               thumbColor="#fff"
             />
           </View>
           <Text style={s.pista}>{t('nueva.tambienVueltaDesc')}</Text>
           <Text style={s.pista}>{t('nueva.tambienVueltaRiesgo')}</Text>
+          {tambienVuelta ? (
+            <>
+              <Text style={s.etiqueta}>{t('nueva.fechaVuelta')}</Text>
+              <TextInput
+                style={s.campo}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={paleta.textoSecundario}
+                keyboardType="numbers-and-punctuation"
+                value={fechaVuelta}
+                onChangeText={setFechaVuelta}
+              />
+              <Text style={s.pista}>{t('nueva.minimo', { fecha: fechaMin })}</Text>
+            </>
+          ) : null}
         </View>
       )}
 
