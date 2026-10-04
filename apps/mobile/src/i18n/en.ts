@@ -102,9 +102,12 @@ export const en: MismoArbol<Claves> = {
     crearVuelta: 'Create the return trip',
     tambienVuelta: 'Also the return leg',
     tambienVueltaDesc:
-      'We will create the return alert with the same criteria and time window, on the same date.',
+      'We will create the return alert with the same criteria and time window, on the date you choose below.',
     tambienVueltaRiesgo:
-      'The return alert will use the SAME date as the outbound leg: if you come back another day, edit it afterwards.',
+      'The return alert is independent with its own date: you can edit or pause it separately.',
+    fechaVuelta: 'Return date',
+    errorFechaVuelta: 'Enter the return date.',
+    errorFechaVueltaOrden: 'The return date cannot be before the outbound trip.',
     tipoAviso: 'Alert type',
     precioObjetivo: 'Notify me if it drops below X €',
     placeholderPrecio: 'E.g. 30',
