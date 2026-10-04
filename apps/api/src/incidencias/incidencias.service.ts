@@ -8,7 +8,8 @@ export class IncidenciasService {
   async activas(): Promise<Incidencia[]> {
     return getPrisma().incidencia.findMany({
       where: { activa: true },
-      orderBy: [{ desde: 'asc' }, { actualizadaEn: 'desc' }],
+      // Más nuevas primero (las nulas, al final): el usuario lee de arriba abajo.
+      orderBy: [{ desde: { sort: 'desc', nulls: 'last' } }, { actualizadaEn: 'desc' }],
       // Red de seguridad (medido: 73 activas de 214 históricas)
       take: 500,
     });

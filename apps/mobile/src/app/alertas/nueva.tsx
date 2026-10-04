@@ -1,6 +1,15 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   BONOS,
@@ -24,6 +33,36 @@ import { fechaCorta } from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
 
+type PropsSelectorFecha = {
+  value: Date;
+  mode?: 'date';
+  display?: 'default' | 'spinner' | 'calendar';
+  minimumDate?: Date;
+  onChange: (evento: { type: string }, fecha?: Date) => void;
+};
+
+// El selector de fechas es un componente NATIVO: en APKs que aún no lo llevan
+// compilado (updates OTA antiguos) el require lanza, lo capturamos y el campo
+// sigue funcionando escribiendo a mano.
+let SelectorFecha: ComponentType<PropsSelectorFecha> | null = null;
+try {
+  SelectorFecha = require('@react-native-community/datetimepicker').default;
+} catch {
+  SelectorFecha = null;
+}
+
+/** ISO con los datos LOCALES (toISOString pasaría a UTC y podría restar un día). */
+function aIsoLocal(d: Date): string {
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+function fechaMedia(iso: string): Date {
+  const [a, m, d] = iso.split('-').map(Number);
+  return a && m && d ? new Date(a, m - 1, d, 12) : new Date();
+}
+
 export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
@@ -40,6 +79,8 @@ export default function NuevaAlerta() {
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
   const [fechaVuelta, setFechaVuelta] = useState('');
+  /** 'ida' | 'vuelta': qué campo abrió el calendario nativo (null = cerrado). */
+  const [selector, setSelector] = useState<'ida' | 'vuelta' | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [numeroTren, setNumeroTren] = useState('');
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
@@ -462,6 +503,17 @@ export default function NuevaAlerta() {
             }}
           />
           <Text style={s.pista}>{t('nueva.minimo', { fecha: fechaMin })}</Text>
+          {SelectorFecha ? (
+            <Pressable
+              onPress={() => setSelector('ida')}
+              style={{ alignSelf: 'flex-start' }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: paleta.primario, fontWeight: '600' }}>
+                {t('nueva.elegirFecha')}
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       ) : null}
 
@@ -579,6 +631,17 @@ export default function NuevaAlerta() {
                 onChangeText={setFechaVuelta}
               />
               <Text style={s.pista}>{t('nueva.minimo', { fecha: fechaMin })}</Text>
+              {SelectorFecha ? (
+                <Pressable
+                  onPress={() => setSelector('vuelta')}
+                  style={{ alignSelf: 'flex-start' }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: paleta.primario, fontWeight: '600' }}>
+                    {t('nueva.elegirFecha')}
+                  </Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -606,6 +669,26 @@ export default function NuevaAlerta() {
         cargando={enviando}
         style={{ marginTop: espaciado.sm }}
       />
+      {SelectorFecha && selector ? (
+        <SelectorFecha
+          value={fechaMedia(selector === 'ida' ? fecha : fechaVuelta)}
+          mode="date"
+          display="default"
+          minimumDate={fechaMedia(fechaMin)}
+          onChange={(evento, d) => {
+            setSelector(null);
+            if (evento.type === 'set' && d) {
+              const iso = aIsoLocal(d);
+              if (selector === 'ida') {
+                setFecha(iso);
+                setNumeroTren(''); // el tren elegido es de otra fecha
+              } else {
+                setFechaVuelta(iso);
+              }
+            }
+          }}
+        />
+      ) : null}
     </ScrollView>
   );
 }

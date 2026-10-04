@@ -106,6 +106,7 @@ export const en: MismoArbol<Claves> = {
     tambienVueltaRiesgo:
       'The return alert is independent with its own date: you can edit or pause it separately.',
     fechaVuelta: 'Return date',
+    elegirFecha: 'Pick from calendar',
     errorFechaVuelta: 'Enter the return date.',
     errorFechaVueltaOrden: 'The return date cannot be before the outbound trip.',
     tipoAviso: 'Alert type',

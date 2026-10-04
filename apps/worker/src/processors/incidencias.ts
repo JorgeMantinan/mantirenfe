@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { getPrisma, normalizarTexto } from '@mantirenfe/database';
+import { getPrisma } from '@mantirenfe/database';
 import { incidenciaAfectaA, type IncidenciaComparable } from '@mantirenfe/shared-types';
 import {
   descargarAlertasGtfsRt,
@@ -16,6 +16,20 @@ const URL_ALERTAS_DEFECTO = 'https://gtfsrt.renfe.com/alerts.pb';
 const LIMITE_ESTACIONES = 20;
 /** Nombres de estación tan cortos que harían falsos positivos en el texto. */
 const LONGITUD_MINIMA_CLAVE = 4;
+
+/**
+ * Clave de búsqueda de zona: sin tildes, sin guiones ni puntuación y con
+ * espacios colapsados, para que "San Fernando-Centro" (nombre en la BD) case
+ * con "estación de San Fernando Centro" (texto de la alerta).
+ */
+function normZona(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 /** Tope de incidencias avisadas en un mismo barrido (el feed corre cada 60 s). */
 export const LIMITE_INCIDENCIAS_POR_BARRIDO = 5;
@@ -126,22 +140,26 @@ function estacionesAfectadas(
   }
   resueltas.forEach(agregar);
 
-  if (nombres.length === 0 && alerta.mensaje) {
-    const mensaje = normalizarTexto(alerta.mensaje);
+  // Búsqueda en texto: se mira el TÍTULO además del mensaje (muchas alertas
+  // solo nombran la zona en la cabecera: "entre Lleida-Pirineus i Manresa").
+  if (nombres.length === 0) {
+    const texto = normZona([alerta.titulo, alerta.mensaje].filter(Boolean).join(' · '));
     for (const candidata of candidatas) {
       if (nombres.length >= LIMITE_ESTACIONES) break;
-      if (candidata.patron.test(mensaje)) agregar(candidata.nombre);
+      if (candidata.patron.test(texto)) agregar(candidata.nombre);
     }
   }
 
   if (nombres.length === 0) alerta.stopIds.forEach(agregar);
+  // �"Solo hay l�nea (C2, RL4, autob�s...)? la zona es la propia l�nea.
+  if (nombres.length === 0) alerta.routeIds.forEach((ruta) => agregar(`L�nea ${ruta}`));
   return nombres;
 }
 
 function candidatasDe(estaciones: Array<{ nombre: string }>): Candidata[] {
   const candidatas: Candidata[] = [];
   for (const { nombre } of estaciones) {
-    const clave = normalizarTexto(nombre);
+    const clave = normZona(nombre);
     if (clave.length < LONGITUD_MINIMA_CLAVE) continue;
     candidatas.push({
       nombre,
