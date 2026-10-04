@@ -75,6 +75,11 @@ export default function NuevaAlerta() {
     editar?: string;
   }>();
   const editandoId = typeof params.editar === 'string' && params.editar ? params.editar : undefined;
+  // En modo edición el formulario arranca "vacío" (criterio DISPONIBILIDAD por
+  // defecto): si la respuesta llega tarde y pisa la selección del usuario, el
+  // criterio "vuelve a" estar en RETRASO. Se bloquea mientras carga y solo una vez.
+  const [cargandoEdicion, setCargandoEdicion] = useState(false);
+  const edicionCargada = useRef<string | null>(null);
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const fechaMin = hoyIso;
@@ -91,6 +96,9 @@ export default function NuevaAlerta() {
     if (typeof params.numeroTren === 'string' && params.numeroTren)
       setNumeroTren(params.numeroTren);
     if (!editandoId) return;
+    if (edicionCargada.current === editandoId) return;
+    edicionCargada.current = editandoId;
+    setCargandoEdicion(true);
     api<{
       origenNombre: string;
       destinoNombre: string;
@@ -122,7 +130,8 @@ export default function NuevaAlerta() {
         setCriterio(a.criterio);
         setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
       })
-      .catch(() => Alert.alert(t('comunes.error'), t('nueva.errorCargar')));
+      .catch(() => Alert.alert(t('comunes.error'), t('nueva.errorCargar')))
+      .finally(() => setCargandoEdicion(false));
   }, [params, editandoId]);
 
   // Los3 próximos trenes de la ruta
@@ -329,8 +338,14 @@ export default function NuevaAlerta() {
         {CRITERIOS.map((valor) => (
           <Text
             key={valor}
-            style={[s.chip, criterio === valor && s.chipActivo]}
-            onPress={() => setCriterio(valor)}
+            style={[
+              s.chip,
+              criterio === valor && s.chipActivo,
+              cargandoEdicion && { opacity: 0.5 },
+            ]}
+            onPress={() => {
+              if (!cargandoEdicion) setCriterio(valor);
+            }}
           >
             {etiquetasCriterio[valor]}
           </Text>

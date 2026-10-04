@@ -659,6 +659,21 @@ export default function Trenes() {
                     {salida.origenNombre} → {salida.destinoNombre}
                     {salida.operador ? ` · ${salida.operador}` : ''}
                   </Text>
+                  <Pressable
+                    onPress={() =>
+                      router.push(
+                        `/alertas/nueva?origen=${encodeURIComponent(salida.origenNombre)}` +
+                          `&destino=${encodeURIComponent(salida.destinoNombre)}` +
+                          `&fecha=${new Date().toISOString().slice(0, 10)}` +
+                          `&numeroTren=${encodeURIComponent(salida.numeroTren)}`,
+                      )
+                    }
+                    style={{ marginTop: 2, alignSelf: 'flex-start' }}
+                  >
+                    <Text style={{ color: paleta.primario, fontSize: 13, fontWeight: '600' }}>
+                      {t('trenes.crearAlertaFila')}
+                    </Text>
+                  </Pressable>
                 </View>
               ))}
             </ScrollView>

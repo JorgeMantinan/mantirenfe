@@ -92,6 +92,11 @@ export function PaginaNuevaAlerta() {
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  // Mientras carga la alerta en modo edición el formulario viene "vacío" (criterio
+  // DISPONIBILIDAD por defecto); si el usuario toca el selector antes de que llegue
+  // la respuesta, aplicar la carga lo pisaría. Se bloquea y solo se carga una vez.
+  const [cargandoEdicion, setCargandoEdicion] = useState(false);
+  const edicionCargada = useRef<string | null>(null);
   const [sugOrigen, setSugOrigen] = useState<EstacionResponse[]>([]);
   const [sugDestino, setSugDestino] = useState<EstacionResponse[]>([]);
   const [trenesSugeridos, setTrenesSugeridos] = useState<HorarioTrenResponse[]>([]);
@@ -170,7 +175,9 @@ export function PaginaNuevaAlerta() {
     if (fechaParam) setFecha(fechaParam);
     if (trenParam) setNumeroTren(trenParam);
 
-    if (editandoId) {
+    if (editandoId && edicionCargada.current !== editandoId) {
+      edicionCargada.current = editandoId;
+      setCargandoEdicion(true);
       api<AlertaResponse>(`/alertas/${editandoId}`)
         .then((a) => {
           setOrigen(a.origenNombre);
@@ -187,7 +194,8 @@ export function PaginaNuevaAlerta() {
           setNotas(a.notas ?? '');
           setNumeroTren(a.numeroTren ?? '');
         })
-        .catch(() => toast.error(t('nuevaAlerta.errorCargar')));
+        .catch(() => toast.error(t('nuevaAlerta.errorCargar')))
+        .finally(() => setCargandoEdicion(false));
     }
   }, [params, editandoId]);
 
@@ -564,6 +572,7 @@ export function PaginaNuevaAlerta() {
                   className={SELECT_CLS}
                   value={criterio}
                   onChange={(e) => setCriterio(e.target.value)}
+                  disabled={cargandoEdicion}
                 >
                   <option value="DISPONIBILIDAD">{t('nuevaAlerta.criterioDisponibilidad')}</option>
                   <option value="HORARIO">{t('nuevaAlerta.criterioHorario')}</option>
