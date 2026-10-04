@@ -210,7 +210,7 @@ model ParadaHorario {
   // feeds: AV/LD y CER no comparten ningún trip_id (0 solapes de 7.148+114.348).
   @@id([tripId, orden])
   // Origen de la query de horarios: paradas de una estación en viajes concretos
-  @@index([estacionId, tripId])
+  @@index([estacionId])
 }
 
 model PosicionTren {
