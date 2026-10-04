@@ -557,23 +557,25 @@ export function PaginaEstaciones() {
                           </td>
                           <td className="py-2 pr-3 text-right">{salida.duracionMin} min</td>
                           <td className="py-2 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              asChild
-                              className="text-muted-foreground"
-                            >
-                              <Link
-                                to={
-                                  `/alertas/nueva?origen=${encodeURIComponent(salida.origenNombre)}` +
-                                  `&destino=${encodeURIComponent(salida.destinoNombre)}` +
-                                  `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
-                                }
+                            {sel && salida.destinoNombre !== sel.nombre ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                asChild
+                                className="text-muted-foreground"
                               >
-                                <BellPlus className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">{t('estaciones.crearAlertaFila')}</span>
-                              </Link>
-                            </Button>
+                                <Link
+                                  to={
+                                    `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
+                                    `&destino=${encodeURIComponent(salida.destinoNombre)}` +
+                                    `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
+                                  }
+                                >
+                                  <BellPlus className="h-4 w-4" aria-hidden="true" />
+                                  <span className="sr-only">{t('estaciones.crearAlertaFila')}</span>
+                                </Link>
+                              </Button>
+                            ) : null}
                           </td>
                         </tr>
                       ))}

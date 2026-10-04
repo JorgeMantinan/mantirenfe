@@ -31,6 +31,7 @@ interface ViajeTest {
   operador: string | null;
   fecha: Date;
   llegada: Date;
+  origen: { nombre: string };
   destino: { nombre: string };
 }
 
@@ -49,6 +50,7 @@ function viaje(
   destino = 'Vigo-Guixar',
   operador = 'MD',
   fecha: Date = DIA,
+  origen = ARCADE.nombre,
 ): ViajeTest {
   return {
     tripId,
@@ -56,6 +58,7 @@ function viaje(
     operador,
     fecha,
     llegada: new Date(llegada),
+    origen: { nombre: origen },
     destino: { nombre: destino },
   };
 }
@@ -113,7 +116,9 @@ describe('TrenesService.salidasEstacion', () => {
   });
 
   it('lista los trenes que solo pasan por la estación (parada intermedia)', async () => {
-    dobleHorarios([viaje('T-pasa', '09073', `${FECHA}T10:40:00.000Z`)]);
+    dobleHorarios([
+      viaje('T-pasa', '09073', `${FECHA}T10:40:00.000Z`, 'Vigo-Guixar', 'MD', DIA, 'Santiago'),
+    ]);
     dobleParadas([parada('T-pasa', 6, 506)]);
 
     const respuesta = await new TrenesService().salidasEstacion('Arcade', FECHA);
@@ -121,8 +126,10 @@ describe('TrenesService.salidasEstacion', () => {
     expect(respuesta).toEqual([
       {
         numeroTren: '09073',
-        // El origen mostrado es la estación consultada: la ficha es de sus salidas
-        origenNombre: 'Arcade',
+        // El origen mostrado es el primer extremo real del viaje, no la
+        // estación consultada: si no, un tren que termina en la consulta
+        // se vería "A Coruña → A Coruña".
+        origenNombre: 'Santiago',
         destinoNombre: 'Vigo-Guixar',
         salida: '2026-09-29T08:26:00.000Z',
         // Llegada al destino final del viaje (coherente con destinoNombre)

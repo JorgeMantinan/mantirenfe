@@ -599,6 +599,7 @@ export class TrenesService {
         numeroTren: true,
         operador: true,
         llegada: true,
+        origen: { select: { nombre: true } },
         destino: { select: { nombre: true } },
       },
       take: 20_000,
@@ -644,7 +645,9 @@ export class TrenesService {
       const salidaMs = baseMs + salidaMin * 60_000;
       salidas.push({
         numeroTren: viaje.numeroTren,
-        origenNombre: mejor.nombre,
+        // El primer extremo real del viaje (no la estación consultada): los
+        // trenes que terminan en la consulta se verían "A Coruña → A Coruña".
+        origenNombre: viaje.origen.nombre,
         destinoNombre: viaje.destino.nombre,
         salida: new Date(salidaMs).toISOString(),
         llegada: viaje.llegada.toISOString(),
