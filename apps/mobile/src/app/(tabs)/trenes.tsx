@@ -706,14 +706,6 @@ export default function Trenes() {
                   })}
                 </Text>
               </Pressable>
-              <Boton
-                titulo={t('trenes.crearAlertaFila')}
-                variante="contorno"
-                onPress={() =>
-                  router.push(`/alertas/nueva?origen=${encodeURIComponent(item.nombre)}`)
-                }
-                style={s.botonAlerta}
-              />
             </Tarjeta>
           )}
           ListEmptyComponent={
@@ -1094,12 +1086,6 @@ const estilos = (c: Paleta) =>
       paddingVertical: 8,
       paddingHorizontal: 12,
       alignSelf: 'flex-start',
-    },
-    botonAlerta: {
-      alignSelf: 'flex-start',
-      minHeight: 36,
-      paddingVertical: 6,
-      paddingHorizontal: 12,
     },
     aforos: {
       gap: 2,

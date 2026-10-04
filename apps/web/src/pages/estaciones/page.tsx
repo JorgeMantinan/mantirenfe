@@ -39,23 +39,9 @@ function mapaExterno(latitud: number, longitud: number): string {
 const PAGINA_ESTACIONES = 20;
 
 /**
- * Enlace «Crear alerta» de una fila de estación. Va en hermano del botón de la
- * fila (no anidado), así que no hace falta `stopPropagation`: la fila sigue
- * abriendo sus salidas y el enlace navega a `/alertas/nueva?origen=…`.
+ * Fila del listado: el texto abre las salidas de la estación (el botón de
+ * «Crear alerta» vive dentro de cada salida, no en la lista de estaciones).
  */
-function BotonCrearAlerta({ nombre }: { nombre: string }) {
-  const { t } = useTranslation();
-  return (
-    <Button variant="ghost" size="sm" asChild className="shrink-0 text-muted-foreground">
-      <Link to={`/alertas/nueva?origen=${encodeURIComponent(nombre)}`}>
-        <BellPlus className="h-4 w-4" aria-hidden="true" />
-        {t('estaciones.crearAlertaFila')}
-      </Link>
-    </Button>
-  );
-}
-
-/** Fila del listado: el texto abre las salidas, a la derecha queda la alerta. */
 function FilaEstacion({
   estacion,
   onElegir,
@@ -75,7 +61,6 @@ function FilaEstacion({
           <span className="text-muted-foreground"> · {estacion.ciudad}</span>
         ) : null}
       </button>
-      <BotonCrearAlerta nombre={estacion.nombre} />
     </li>
   );
 }
@@ -304,7 +289,6 @@ export function PaginaEstaciones() {
                         <span className="text-muted-foreground"> · {e.ciudad}</span>
                       ) : null}
                     </button>
-                    <BotonCrearAlerta nombre={e.nombre} />
                   </li>
                 ))}
               </ul>

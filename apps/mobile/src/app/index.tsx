@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Boton } from '@/components/Boton';
+import { Logo } from '@/components/Logo';
 import { useAuth } from '@/hooks/useAuth';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
@@ -30,7 +31,7 @@ export default function Indice() {
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.hero}>
         <View style={s.logo}>
-          <Text style={s.logoTexto}>M</Text>
+          <Logo size={44} color="#fff" />
         </View>
         <Text style={s.titulo}>MantiRenfe</Text>
         <Text style={s.subtitulo}>{t('inicio.lema')}</Text>
@@ -74,11 +75,6 @@ const estilos = (c: Paleta) =>
       backgroundColor: c.primario,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    logoTexto: {
-      color: '#fff',
-      fontSize: 44,
-      fontWeight: '800',
     },
     titulo: {
       fontSize: 34,
