@@ -32,6 +32,7 @@ function alerta(datos: Partial<AlertaResponse> = {}): AlertaResponse {
     numeroTren: null,
     criterio: 'DISPONIBILIDAD',
     criterios: ['DISPONIBILIDAD'],
+    conexiones: false,
     precioObjetivo: null,
     estado: 'ACTIVA',
     recurrente: true,

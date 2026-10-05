@@ -67,6 +67,22 @@ describe('validarAlerta', () => {
     expect(validarAlerta({ ...base, criterio: 'PRECIO', precioObjetivo: 0 }).success).toBe(false);
     expect(validarAlerta({ ...base, criterio: 'DISPONIBILIDAD' }).success).toBe(true);
   });
+
+  it('acepta la casilla de 1 escala (conexiones) solo como booleano', () => {
+    const base = {
+      origenNombre: 'A Coruña',
+      destinoNombre: 'Vigo',
+      fechaViaje: '2026-10-05',
+      criterio: 'DISPONIBILIDAD',
+      intervaloSondeoMin: 10,
+      bono: 'GENERAL',
+    };
+    expect(validarAlerta({ ...base, conexiones: true }).success).toBe(true);
+    expect(validarAlerta({ ...base, conexiones: false }).success).toBe(true);
+    // Sin el campo sigue siendo válida (el flag es opcional)
+    expect(validarAlerta(base).success).toBe(true);
+    expect(validarAlerta({ ...base, conexiones: 'si' }).success).toBe(false);
+  });
 });
 
 describe('etiquetas', () => {

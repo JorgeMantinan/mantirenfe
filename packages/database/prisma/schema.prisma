@@ -99,6 +99,8 @@ model Alerta {
   // Lista de criterios vigilados (varios avisos por alerta). Vacío = legado:
   // se usa `criterio` (que siempre guarda el primero de la lista).
   criterios         String[]       @default([])
+  // Permitir1 escala si no hay directo con plazas (solo criterio DISPONIBILIDAD).
+  conexiones        Boolean        @default(false)
   // Solo con criterio = PRECIO: umbral en € del aviso "avísame si baja de X".
   // En el resto de criterios se guarda null y se ignora.
   precioObjetivo    Float?

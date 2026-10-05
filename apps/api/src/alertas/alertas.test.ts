@@ -25,6 +25,19 @@ describe('API (schemas compartidos)', () => {
     });
     expect(resultado.success).toBe(true);
   });
+
+  it('admite la casilla de 1 escala solo como booleano', () => {
+    const base = {
+      origenNombre: 'A Coruña',
+      destinoNombre: 'Vigo',
+      fechaViaje: '2026-10-05',
+      criterio: 'DISPONIBILIDAD',
+    };
+    expect(crearAlertaSchema.safeParse({ ...base, conexiones: true }).success).toBe(true);
+    expect(crearAlertaSchema.safeParse({ ...base, conexiones: false }).success).toBe(true);
+    expect(crearAlertaSchema.safeParse({ ...base, conexiones: 'si' }).success).toBe(false);
+    expect(actualizarAlertaSchema.safeParse({ conexiones: true }).success).toBe(true);
+  });
 });
 
 describe('crearAlertaSchema (trayecto cotidiano)', () => {
@@ -237,6 +250,7 @@ function filaAlerta(
     horaHasta: null,
     numeroTren: null,
     criterio: 'DISPONIBILIDAD',
+    conexiones: false,
     precioObjetivo: null,
     estado: 'ACTIVA',
     recurrente: false,
@@ -299,5 +313,25 @@ describe('formatearAlerta (respuesta multi-criterio)', () => {
     const respuesta = formatearAlerta(filaAlerta({ criterio: 'RETRASO', criterios: [] }));
     expect(respuesta.criterios).toEqual(['RETRASO']);
     expect(respuesta.criterio).toBe('RETRASO');
+  });
+});
+
+describe('formatearAlerta (conexiones / 1 escala)', () => {
+  it('devuelve el flag cuando se vigila disponibilidad', () => {
+    const respuesta = formatearAlerta(
+      filaAlerta({ conexiones: true, criterios: ['DISPONIBILIDAD', 'RETRASO'] }),
+    );
+    expect(respuesta.conexiones).toBe(true);
+  });
+
+  it('lo deja en false si DISPONIBILIDAD no está vigilado', () => {
+    const respuesta = formatearAlerta(
+      filaAlerta({ conexiones: true, criterio: 'RETRASO', criterios: ['RETRASO'] }),
+    );
+    expect(respuesta.conexiones).toBe(false);
+  });
+
+  it('una alerta sin marcar responde false', () => {
+    expect(formatearAlerta(filaAlerta()).conexiones).toBe(false);
   });
 });

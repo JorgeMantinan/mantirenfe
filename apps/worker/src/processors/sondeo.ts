@@ -9,7 +9,14 @@ import {
   type EstadoSerializado,
 } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
-import { deduplicarTrenes } from '../fuentes/renfe-dwr';
+import {
+  ENLACE_MIN_DEFECTO,
+  cargarDatosItinerario,
+  componerItinerarios,
+  type Itinerario,
+  type TramoItinerario,
+} from '../fuentes/itinerarios';
+import { coincideNumeroTren, deduplicarTrenes } from '../fuentes/renfe-dwr';
 import { enviarEmail } from '../notificaciones/email';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
@@ -750,6 +757,272 @@ function avisosDeCriterio(
   return avisos;
 }
 
+// ──────────────────────────────── conexiones (1 escala) ────────────────────────────────
+
+/** Nº máximo de itinerarios con escala que evalúa cada sondeo (≤ 10 consultas). */
+export const MAX_ITINERARIOS_ESCALA = 5;
+
+/**
+ * Identificador de un itinerario con escala dentro de `ultimoEstado`
+ * (`escala|<tripA>|<tripB>`): el diff compara el `trenId` tal cual, así que el
+ * aviso solo salta cuando cambia la disponibilidad o cambia el itinerario
+ * ganador, no en cada sondeo. Lleva el prefijo para que la fila siga siendo
+ * legible en el estado guardado (se distingue al instante de las de la venta).
+ */
+export const PREFIJO_ESCALA = 'escala|';
+
+/** ¿Es la fila sintética de una escala (frente a las filas de la venta)? */
+export function esFilaEscala(fila: { trenId: string }): boolean {
+  return fila.trenId.startsWith(PREFIJO_ESCALA);
+}
+
+/** Minutos peninsulares de una hora HH:MM; undefined si no viene o no vale. */
+export function minutosDeHora(hora: string | null | undefined): number | undefined {
+  if (!hora || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) return undefined;
+  return Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
+}
+
+/**
+ * HH:MM de unos minutos peninsulares. Los minutos pueden pasar de 1440 en
+ * servicios que acaban tras la medianoche (1500 → "01:00"), así que se dan la
+ * vuelta sobre el día de servicio.
+ */
+export function textoHoraMin(minutos: number): string {
+  const resto = ((Math.trunc(minutos) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(resto / 60)).padStart(2, '0')}:${String(resto % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Cuerpo del aviso de una escala con plazas: los dos tramos con su hora,
+ * estación y número de tren, y la llegada al destino. Los avisos del worker
+ * van en español directo (como el resto): no pasan por el i18n de la app.
+ *
+ * Ejemplo: `Plazas en tu ida con escala: 09:00 A Coruña→Santiago (09183) +
+ * 09:30 Santiago→Vigo (09701), llegada 11:05 · A Coruña → Vigo el 5 de octubre`
+ */
+export function textoEscala(
+  itinerario: Itinerario,
+  nombres: ReadonlyMap<string, string>,
+  ruta: string,
+  fechaTexto: string,
+): string {
+  const ida = itinerario.tramos[0];
+  const segunda = itinerario.tramos[1];
+  if (!ida || !segunda) return ruta;
+  const nombre = (id: string): string => nombres.get(id) ?? id;
+  const detalle = [
+    `${textoHoraMin(ida.salidaMin)} ${nombre(ida.estacionOrigenId)}→${nombre(ida.estacionDestinoId)} (${ida.numeroTren})`,
+    `${textoHoraMin(segunda.salidaMin)} ${nombre(segunda.estacionOrigenId)}→${nombre(segunda.estacionDestinoId)} (${segunda.numeroTren})`,
+  ].join(' + ');
+  return `Plazas en tu ida con escala: ${detalle}, llegada ${textoHoraMin(segunda.llegadaMin)} · ${ruta} el ${fechaTexto}`;
+}
+
+/** Fila de estado de una escala con plazas (serie del criterio de la venta). */
+function filaEscala(
+  itinerario: Itinerario,
+  nombres: ReadonlyMap<string, string>,
+  criterio: string,
+): EstadoSerializado | null {
+  const ida = itinerario.tramos[0];
+  const segunda = itinerario.tramos[1];
+  if (!ida || !segunda) return null;
+  return {
+    trenId: `${PREFIJO_ESCALA}${ida.tripId}|${segunda.tripId}`,
+    numeroTren: `${ida.numeroTren} + ${segunda.numeroTren}`,
+    salida: textoHoraMin(ida.salidaMin),
+    disponible: true,
+    precioMin: null,
+    retrasoSeg: null,
+    cancelado: false,
+    criterio,
+    tramo: 'conexion',
+    conexionEn: nombres.get(ida.estacionDestinoId) ?? ida.estacionDestinoId,
+    conexionLlegada: textoHoraMin(ida.llegadaMin),
+    conexionSalida: textoHoraMin(segunda.salidaMin),
+    esperaMin: Math.max(0, segunda.salidaMin - ida.llegadaMin),
+    horaLlegada: textoHoraMin(segunda.llegadaMin),
+    duracionMin: Math.max(1, segunda.llegadaMin - ida.salidaMin),
+  };
+}
+
+/** Resultado de evaluar la rama de conexiones de UN sondeo. */
+interface ResultadoConexiones {
+  /** Fila de escala a añadir a la serie (null = no hay escala con plazas). */
+  fila: EstadoSerializado | null;
+  /** Aviso a persistir con el estado (null = no ha cambiado nada). */
+  aviso: AvisoSondeo | null;
+}
+
+/**
+ * Rama de conexiones (1 escala) del criterio DISPONIBILIDAD.
+ *
+ * Solo se entra con `Alerta.conexiones` marcado. Flujo:
+ *  1. Si los DIRECTOS ya tienen plazas, el criterio se resuelve como siempre y
+ *     la escala no se mira (así no se duplica el aviso).
+ *  2. Si no, se componen itinerarios con 1 escala (GTFS en memoria) respetando
+ *    la franja de la alerta y se comprueba la disponibilidad de los trenes de
+ *     cada tramo.
+ *  3. La venta solo responde por par origen-destino: "consultar por tren" es
+ *     pedir la ruta del tramo con `numeroTren` (el mismo camino que una alerta
+ *     con tren concreto) y quedarse con ese tren. La caché single-flight de la
+ *     fuente comparte la consulta real entre todos los itinerarios que usen el
+ *     mismo tramo, así que son como mucho `MAX_ITINERARIOS_ESCALA * 2` pares
+ *     (y se corta en el primer itinerario con ambos tramos disponibles).
+ *  4. El itinerario ganador se guarda como fila de la serie con `trenId`
+ *     `escala|<tripA>|<tripB>`: el diff solo vuelve a avisar si cambian los
+ *     trips o la disponibilidad, no en cada sondeo.
+ *
+ * Un fallo aquí no puede romper el sondeo (los directos ya se han evaluado): se
+ * conserva la fila anterior y no se avisa.
+ */
+async function evaluarConexiones(
+  prisma: ReturnType<typeof getPrisma>,
+  alerta: {
+    id: string;
+    origenNombre: string;
+    destinoNombre: string;
+    origenEstacionId: string | null;
+    destinoEstacionId: string | null;
+    horaDesde: string | null;
+    horaHasta: string | null;
+  },
+  etiqueta: string,
+  serieDirecta: EstadoSerializado[],
+  previa: EstadoSerializado | undefined,
+  fechaConsulta: string,
+  fechaTexto: string,
+  logger: Logger,
+): Promise<ResultadoConexiones> {
+  const vacio: ResultadoConexiones = { fila: null, aviso: null };
+
+  if (serieDirecta.some((t) => t.disponible && t.cancelado !== true)) {
+    logger.debug({ alertaId: alerta.id }, 'Directo con plazas: sin evaluar la escala');
+    return vacio;
+  }
+  const origenId = alerta.origenEstacionId;
+  const destinoId = alerta.destinoEstacionId;
+  if (!origenId || !destinoId) {
+    logger.debug({ alertaId: alerta.id }, 'Ruta sin estaciones resueltas: sin escala');
+    return vacio;
+  }
+
+  try {
+    const datos = await cargarDatosItinerario(prisma, {
+      origenId,
+      destinoId,
+      fechaIso: fechaConsulta,
+    });
+    const candidatos = componerItinerarios({
+      horarios: datos.horarios,
+      paradas: datos.paradas,
+      origenId,
+      destinoId,
+      enlaceMin: ENLACE_MIN_DEFECTO,
+      // La franja de la alerta: desde sobre la SALIDA del primer tramo y hasta
+      // sobre la LLEGADA total (como define `componerItinerarios`).
+      franjaDesdeMin: minutosDeHora(alerta.horaDesde),
+      franjaHastaMin: minutosDeHora(alerta.horaHasta),
+      maxResultados: MAX_ITINERARIOS_ESCALA,
+    }).filter((it) => it.tipo === 'escala');
+    if (candidatos.length === 0) {
+      logger.debug({ alertaId: alerta.id }, 'Sin itinerarios con escala para el día');
+      return vacio;
+    }
+
+    const ids = [
+      ...new Set(
+        candidatos.flatMap((it) =>
+          it.tramos.flatMap((t) => [t.estacionOrigenId, t.estacionDestinoId]),
+        ),
+      ),
+    ];
+    const filas = await prisma.estacion.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, nombre: true },
+    });
+    const nombres = new Map(filas.map((e) => [e.id, e.nombre]));
+    const evaluables = candidatos.filter((it) =>
+      it.tramos.every((t) => nombres.has(t.estacionOrigenId) && nombres.has(t.estacionDestinoId)),
+    );
+    if (evaluables.length === 0) return vacio;
+
+    const fuente = crearFuenteDatos(etiqueta);
+    const consultadas = new Map<string, boolean>();
+
+    /** ¿La venta tiene plazas de ESTE tren en ESTE tramo? (ver punto 3) */
+    const tramoConPlazas = async (tramo: TramoItinerario): Promise<boolean> => {
+      const clave = `${tramo.estacionOrigenId}|${tramo.estacionDestinoId}|${tramo.numeroTren}`;
+      const previo = consultadas.get(clave);
+      if (previo !== undefined) return previo;
+      const origenNombre = nombres.get(tramo.estacionOrigenId);
+      const destinoNombre = nombres.get(tramo.estacionDestinoId);
+      if (!origenNombre || !destinoNombre) return false;
+      const estado = await fuente.getDisponibilidad({
+        origenNombre,
+        destinoNombre,
+        fecha: fechaConsulta,
+        numeroTren: tramo.numeroTren,
+      });
+      // Solo cuenta si la venta lista ESE tren como servicio suelto con plazas:
+      // una fila de combinación (2 tramos) no garantiza billete por tramo.
+      const disponible = estado.trenes.some(
+        (t) =>
+          coincideNumeroTren(t.numeroTren, tramo.numeroTren) &&
+          t.tramo !== 'conexion' &&
+          t.disponible &&
+          t.cancelado !== true,
+      );
+      consultadas.set(clave, disponible);
+      return disponible;
+    };
+
+    let ganador: Itinerario | null = null;
+    for (const candidato of evaluables) {
+      const [ida, segunda] = candidato.tramos;
+      if (!ida || !segunda) continue;
+      if ((await tramoConPlazas(ida)) && (await tramoConPlazas(segunda))) {
+        ganador = candidato;
+        break;
+      }
+    }
+    if (!ganador) {
+      logger.debug({ alertaId: alerta.id }, 'Ninguna escala con los dos tramos con plazas');
+      return vacio;
+    }
+
+    const fila = filaEscala(ganador, nombres, etiqueta);
+    if (!fila) return vacio;
+    // Sin cambios (mismos trips y ya estaba disponible): no se reavisa
+    if (previa && previa.trenId === fila.trenId && previa.disponible === true) {
+      return { fila, aviso: null };
+    }
+    return {
+      fila,
+      aviso: {
+        titulo: '¡Plaza disponible con escala!',
+        cuerpo: textoEscala(
+          ganador,
+          nombres,
+          `${alerta.origenNombre} → ${alerta.destinoNombre}`,
+          fechaTexto,
+        ),
+        datos: { tipo: 'escala', trenes: [fila.trenId], criterio: etiqueta },
+        email: true,
+        confirmacion: {
+          mensaje: 'Notificación de disponibilidad con escala enviada',
+          campos: { trenes: 1 },
+        },
+      },
+    };
+  } catch (error) {
+    // Los directos ya se han evaluado: la escala es mejor esfuerzo. Se
+    // conserva la fila anterior para que un fallo transitorio no la borre (y
+    // no se reavise cuando vuelva la misma escala).
+    logger.warn({ alertaId: alerta.id, err: error }, 'No se pudo evaluar la escala');
+    return { fila: previa ?? null, aviso: null };
+  }
+}
+
 /** Campos de una alerta flexible: lo que lee `sondearFlexible`. */
 type AlertaFlexible = Parameters<typeof notificar>[0] & {
   horaDesde: string | null;
@@ -981,9 +1254,36 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     series.set(etiqueta, serializarEstado(estado, etiqueta));
   }
 
-  const actual = etiquetas.flatMap((etiqueta) => series.get(etiqueta) ?? []);
   const primeraVez = !Array.isArray(alerta.ultimoEstado);
   const anteriores = estadoAnteriorPorCriterio(alerta.ultimoEstado, alerta.criterio);
+
+  // Conexiones (1 escala): solo con DISPONIBILIDAD vigilado y la casilla
+  // marcada. La fila del itinerario ganador se añade a la serie del criterio de
+  // venta, de modo que el diff, el detalle y el histórico la ven como una fila
+  // más (el diff no la reavisa: su `trenId` identifica los trips ganadores).
+  let avisoEscala: AvisoSondeo | null = null;
+  if (alerta.conexiones && criterios.includes('DISPONIBILIDAD')) {
+    const etiqueta = etiquetaEstado('DISPONIBILIDAD', criterios);
+    const serie = series.get(etiqueta);
+    if (serie) {
+      const previa = (anteriores.get(etiqueta) ?? []).find(esFilaEscala);
+      const rama = await evaluarConexiones(
+        prisma,
+        alerta,
+        etiqueta,
+        serie,
+        previa,
+        fechaConsulta,
+        fechaConsulta,
+        logger,
+      );
+      if (rama.fila) serie.push(rama.fila);
+      // El primer sondeo solo deja estado (línea base), igual que los directos
+      avisoEscala = primeraVez ? null : rama.aviso;
+    }
+  }
+
+  const actual = etiquetas.flatMap((etiqueta) => series.get(etiqueta) ?? []);
 
   // Un aviso por criterio que haya cambiado: los que salgan de aquí se
   // persisten TODOS en la misma transacción de abajo.
@@ -999,6 +1299,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
           logger,
         ),
       );
+  if (avisoEscala) avisos.push(avisoEscala);
 
   // Estado y avisos se guardan juntos en una única transacción: o se persisten
   // los dos o no se persiste nada (una Notificacion sin estado, o estado sin
@@ -1026,10 +1327,13 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   const criterioPrecio = criterios.find((c) => c === 'DISPONIBILIDAD' || c === 'PRECIO');
   if (criterioPrecio) {
     const etiqueta = etiquetaEstado(criterioPrecio, criterios);
+    // La fila de escala no es un tren con precio: se excluye para que no entre
+    // en el histórico (su `precioMin` es null y solo ensuciaría la gráfica).
+    const sinEscalas = (filas: EstadoSerializado[]) => filas.filter((f) => !esFilaEscala(f));
     const puntos = await registrarHistorialPrecios(
       alerta.id,
-      anteriores.get(etiqueta) ?? [],
-      series.get(etiqueta) ?? [],
+      sinEscalas(anteriores.get(etiqueta) ?? []),
+      sinEscalas(series.get(etiqueta) ?? []),
       primeraVez,
       logger,
     );

@@ -249,6 +249,9 @@ export function PaginaDetalleAlerta() {
                     {etiquetaCriterio(t, c)}
                   </Badge>
                 ))}
+                {alerta.conexiones && (
+                  <Badge variant="aviso">{t('detalleAlerta.conexiones')}</Badge>
+                )}
                 {criteriosDe(alerta).includes('PRECIO') && alerta.precioObjetivo != null && (
                   <Badge variant="aviso">
                     {t('alertas.precioObjetivo', {

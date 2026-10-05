@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { crearAlertaSchema } from '@mantirenfe/shared-types';
 import { cambiarIdioma, i18n } from '@/i18n';
 import { construirAlertaVuelta, etiquetaCriterio, etiquetaDiasSemana } from './alertas';
 
@@ -72,6 +73,22 @@ describe('construirAlertaVuelta', () => {
     construirAlertaVuelta(payloadIda);
     expect(payloadIda.origenNombre).toBe('Madrid-Atocha');
     expect(payloadIda.destinoNombre).toBe('Barcelona-Sants');
+  });
+});
+
+describe('conexiones (1 escala)', () => {
+  it('el payload con el flag pasa el schema compartido y la vuelta lo conserva', () => {
+    const ida = { ...payloadIda, criterios: ['DISPONIBILIDAD'], conexiones: true };
+    expect(crearAlertaSchema.safeParse(ida).success).toBe(true);
+
+    const vuelta = construirAlertaVuelta(ida);
+    expect(vuelta.conexiones).toBe(true);
+    expect(crearAlertaSchema.safeParse(vuelta).success).toBe(true);
+
+    // Sin el campo sigue siendo válida: el flag es opcional
+    const { conexiones, ...sinFlag } = ida;
+    expect(conexiones).toBe(true);
+    expect(crearAlertaSchema.safeParse(sinFlag).success).toBe(true);
   });
 });
 

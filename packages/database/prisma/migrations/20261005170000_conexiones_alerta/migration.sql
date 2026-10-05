@@ -1,0 +1,1 @@
+ALTER TABLE "Alerta" ADD COLUMN "conexiones" BOOLEAN NOT NULL DEFAULT false;

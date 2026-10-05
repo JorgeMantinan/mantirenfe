@@ -171,6 +171,8 @@ export function formatearAlerta(alerta: {
   criterio: string;
   // Lista multi-criterio (opcional para tolerar lecturas sin la columna)
   criterios?: readonly string[] | null;
+  // 1 escala si no hay directo con plazas (solo con DISPONIBILIDAD)
+  conexiones: boolean;
   precioObjetivo: number | null;
   estado: string;
   recurrente: boolean;
@@ -201,6 +203,8 @@ export function formatearAlerta(alerta: {
     numeroTren: alerta.numeroTren,
     criterio: (criterios[0] ?? alerta.criterio) as AlertaResponse['criterio'],
     criterios,
+    // Solo cuenta si se vigila DISPONIBILIDAD: así lo deja el guardar (abajo)
+    conexiones: criterios.includes('DISPONIBILIDAD') && alerta.conexiones === true,
     precioObjetivo: alerta.precioObjetivo,
     estado: alerta.estado as AlertaResponse['estado'],
     recurrente: alerta.recurrente,
@@ -429,6 +433,9 @@ export class AlertasService {
         numeroTren: datos.numeroTren ?? null,
         criterio: criterios[0] ?? datos.criterio,
         criterios,
+        // 1 escala solo si se vigila disponibilidad: sin DISPONIBILIDAD no hay
+        // rama de conexiones en el worker, así que se guarda a false.
+        conexiones: criterios.includes('DISPONIBILIDAD') && datos.conexiones === true,
         // El umbral solo aplica si se vigilan precios (PRECIO en la lista):
         // en el resto de criterios se ignora
         precioObjetivo: criterios.includes('PRECIO') ? (datos.precioObjetivo ?? null) : null,
@@ -535,6 +542,16 @@ export class AlertasService {
       data.precioObjetivo = datos.precioObjetivo;
     }
     if (datos.bono !== undefined) data.bono = datos.bono;
+
+    // 1 escala si no hay directo con plazas: solo aplica con DISPONIBILIDAD
+    // vigilado. Si el parche no toca los criterios, manda la lista guardada; si
+    // la toca y quita DISPONIBILIDAD, el flag se fuerza a false aunque el
+    // cliente no mande `conexiones`.
+    const criteriosFinales = (data.criterios as string[] | undefined) ?? criteriosPrevios;
+    const conexionesFinal = criteriosFinales.includes('DISPONIBILIDAD')
+      ? (datos.conexiones ?? existente.conexiones)
+      : false;
+    if (conexionesFinal !== existente.conexiones) data.conexiones = conexionesFinal;
 
     const tocaFrecuencia =
       datos.recurrente !== undefined ||

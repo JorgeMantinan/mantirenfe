@@ -77,6 +77,8 @@ export default function NuevaAlerta() {
   const [horaHasta, setHoraHasta] = useState('');
   // Criterios vigilados (multi-selección): nunca vacío y como mucho 4
   const [criterios, setCriterios] = useState<Criterio[]>(['DISPONIBILIDAD']);
+  // Permitir 1 escala si no hay directo con plazas (solo con DISPONIBILIDAD)
+  const [conexiones, setConexiones] = useState(false);
   const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
@@ -158,6 +160,8 @@ export default function NuevaAlerta() {
       criterio: Criterio;
       // Multi-criterio: ausente en respuestas de versiones anteriores
       criterios?: Criterio[];
+      // 1 escala si no hay directo con plazas (ausente en respuestas antiguas)
+      conexiones?: boolean;
       precioObjetivo: number | null;
       recurrente: boolean;
       diasSemana: number[];
@@ -180,6 +184,7 @@ export default function NuevaAlerta() {
         setNumeroTren(a.numeroTren ?? '');
         // Multi-criterio: la lista manda; las alertas legadas traen `[criterio]`
         setCriterios(a.criterios?.length ? [...a.criterios] : [a.criterio]);
+        setConexiones(a.conexiones === true);
         setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
       })
       .catch(() => Alert.alert(t('comunes.error'), t('nueva.errorCargar')))
@@ -318,6 +323,9 @@ export default function NuevaAlerta() {
       // viajando como el primero de la lista (compatibilidad con la API vieja)
       criterio: criterios[0] ?? 'DISPONIBILIDAD',
       criterios,
+      // Solo aplica con DISPONIBILIDAD vigilado: si se desmarca, el control se
+      // oculta y aquí se manda false (la API también lo fuerza a false)
+      conexiones: criterios.includes('DISPONIBILIDAD') && conexiones,
       // Solo aplica si se vigilan precios; en el resto lo mandamos a null
       precioObjetivo: criterios.includes('PRECIO') ? Number(precioObjetivo) : null,
       intervaloSondeoMin: intervalo,
@@ -444,6 +452,29 @@ export default function NuevaAlerta() {
       </View>
       <Text style={s.pista}>{criterios.map((c) => descripcionesCriterio[c]).join(' · ')}</Text>
       <Text style={s.pista}>{t('nueva.criterioPista')}</Text>
+
+      {criterios.includes('DISPONIBILIDAD') ? (
+        <View style={s.cajaVuelta}>
+          <View style={s.cajaVueltaFila}>
+            <Text
+              style={s.cajaVueltaTitulo}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: conexiones, disabled: cargandoEdicion }}
+              onPress={() => !cargandoEdicion && setConexiones((v) => !v)}
+            >
+              {t('nueva.conexiones')}
+            </Text>
+            <Switch
+              value={conexiones}
+              disabled={cargandoEdicion}
+              onValueChange={setConexiones}
+              trackColor={{ true: paleta.primarioClaro, false: paleta.borde }}
+              thumbColor="#fff"
+            />
+          </View>
+          <Text style={s.pista}>{t('nueva.conexionesPista')}</Text>
+        </View>
+      ) : null}
 
       {criterios.includes('PRECIO') ? (
         <>

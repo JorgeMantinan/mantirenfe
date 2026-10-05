@@ -132,6 +132,10 @@ export const crearAlertaSchema = z
     // Lista de criterios vigilados (multi-criterio: cada uno avisa por su cuenta).
     // Opcional: sin ella la alerta es legada y vigila solo `criterio`.
     criterios: z.array(criterioAlertaSchema).min(1, 'Elige al menos un criterio').max(4).optional(),
+    // Permitir 1 escala si no hay directo con plazas. Solo aplica si
+    // DISPONIBILIDAD está entre los criterios vigilados: si no lo está, la API
+    // lo fuerza a false al guardar (el worker solo mira la escala en DISPONIBILIDAD).
+    conexiones: z.boolean().optional(),
     // Solo con criterio PRECIO: umbral en € del aviso "avísame si baja de X".
     // En el resto de criterios es opcional y la API lo guarda a null.
     precioObjetivo: z
@@ -204,6 +208,9 @@ export const actualizarAlertaSchema = z
     // Lista de criterios vigilados (multi-criterio). Si llega, manda ella:
     // `criterio` se recalcula como el primero de la lista.
     criterios: z.array(criterioAlertaSchema).min(1, 'Elige al menos un criterio').max(4).optional(),
+    // Permitir 1 escala si no hay directo con plazas (solo con DISPONIBILIDAD).
+    // Si el parche quita DISPONIBILIDAD de la lista, la API lo guarda a false.
+    conexiones: z.boolean().optional(),
     // Umbral en €: obligatorio si el criterio de este mismo parche pasa a PRECIO
     precioObjetivo: z
       .number()
@@ -244,6 +251,11 @@ export interface AlertaResponse {
    * alertas legadas (lista vacía), devuelve `[criterio]`.
    */
   criterios: CriterioAlerta[];
+  /**
+   * Permitir 1 escala si no hay directo con plazas. Solo tiene efecto con
+   * DISPONIBILIDAD vigilado; en el resto de criterios la API lo guarda a false.
+   */
+  conexiones: boolean;
   /** Solo con criterio PRECIO: umbral en €; null en el resto de criterios. */
   precioObjetivo: number | null;
   estado: EstadoAlerta;

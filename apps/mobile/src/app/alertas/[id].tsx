@@ -216,6 +216,9 @@ export default function DetalleAlerta() {
                     {etiquetaCriterio(c)}
                   </Etiqueta>
                 ))}
+                {alerta.conexiones ? (
+                  <Etiqueta tono="primario">{t('detalle.conexiones')}</Etiqueta>
+                ) : null}
                 {alerta.fechaFlexible ? (
                   <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
                 ) : null}

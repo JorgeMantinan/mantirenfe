@@ -51,6 +51,35 @@ describe('crearAlertaSchema', () => {
   });
 });
 
+describe('crearAlertaSchema (conexiones / 1 escala)', () => {
+  const base = {
+    origenNombre: 'A Coruña',
+    destinoNombre: 'Vigo',
+    fechaViaje: '2026-10-05',
+  };
+
+  it('acepta el flag opcional y por defecto queda sin marcar', () => {
+    const sinFlag = crearAlertaSchema.safeParse(base);
+    expect(sinFlag.success).toBe(true);
+    if (sinFlag.success) expect(sinFlag.data.conexiones).toBeUndefined();
+
+    const marcado = crearAlertaSchema.safeParse({ ...base, conexiones: true });
+    expect(marcado.success).toBe(true);
+    if (marcado.success) expect(marcado.data.conexiones).toBe(true);
+  });
+
+  it('rechaza un valor que no sea booleano', () => {
+    expect(crearAlertaSchema.safeParse({ ...base, conexiones: 'si' }).success).toBe(false);
+    expect(crearAlertaSchema.safeParse({ ...base, conexiones: 1 }).success).toBe(false);
+  });
+
+  it('actualizarAlertaSchema admite el flag por partes', () => {
+    expect(actualizarAlertaSchema.safeParse({ conexiones: true }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ conexiones: false }).success).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ conexiones: 'no' }).success).toBe(false);
+  });
+});
+
 describe('crearAlertaSchema (trayecto cotidiano)', () => {
   it('recurrente y soloLaborables son opcionales y false por defecto', () => {
     const result = crearAlertaSchema.safeParse({

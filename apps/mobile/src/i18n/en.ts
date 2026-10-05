@@ -164,6 +164,9 @@ export const en: MismoArbol<Claves> = {
       precio: 'We will alert you if the price drops below your target',
     },
     criterioPista: 'You can pick up to 4: each criterion notifies you on its own.',
+    conexiones: 'Allow 1 stop',
+    conexionesPista:
+      'If there is no direct train with seats, we will also notify you about a 1-stop itinerary.',
     frecuencia: {
       fecha: 'One date',
       flexible: 'Any date',
@@ -191,6 +194,8 @@ export const en: MismoArbol<Claves> = {
     calendarioError:
       'The event could not be shared. Try again or open MantiRenfe in your browser to download the .ics file.',
     rangoFechas: 'From {{desde}} to {{hasta}}',
+    // Badge of the "1 stop" detail (alerts with conexiones enabled)
+    conexiones: '1 stop',
     metaAlerta: '{{fecha}} · every {{min}} min · {{bono}}',
     objetivo: 'Target: alert me below {{precio}}',
     franja: 'Window: {{desde}} – {{hasta}}',

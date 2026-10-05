@@ -330,11 +330,6 @@ export function PaginaEstaciones() {
                       : t('estaciones.sinIncidencias')}
                   </Badge>
                 </div>
-                <Button variant="outline" asChild>
-                  <Link to={rutaMapa}>
-                    <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapaBoton')}
-                  </Link>
-                </Button>
               </div>
 
               <div className="space-y-3 border-t pt-3">
@@ -377,13 +372,11 @@ export function PaginaEstaciones() {
                       </dl>
                     ) : null}
                   </div>
-                  {latitud != null && longitud != null ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <Link to={rutaMapa}>
-                        <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapa')}
-                      </Link>
-                    </Button>
-                  ) : null}
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={rutaMapa}>
+                      <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapa')}
+                    </Link>
+                  </Button>
                 </div>
 
                 {aforos && aforos.length > 0 && (

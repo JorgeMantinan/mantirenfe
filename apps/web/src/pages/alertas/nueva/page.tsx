@@ -136,6 +136,8 @@ export function PaginaNuevaAlerta() {
   const [horaHasta, setHoraHasta] = useState('');
   // Criterios vigilados (multi-selección): nunca vacío y como mucho 4
   const [criterios, setCriterios] = useState<CriterioAlerta[]>(['DISPONIBILIDAD']);
+  // Permitir 1 escala si no hay directo con plazas (solo con DISPONIBILIDAD)
+  const [conexiones, setConexiones] = useState(false);
   const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState('GENERAL');
@@ -225,6 +227,7 @@ export function PaginaNuevaAlerta() {
           setHoraHasta(a.horaHasta ?? '');
           // Multi-criterio: la lista manda; las alertas legadas traen `[criterio]`
           setCriterios(a.criterios?.length ? [...a.criterios] : [a.criterio]);
+          setConexiones(a.conexiones === true);
           setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
           setIntervalo(a.intervaloSondeoMin);
           setBono(a.bono);
@@ -384,6 +387,9 @@ export function PaginaNuevaAlerta() {
         // viajando como el primero de la lista (compatibilidad con la API vieja)
         criterio: criterios[0] ?? 'DISPONIBILIDAD',
         criterios,
+        // Solo aplica con DISPONIBILIDAD vigilado: si se desmarca, el checkbox
+        // se oculta y aquí se manda false (la API también lo fuerza a false)
+        conexiones: criterios.includes('DISPONIBILIDAD') && conexiones,
         // Solo aplica si se vigilan precios; en el resto lo mandamos a null
         precioObjetivo: criterios.includes('PRECIO') ? objetivo : null,
         intervaloSondeoMin: intervalo,
@@ -678,6 +684,24 @@ export function PaginaNuevaAlerta() {
                 })}
               </div>
               <p className="text-xs text-muted-foreground">{t('nuevaAlerta.criterioPista')}</p>
+              {criterios.includes('DISPONIBILIDAD') && (
+                <div className="flex items-start gap-2 rounded-lg border p-3">
+                  <input
+                    id="conexiones"
+                    type="checkbox"
+                    checked={conexiones}
+                    disabled={cargandoEdicion}
+                    onChange={(e) => setConexiones(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="conexiones">{t('nuevaAlerta.conexiones')}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('nuevaAlerta.conexionesPista')}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

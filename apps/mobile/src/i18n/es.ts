@@ -163,6 +163,9 @@ export const es = {
       precio: 'Te avisaremos si el precio baja de tu objetivo',
     },
     criterioPista: 'Puedes marcar hasta 4: cada criterio te avisa por su cuenta.',
+    conexiones: 'Permitir 1 escala',
+    conexionesPista:
+      'Si no hay directo con plazas, te avisaremos también con un itinerario de 1 escala.',
     frecuencia: {
       fecha: 'Una fecha',
       flexible: 'Cualquier fecha',
@@ -190,6 +193,8 @@ export const es = {
     calendarioError:
       'No se ha podido compartir el evento. Vuelve a intentarlo o entra en MantiRenfe desde el navegador para descargar el archivo .ics.',
     rangoFechas: 'Del {{desde}} al {{hasta}}',
+    // Etiqueta "1 escala" del detalle (alerta con conexiones marcadas)
+    conexiones: '1 escala',
     metaAlerta: '{{fecha}} · cada {{min}} min · {{bono}}',
     objetivo: 'Objetivo: avisar si baja de {{precio}}',
     franja: 'Franja: {{desde}} – {{hasta}}',
