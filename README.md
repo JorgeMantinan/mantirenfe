@@ -68,7 +68,7 @@ Caso de uso real: has comprado billete para las 19:00 porque no había hueco en 
 
 ## Cómo se construyó
 
-Desarrollado de extremo a extremo por **Jorge Mantiñán Montero**, con IA como acelerador de desarrollo. Decisiones de arquitectura (separación api/worker, modelado de alertas, manejo de fuentes frágiles), revisión de código y despliegue: propias. Ver `AGENTS.md` para el flujo de trabajo con agentes.
+Desarrollado de extremo a extremo por **Jorge Mantiñán Montero**, con IA como acelerador de desarrollo. Decisiones de arquitectura (separación api/worker, modelado de alertas, manejo de fuentes frágiles), revisión de código y despliegue: propias. Ver `apps/mobile/AGENTS.md` para las convenciones de la app móvil.
 
 ## Puesta en marcha
 

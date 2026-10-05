@@ -37,6 +37,58 @@ jobs:
       - name: Build
         run: pnpm build
 
+  migraciones:
+    runs-on: ubuntu-latest
+    # Sin dependencias de build: se lanza en paralelo (solo instala y comprueba
+    # la BD), así que un fallo de lint/test no enmascara un drift de esquema.
+    needs: []
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mantirenfe
+          POSTGRES_DB: mantirenfe
+          POSTGRES_PASSWORD: mantirenfe
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://mantirenfe:mantirenfe@localhost:5432/mantirenfe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar cliente Prisma
+        run: pnpm db:generate
+
+      # migrate deploy corre con cwd = packages/database (pnpm --filter exec),
+      # donde vive prisma/schema.prisma y prisma/migrations.
+      - name: Aplicar migraciones
+        run: pnpm --filter @mantirenfe/database exec prisma migrate deploy
+
+      # Drift: lo aplicado en la BD vs lo que dice schema.prisma. Si hay cambios
+      # de esquema sin migración (o migraciones que el esquema ya no refleja),
+      # diff encuentra diferencias y --exit-code sale != 0 → job rojo.
+      - name: Detectar drift entre migraciones y schema.prisma
+        run: >
+          pnpm --filter @mantirenfe/database exec prisma migrate diff
+          --from-url "$DATABASE_URL"
+          --to-schema-datamodel prisma/schema.prisma
+          --exit-code
+
   mobile:
     runs-on: ubuntu-latest
     continue-on-error: true

@@ -63,6 +63,9 @@ function fechaMedia(iso: string): Date {
   return a && m && d ? new Date(a, m - 1, d, 12) : new Date();
 }
 
+/** Formato HH:MM de 24 h que acepta la API (mismo que el schema de la alerta). */
+const RE_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export default function NuevaAlerta() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
@@ -79,6 +82,9 @@ export default function NuevaAlerta() {
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
   const [fechaVuelta, setFechaVuelta] = useState('');
+  // Franja horaria propia de la vuelta: vacía = usar la de la ida
+  const [horaDesdeVuelta, setHoraDesdeVuelta] = useState('');
+  const [horaHastaVuelta, setHoraHastaVuelta] = useState('');
   /** 'ida' | 'vuelta': qué campo abrió el calendario nativo (null = cerrado). */
   const [selector, setSelector] = useState<'ida' | 'vuelta' | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -245,14 +251,19 @@ export default function NuevaAlerta() {
     .join(' · ');
   const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
 
-  /** Activa la vuelta con una fecha por defecto (ida +2 días) si aún no hay. */
+  /** Activa la vuelta con fecha por defecto (ida +2 días) y franja de la ida. */
   const alternarVuelta = (activo: boolean) => {
     setTambienVuelta(activo);
-    if (activo && !fechaVuelta) {
-      const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
-      const d = new Date(`${base}T12:00:00Z`);
-      d.setUTCDate(d.getUTCDate() + 2);
-      setFechaVuelta(d.toISOString().slice(0, 10));
+    if (activo) {
+      if (!fechaVuelta) {
+        const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
+        const d = new Date(`${base}T12:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 2);
+        setFechaVuelta(d.toISOString().slice(0, 10));
+      }
+      // La vuelta arranca con la franja de la ida (editable después)
+      if (!horaDesdeVuelta) setHoraDesdeVuelta(horaDesde);
+      if (!horaHastaVuelta) setHoraHastaVuelta(horaHasta);
     }
   };
 
@@ -298,6 +309,21 @@ export default function NuevaAlerta() {
       Alert.alert(t('nueva.revisaCampos'), t('nueva.errorFechaVueltaOrden'));
       return;
     }
+    const desdeVuelta = horaDesdeVuelta.trim();
+    const hastaVuelta = horaHastaVuelta.trim();
+    if (tambienVuelta && (desdeVuelta || hastaVuelta)) {
+      if (
+        (desdeVuelta && !RE_HORA.test(desdeVuelta)) ||
+        (hastaVuelta && !RE_HORA.test(hastaVuelta))
+      ) {
+        Alert.alert(t('nueva.revisaCampos'), t('nueva.errorFranjaVuelta'));
+        return;
+      }
+      if (desdeVuelta && hastaVuelta && desdeVuelta > hastaVuelta) {
+        Alert.alert(t('nueva.revisaCampos'), t('nueva.errorFranjaVueltaOrden'));
+        return;
+      }
+    }
 
     setEnviando(true);
     try {
@@ -317,6 +343,9 @@ export default function NuevaAlerta() {
               ...construirAlertaVuelta({
                 ...validacion.data,
                 fechaViaje: fechaVuelta || validacion.data.fechaViaje,
+                // Franja propia de la vuelta: vacía = la misma que la ida
+                horaDesde: horaDesdeVuelta.trim() || validacion.data.horaDesde,
+                horaHasta: horaHastaVuelta.trim() || validacion.data.horaHasta,
               }),
               grupoId: ida?.id,
             },
@@ -645,6 +674,27 @@ export default function NuevaAlerta() {
                   </Text>
                 </Pressable>
               ) : null}
+              <Text style={s.etiqueta}>{t('nueva.horaDesdeVueltaLabel')}</Text>
+              <TextInput
+                style={s.campo}
+                placeholder={t('nueva.desdeHora')}
+                placeholderTextColor={paleta.textoSecundario}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                value={horaDesdeVuelta}
+                onChangeText={setHoraDesdeVuelta}
+              />
+              <Text style={s.etiqueta}>{t('nueva.horaHastaVueltaLabel')}</Text>
+              <TextInput
+                style={s.campo}
+                placeholder={t('nueva.hastaHora')}
+                placeholderTextColor={paleta.textoSecundario}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                value={horaHastaVuelta}
+                onChangeText={setHoraHastaVuelta}
+              />
+              <Text style={s.pista}>{t('nueva.pistaFranjaVuelta')}</Text>
             </>
           ) : null}
         </View>

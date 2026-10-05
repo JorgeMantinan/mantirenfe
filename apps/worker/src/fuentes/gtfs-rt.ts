@@ -40,6 +40,18 @@ export async function descargarTripUpdates(url: string): Promise<unknown> {
   });
 }
 
+/**
+ * URLs de trip_updates a consultar: `GTFS_RT_TRIP_UPDATES_URL` (CSV) o los dos
+ * feeds por defecto (Cercanías + Larga Distancia). Único sitio que resuelve la
+ * variable: el sondeo de retrasos y el volcado de suprimidos comparten la lista.
+ */
+export function urlsTripUpdates(): string[] {
+  return (process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() || URL_TRIP_UPDATES_DEFECTO)
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
 /** Solo para tests: la caché vive en la memoria del proceso. */
 export function limpiarCacheTripUpdates(): void {
   CACHE_TRIP_UPDATES.clear();
@@ -116,10 +128,7 @@ export class FuenteGtfsRt implements FuenteDatosTren {
       return construirEstadoRetrasos(consulta, [], new Map());
     }
 
-    const urls = (process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() || URL_TRIP_UPDATES_DEFECTO)
-      .split(',')
-      .map((u) => u.trim())
-      .filter(Boolean);
+    const urls = urlsTripUpdates();
     const tripIds = new Set(horarios.map((h) => h.numeroTren));
     const feeds = await Promise.all(urls.map((u) => descargarTripUpdates(u)));
     const retrasos = new Map<string, number>();

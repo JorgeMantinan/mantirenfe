@@ -3,6 +3,7 @@ import { getPrisma } from '@mantirenfe/database';
 import { horaGtfs, type EstadoSerializado } from '@mantirenfe/shared-types';
 import { enviarEmail } from '../notificaciones/email';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
+import { leerTexto } from '../notificaciones/util';
 import { ahoraRelojGtfs, esDiaAplicable } from './reloj';
 
 /** `datos.tipo` de la marca de dedupe: una fila de `Notificacion` por usuario y día. */
@@ -35,14 +36,6 @@ export interface DigestDiario {
   cuerpo: string;
   /** Nº de líneas de salida incluidas (0 si el día no tiene datos de trenes) */
   salidas: number;
-}
-
-function leerTexto(datos: unknown, campo: string): string | null {
-  if (datos && typeof datos === 'object' && !Array.isArray(datos)) {
-    const valor = (datos as Record<string, unknown>)[campo];
-    if (typeof valor === 'string') return valor;
-  }
-  return null;
 }
 
 /** Encabezado del cuerpo: "lunes 28 de septiembre" en el reloj peninsular. */

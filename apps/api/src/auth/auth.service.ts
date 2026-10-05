@@ -56,4 +56,42 @@ export class AuthService {
       data: { preferencias: preferencias as object },
     });
   }
+
+  /**
+   * PATCH parcial (read-modify-write): se leen las preferencias guardadas, se
+   * mezclan en superficial con las claves enviadas y se vuelve a escribir el
+   * objeto completo. A diferencia del POST, las claves ausentes NO se pisan
+   * (dos clientes tocan campos distintos sin pisarse), y el resultado es el
+   * mismo objeto completo que devuelve el GET.
+   */
+  async actualizarPreferenciasParciales(
+    usuario: UsuarioRequest,
+    parciales: Partial<PreferenciasUsuario>,
+  ): Promise<PreferenciasUsuario> {
+    const prisma = getPrisma();
+    const usuarioDb = await this.obtenerOCrear(usuario);
+    const mezcladas: PreferenciasUsuario = {
+      ...preferenciasDe(usuarioDb),
+      ...sinUndefined(parciales),
+    };
+    await prisma.usuario.update({
+      where: { id: usuario.sub },
+      data: { preferencias: mezcladas as object },
+    });
+    return mezcladas;
+  }
+}
+
+/**
+ * Un campo que el cliente NO manda llega como `undefined` (o lo pone zod al
+ * parsear `{}`): ese `undefined` no debe borrar el valor guardado, así que las
+ * claves sin valor se descartan antes de la mezcla.
+ */
+function sinUndefined(parciales: Partial<PreferenciasUsuario>): Partial<PreferenciasUsuario> {
+  const resultado: Partial<PreferenciasUsuario> = {};
+  for (const clave of Object.keys(parciales)) {
+    const valor = (parciales as Record<string, unknown>)[clave];
+    if (valor !== undefined) (resultado as Record<string, unknown>)[clave] = valor;
+  }
+  return resultado;
 }

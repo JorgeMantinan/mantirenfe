@@ -1,6 +1,15 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Alert, FlatList, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   duracionCorta,
@@ -30,7 +39,7 @@ import {
   textoSondeosOcultos,
 } from '@/lib/precios';
 import { useTema } from '@/lib/tema-contexto';
-import { espaciado, type Paleta } from '@/lib/tema';
+import { espaciado, radio, type Paleta } from '@/lib/tema';
 
 /** Traductor que usan los ayudantes de este módulo (se pasa desde el render). */
 type Traductor = ReturnType<typeof useTranslation>['t'];
@@ -164,8 +173,12 @@ export default function DetalleAlerta() {
 
   // Cabecera memoizada: al refrescar solo cambia `cargando`, y la lista no
   // debe repintar la ficha, la tabla de trenes ni la evolución de precios.
-  const cabecera = useMemo(
-    () => (
+  const cabecera = useMemo(() => {
+    /** El otro tramo del grupo ida/vuelta (si esta alerta forma pareja). */
+    const grupo = alerta?.grupo;
+    /** El ancla (sin `grupoId`) es la ida: así esta alerta sabe qué tramo es. */
+    const esVuelta = Boolean(alerta?.grupoId);
+    return (
       <View style={{ gap: espaciado.sm }}>
         {error ? (
           <Tarjeta style={{ borderColor: paleta.error }}>
@@ -236,6 +249,27 @@ export default function DetalleAlerta() {
                   : t('detalle.ninguno'),
               })}
             </Text>
+            {grupo ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={t('alertas.idaVuelta')}
+                onPress={() => router.push(`/alertas/${grupo.id}`)}
+                style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+              >
+                <View style={s.grupo}>
+                  <View style={s.grupoEtiquetas}>
+                    <Etiqueta tono="primario">{t('alertas.idaVuelta')}</Etiqueta>
+                    <Etiqueta tono="neutro">
+                      {esVuelta ? t('alertas.vuelta') : t('alertas.ida')}
+                    </Etiqueta>
+                  </View>
+                  <Text style={s.detalle}>
+                    {grupo.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+                    {grupo.destinoNombre} · {grupo.fechaViaje}
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
             <View style={s.acciones}>
               <Boton
                 titulo={t('comunes.compartir')}
@@ -385,20 +419,19 @@ export default function DetalleAlerta() {
 
         <Text style={s.subtitulo}>{t('detalle.avisosTitulo')}</Text>
       </View>
-    ),
-    [
-      error,
-      alerta,
-      t,
-      paleta,
-      s,
-      trenes,
-      seriesPrecios,
-      verEvolucion,
-      compartir,
-      anadirAlCalendario,
-    ],
-  );
+    );
+  }, [
+    error,
+    alerta,
+    t,
+    paleta,
+    s,
+    trenes,
+    seriesPrecios,
+    verEvolucion,
+    compartir,
+    anadirAlCalendario,
+  ]);
 
   return (
     <FlatList
@@ -503,6 +536,20 @@ const estilos = (c: Paleta) =>
     fecha: {
       fontSize: 12,
       color: c.textoSecundario,
+    },
+    grupo: {
+      gap: espaciado.xs,
+      backgroundColor: c.fondoSecundario,
+      borderWidth: 1,
+      borderColor: c.borde,
+      borderRadius: radio.sm,
+      padding: espaciado.sm,
+    },
+    grupoEtiquetas: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: espaciado.xs,
     },
     acciones: {
       flexDirection: 'row',

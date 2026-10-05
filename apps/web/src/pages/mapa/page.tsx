@@ -204,6 +204,15 @@ export function PaginaMapa() {
     refrescar(mostrar);
   }, 30_000);
 
+  // ¿Cuánto falta la última posición conocida? Si el feed de Renfe se para,
+  // el mapa se queda «congelado» y parece que no circulan trenes.
+  const desfaseMin = useMemo(() => {
+    if (!trenes || trenes.length === 0) return 0;
+    const ultima = Math.max(...trenes.map((t) => new Date(t.actualizadaEn).getTime()));
+    if (!Number.isFinite(ultima)) return 0;
+    return Math.max(0, Math.floor((Date.now() - ultima) / 60_000));
+  }, [trenes]);
+
   const q = filtro.trim().toLowerCase();
   const visibles = useMemo(() => {
     const lista = trenes ?? [];
@@ -258,6 +267,12 @@ export function PaginaMapa() {
           {t('mapa.errorApiAntes')}
           <code>.env</code>
           {t('mapa.errorApiDespues')}
+        </div>
+      )}
+
+      {desfaseMin >= 5 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          {t('mapa.feedLento', { min: desfaseMin })}
         </div>
       )}
 

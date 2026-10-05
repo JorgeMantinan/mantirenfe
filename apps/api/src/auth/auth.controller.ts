@@ -1,8 +1,16 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { preferenciasUsuarioSchema } from '@mantirenfe/shared-types';
 import { UsuarioActual, UsuarioRequest } from '../common/usuario-actual.decorator';
 import { AuthService } from './auth.service';
+
+/**
+ * Mismos campos que el guardado completo pero TODOS opcionales: solo lo que el
+ * cliente manda se aplica (`.partial()` quita también los defaults de zod, así
+ * que un campo ausente ni siquiera aparece en el resultado del parseo).
+ * Exportado para el test del parseo parcial.
+ */
+export const preferenciasParcialSchema = preferenciasUsuarioSchema.partial();
 
 @ApiTags('auth')
 @ApiBearerAuth()
@@ -39,5 +47,21 @@ export class AuthController {
     }
     await this.authService.guardarPreferencias(usuario, parsed.data);
     return parsed.data;
+  }
+
+  /**
+   * Guardado PARCIAL: body con solo las claves a cambiar (p. ej. `{ tema }`),
+   * que se mezclan en superficial con lo guardado. Devuelve las preferencias
+   * completas, igual que el GET. El POST de arriba sigue siendo el guardado
+   * completo que usa la pantalla de ajustes.
+   */
+  @Patch('preferencias')
+  @HttpCode(200)
+  async actualizarPreferencias(@UsuarioActual() usuario: UsuarioRequest, @Body() cuerpo: unknown) {
+    const parsed = preferenciasParcialSchema.safeParse(cuerpo);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    }
+    return this.authService.actualizarPreferenciasParciales(usuario, parsed.data);
   }
 }

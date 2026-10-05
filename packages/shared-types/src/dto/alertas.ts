@@ -260,6 +260,17 @@ export interface AlertaResponse {
    * el listado (GET /alertas); el resto de endpoints lo omiten.
    */
   avisosRecibidos?: number;
+  /**
+   * Solo en GET /alertas/:id: el otro tramo del grupo ida/vuelta (la ida si esta
+   * es la vuelta, o la vuelta si esta es el ancla), resumido para enlazarlo.
+   */
+  grupo?: {
+    id: string;
+    origenNombre: string;
+    destinoNombre: string;
+    fechaViaje: string;
+    estado: EstadoAlerta;
+  };
 }
 
 /**

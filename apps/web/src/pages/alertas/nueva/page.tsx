@@ -20,6 +20,9 @@ import { horaGtfs, type AlertaResponse, type HorarioTrenResponse } from '@mantir
 /** Modalidades del bloque "¿Cuándo viajas?": fecha concreta, rango flexible o cotidiano. */
 type Frecuencia = 'fecha' | 'flexible' | 'diaria' | 'dias';
 
+/** Formato HH:MM de 24 h que acepta la API (mismo que el schema de la alerta). */
+const RE_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /** Etiquetas del bono de la alerta, en el idioma activo. */
 function etiquetasBonos(t: TFunction): Record<string, string> {
   return {
@@ -111,6 +114,9 @@ export function PaginaNuevaAlerta() {
   const [notas, setNotas] = useState('');
   const [tambienVuelta, setTambienVuelta] = useState(false);
   const [fechaVuelta, setFechaVuelta] = useState('');
+  // Franja horaria propia de la vuelta: vacía = usar la de la ida
+  const [horaDesdeVuelta, setHoraDesdeVuelta] = useState('');
+  const [horaHastaVuelta, setHoraHastaVuelta] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Mientras carga la alerta en modo edición el formulario viene "vacío" (criterio
   // DISPONIBILIDAD por defecto); si el usuario toca el selector antes de que llegue
@@ -280,6 +286,21 @@ export function PaginaNuevaAlerta() {
       toast.error(t('nuevaAlerta.errorFechaVueltaOrden'));
       return;
     }
+    const desdeVuelta = horaDesdeVuelta.trim();
+    const hastaVuelta = horaHastaVuelta.trim();
+    if (tambienVuelta && (desdeVuelta || hastaVuelta)) {
+      if (
+        (desdeVuelta && !RE_HORA.test(desdeVuelta)) ||
+        (hastaVuelta && !RE_HORA.test(hastaVuelta))
+      ) {
+        toast.error(t('nuevaAlerta.errorFranjaVuelta'));
+        return;
+      }
+      if (desdeVuelta && hastaVuelta && desdeVuelta > hastaVuelta) {
+        toast.error(t('nuevaAlerta.errorFranjaVueltaOrden'));
+        return;
+      }
+    }
     const objetivo = Number(precioObjetivo);
     if (criterio === 'PRECIO' && !(Number.isFinite(objetivo) && objetivo > 0)) {
       toast.error(t('nuevaAlerta.errorPrecio'));
@@ -338,7 +359,13 @@ export function PaginaNuevaAlerta() {
           const vuelta = await api<{ id?: string; error?: unknown }>('/alertas', {
             method: 'POST',
             json: {
-              ...construirAlertaVuelta({ ...datos, fechaViaje: fechaVuelta || datos.fechaViaje }),
+              ...construirAlertaVuelta({
+                ...datos,
+                fechaViaje: fechaVuelta || datos.fechaViaje,
+                // Franja propia de la vuelta: vacía = la misma que la ida
+                horaDesde: horaDesdeVuelta.trim() || datos.horaDesde,
+                horaHasta: horaHastaVuelta.trim() || datos.horaHasta,
+              }),
               // La vuelta apunta a la ida para que el listado las muestre juntas
               grupoId: resultado.id,
             },
@@ -661,12 +688,17 @@ export function PaginaNuevaAlerta() {
                     onChange={(e) => {
                       const activo = e.target.checked;
                       setTambienVuelta(activo);
-                      if (activo && !fechaVuelta) {
-                        // Por defecto, dos días después de la ida (o de hoy)
-                        const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
-                        const d = new Date(`${base}T12:00:00Z`);
-                        d.setUTCDate(d.getUTCDate() + 2);
-                        setFechaVuelta(d.toISOString().slice(0, 10));
+                      if (activo) {
+                        if (!fechaVuelta) {
+                          // Por defecto, dos días después de la ida (o de hoy)
+                          const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
+                          const d = new Date(`${base}T12:00:00Z`);
+                          d.setUTCDate(d.getUTCDate() + 2);
+                          setFechaVuelta(d.toISOString().slice(0, 10));
+                        }
+                        // La vuelta arranca con la franja de la ida (editable después)
+                        if (!horaDesdeVuelta) setHoraDesdeVuelta(horaDesde);
+                        if (!horaHastaVuelta) setHoraHastaVuelta(horaHasta);
                       }
                     }}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
@@ -692,6 +724,33 @@ export function PaginaNuevaAlerta() {
                       onChange={(e) => setFechaVuelta(e.target.value)}
                       required
                     />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="horaDesdeVuelta">
+                          {t('nuevaAlerta.horaDesdeVueltaLabel')}
+                        </Label>
+                        <Input
+                          id="horaDesdeVuelta"
+                          type="time"
+                          value={horaDesdeVuelta}
+                          onChange={(e) => setHoraDesdeVuelta(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="horaHastaVuelta">
+                          {t('nuevaAlerta.horaHastaVueltaLabel')}
+                        </Label>
+                        <Input
+                          id="horaHastaVuelta"
+                          type="time"
+                          value={horaHastaVuelta}
+                          onChange={(e) => setHoraHastaVuelta(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t('nuevaAlerta.pistaFranjaVuelta')}
+                    </p>
                   </div>
                 )}
               </div>

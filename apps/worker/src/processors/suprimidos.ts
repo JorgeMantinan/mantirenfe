@@ -1,13 +1,8 @@
 import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import { parsearCancelados } from '@mantirenfe/shared-types';
-import { descargarTripUpdates } from '../fuentes/gtfs-rt';
+import { descargarTripUpdates, urlsTripUpdates } from '../fuentes/gtfs-rt';
 import { hoyGtfs } from './reloj';
-
-// Mismo par de feeds que consulta la API para retrasos y cancelaciones:
-// trip_updates.json (Cercanías) + trip_updates_LD.json (Larga Distancia).
-const URL_TRIP_UPDATES_DEFECTO =
-  'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
 
 /** Días que se conserva una cancelación antes de podarla. */
 export const DIAS_CONSERVACION = 7;
@@ -117,10 +112,8 @@ export async function persistirSuprimidos(logger: Logger): Promise<void> {
     return;
   }
 
-  const urls = (process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() || URL_TRIP_UPDATES_DEFECTO)
-    .split(',')
-    .map((u) => u.trim())
-    .filter(Boolean);
+  // Mismos feeds que el sondeo de retrasos (la lista y la caché viven en gtfs-rt)
+  const urls = urlsTripUpdates();
   const resultados = await Promise.allSettled(urls.map((u) => descargarTripUpdates(u)));
 
   const cancelados = new Set<string>();

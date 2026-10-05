@@ -24,7 +24,7 @@ function ThemeToggle() {
   const { t } = useTranslation();
   const { resolvedTheme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
-  const ordenGuardado = useRef(0);
+  const peticionPendiente = useRef<AbortController | null>(null);
 
   useEffect(() => setMontado(true), []);
   if (!montado)
@@ -36,21 +36,19 @@ function ThemeToggle() {
   const cambiar = (tema: TemaDom) => {
     marcarEdicionTema();
     setTheme(aNextTheme(tema));
-    const orden = ++ordenGuardado.current;
-    void (async () => {
-      let actuales: PreferenciasUsuario;
-      try {
-        actuales = await api<PreferenciasUsuario>('/auth/preferencias');
-      } catch {
-        return;
-      }
-      if (orden !== ordenGuardado.current) return;
-      try {
-        await api('/auth/preferencias', { method: 'POST', json: { ...actuales, tema } });
-      } catch {
-        return;
-      }
-    })();
+    // UNA sola petición con SOLO { tema }: el servidor hace la mezcla superficial,
+    // así que ya no hay lectura previa que pueda pisar el resto de preferencias
+    // (la pareja GET + POST completo de antes perdía escrituras concurrentes).
+    // Si se pulsa dos veces seguidas, la anterior se cancela para que no llegue
+    // después y deje el tema atrasado en el servidor.
+    peticionPendiente.current?.abort();
+    const controlador = new AbortController();
+    peticionPendiente.current = controlador;
+    void api<PreferenciasUsuario>('/auth/preferencias', {
+      method: 'PATCH',
+      json: { tema },
+      signal: controlador.signal,
+    }).catch(() => undefined);
   };
 
   return (

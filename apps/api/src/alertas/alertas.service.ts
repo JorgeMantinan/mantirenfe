@@ -281,11 +281,30 @@ export class AlertasService {
   }
 
   async obtener(usuario: UsuarioRequest, id: string): Promise<AlertaResponse> {
-    const alerta = await getPrisma().alerta.findFirst({
+    const prisma = getPrisma();
+    const alerta = await prisma.alerta.findFirst({
       where: { id, usuarioId: usuario.sub },
     });
     if (!alerta) throw new NotFoundException('Alerta no encontrada');
-    return formatearAlerta(alerta);
+
+    // Grupo ida/vuelta: el detalle enlaza con el OTRO tramo (el ancla si esta es
+    // la vuelta, la vuelta si esta es el ancla). Solo entre alertas del MISMO
+    // usuario: `findUnique` va solo por id, así que se comprueba el dueño.
+    const pareja = alerta.grupoId
+      ? await prisma.alerta.findUnique({ where: { id: alerta.grupoId } })
+      : await prisma.alerta.findFirst({ where: { grupoId: id, usuarioId: usuario.sub } });
+
+    const respuesta = formatearAlerta(alerta);
+    if (pareja && pareja.usuarioId === usuario.sub) {
+      respuesta.grupo = {
+        id: pareja.id,
+        origenNombre: pareja.origenNombre,
+        destinoNombre: pareja.destinoNombre,
+        fechaViaje: fechaIso(pareja.fechaViaje),
+        estado: pareja.estado as AlertaResponse['estado'],
+      };
+    }
+    return respuesta;
   }
 
   /**

@@ -620,6 +620,8 @@ export const en: MismoArbol<Claves> = {
     subtitulo: 'GTFS-RT positions for commuter and long-distance trains · updated every 30 s',
     placeholder: 'Filter trains...',
     filtrarAria: 'Filter map trains',
+    feedLento:
+      'The Renfe feed has not updated for {{min}} min: some trains may be missing on the map.',
     recuentoFiltrado: '{{visibles}} / {{total}} trains',
     recuento: '{{total}} trains',
     actualizar: 'Refresh',
@@ -872,6 +874,11 @@ export const en: MismoArbol<Claves> = {
     fechaVueltaLabel: 'Return date',
     errorFechaVuelta: 'Enter the return date.',
     errorFechaVueltaOrden: 'The return date cannot be before the outbound trip.',
+    horaDesdeVueltaLabel: 'Return time from (optional)',
+    horaHastaVueltaLabel: 'Return time to (optional)',
+    pistaFranjaVuelta: 'Leave it empty to use the outbound time',
+    errorFranjaVuelta: 'The return time must use the HH:MM format',
+    errorFranjaVueltaOrden: 'On the return leg the start time cannot be later than the end time',
     toastCreadasVuelta:
       '2 alerts created: outbound and return ({{resumen}}). We have started watching them.',
     errorVuelta: 'Outbound alert created; the return leg failed: please try again.',

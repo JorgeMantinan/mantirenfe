@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
+  ArrowLeftRight,
   BellRing,
   CalendarPlus,
   Coins,
@@ -275,6 +276,22 @@ export function PaginaDetalleAlerta() {
                     <CalendarPlus aria-hidden="true" /> {t('detalleAlerta.calendario')}
                   </Button>
                 </div>
+                {alerta.grupo && (
+                  <Link
+                    to={`/alertas/${alerta.grupo.id}`}
+                    className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 transition-colors hover:bg-accent"
+                  >
+                    <ArrowLeftRight className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                    <span className="font-medium">{t('alertas.idaVuelta')}</span>
+                    <Badge variant="outline">
+                      {alerta.grupoId ? t('alertas.vuelta') : t('alertas.ida')}
+                    </Badge>
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {alerta.grupo.origenNombre} → {alerta.grupo.destinoNombre} ·{' '}
+                      {alerta.grupo.fechaViaje}
+                    </span>
+                  </Link>
+                )}
               </CardContent>
               {alerta.notas && (
                 <CardContent className="pt-0 text-sm text-muted-foreground">

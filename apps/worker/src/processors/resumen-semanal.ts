@@ -2,7 +2,12 @@ import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { enviarPush } from '../notificaciones/web-push';
+import { leerTexto, pushHabilitado } from '../notificaciones/util';
 import { ahoraRelojGtfs } from './reloj';
+
+// Re-exportado para no romper a nadie que lo importara de este fichero
+// (los tests de aquí siguen usando este camino).
+export { pushHabilitado };
 
 /** Título del aviso semanal (el cuerpo lleva las métricas). */
 export const TITULO_RESUMEN_SEMANAL = 'Tu semana en MantiRenfe';
@@ -49,14 +54,6 @@ const ETIQUETAS_TIPO: Record<string, [string, string]> = {
   'resumen-viaje': ['resumen de viaje', 'resúmenes de viaje'],
   precio: ['aviso de precio', 'avisos de precio'],
 };
-
-function leerTexto(datos: unknown, campo: string): string | null {
-  if (datos && typeof datos === 'object' && !Array.isArray(datos)) {
-    const valor = (datos as Record<string, unknown>)[campo];
-    if (typeof valor === 'string') return valor;
-  }
-  return null;
-}
 
 /** Clave de semana del dedupe (YYYY-MM-DD del lunes resumido). */
 export function claveSemana(rango: RangoSemana): string {
@@ -151,27 +148,6 @@ export function cuerpoResumenSemanal(metrica: MetricasUsuario, alertasActivas: n
       : `${avisos} esta semana`;
   const desglose = desglosePorTipo(metrica.porTipo);
   return desglose ? `${base} (${desglose})` : base;
-}
-
-/**
- * Preferencia `notificacionesPush` (por defecto activa). Es el mismo criterio
- * que `pushHabilitado` de sondeo.ts, duplicado aquí a propósito: este fichero no
- * debe tocar sondeo.ts (otra tarea lo está cambiando) y el resumen no comparte
- * más lógica con el envío por alerta que el par web-push/expo-push.
- */
-export function pushHabilitado(preferencias: unknown): boolean {
-  let valor: unknown = preferencias;
-  if (typeof valor === 'string') {
-    try {
-      valor = JSON.parse(valor);
-    } catch {
-      return true;
-    }
-  }
-  if (valor && typeof valor === 'object') {
-    return (valor as { notificacionesPush?: boolean }).notificacionesPush !== false;
-  }
-  return true;
 }
 
 export interface UsuarioPush {

@@ -13,12 +13,17 @@ import { deduplicarTrenes } from '../fuentes/renfe-dwr';
 import { enviarEmail } from '../notificaciones/email';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
+import { pushHabilitado } from '../notificaciones/util';
 import { enviarPush } from '../notificaciones/web-push';
 import { hoyGtfs } from './reloj';
 
 // El tipo vive en shared-types (lo consumen la API, la web y el móvil);
 // se re-exporta aquí para no romper a nadie que lo importara de este fichero.
 export type { EstadoSerializado };
+
+// Mismo criterio que el resumen semanal: una sola implementación en
+// notificaciones/util.ts, re-exportada para los tests de este fichero.
+export { pushHabilitado };
 
 export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
   // `deduplicarTrenes` es una red de seguridad para TODAS las fuentes: dos filas
@@ -216,21 +221,6 @@ function criterioCoincide(alerta: { criterio: string }, codigo: string): boolean
   if (alerta.criterio === codigo) return true;
   if (codigo === 'DISPONIBILIDAD') return alerta.criterio === 'APERTURA_VENTA';
   return false;
-}
-
-export function pushHabilitado(preferencias: unknown): boolean {
-  let valor: unknown = preferencias;
-  if (typeof valor === 'string') {
-    try {
-      valor = JSON.parse(valor);
-    } catch {
-      return true;
-    }
-  }
-  if (valor && typeof valor === 'object') {
-    return (valor as { notificacionesPush?: boolean }).notificacionesPush !== false;
-  }
-  return true;
 }
 
 /**
