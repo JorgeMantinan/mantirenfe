@@ -41,6 +41,7 @@ import {
   textoConexion,
   type AlertaResponse,
   type AvisoAlertaResponse,
+  type CriterioAlerta,
   type EstadoSerializado,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
@@ -52,6 +53,11 @@ function haceCuanto(iso: string, t: TFunction): string {
   if (minutos < 1) return t('detalleAlerta.haceMomento');
   if (minutos < 60) return t('detalleAlerta.haceMin', { min: minutos });
   return new Date(iso).toLocaleString(locale());
+}
+
+/** Todos los criterios vigilados por la alerta (legada: solo `criterio`). */
+function criteriosDe(alerta: AlertaResponse): CriterioAlerta[] {
+  return alerta.criterios?.length ? alerta.criterios : [alerta.criterio];
 }
 
 /**
@@ -238,8 +244,12 @@ export function PaginaDetalleAlerta() {
                       ? t('alertas.estadoPausa')
                       : t('alertas.completada')}
                 </Badge>
-                <Badge variant="outline">{etiquetaCriterio(t, alerta.criterio)}</Badge>
-                {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null && (
+                {criteriosDe(alerta).map((c) => (
+                  <Badge key={c} variant="outline">
+                    {etiquetaCriterio(t, c)}
+                  </Badge>
+                ))}
+                {criteriosDe(alerta).includes('PRECIO') && alerta.precioObjetivo != null && (
                   <Badge variant="aviso">
                     {t('alertas.precioObjetivo', {
                       precio: formatearPrecio(alerta.precioObjetivo),

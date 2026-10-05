@@ -25,7 +25,47 @@ export type { EstadoSerializado };
 // notificaciones/util.ts, re-exportada para los tests de este fichero.
 export { pushHabilitado };
 
-export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializado[] {
+/**
+ * Etiqueta con la que el worker guarda la serie de un criterio en
+ * `ultimoEstado`. Los criterios que comparten fuente de datos (p. ej.
+ * DISPONIBILIDAD y PRECIO, los dos en la venta) consultan lo mismo y comparan
+ * contra la MISMA serie: se etiquetan con el primero de su grupo para no
+ * duplicar filas en `ultimoEstado`. Criterios de fuentes distintas
+ * (RETRASO/GTFS-RT, HORARIO/BD) guardan su propia serie.
+ */
+export function etiquetaEstado(criterio: string, criterios: readonly string[]): string {
+  const grupo = fuenteDeCriterio(criterio);
+  return criterios.find((c) => fuenteDeCriterio(c) === grupo) ?? criterio;
+}
+
+/** Criterios que comparten fuente de datos: se consulta cada fuente UNA vez. */
+function fuenteDeCriterio(criterio: string): 'RETRASO' | 'HORARIO' | 'VENTA' {
+  if (criterio === 'RETRASO') return 'RETRASO';
+  if (criterio === 'HORARIO') return 'HORARIO';
+  return 'VENTA';
+}
+
+/**
+ * Criterios vigilados de una alerta. Con `criterios` manda la lista
+ * (multi-criterio); sin ella, la alerta es legada y vigila solo `criterio`.
+ *
+ * DISPONIBILIDAD y APERTURA_VENTA comparan exactamente lo mismo (la venta), así
+ * que si están las dos se evalúa solo una: dos avisos idénticos por sondeo no
+ * le sirven a nadie.
+ */
+export function criteriosDeAlerta(alerta: {
+  criterio: string;
+  criterios?: readonly string[] | null;
+}): string[] {
+  const lista =
+    alerta.criterios && alerta.criterios.length > 0 ? [...alerta.criterios] : [alerta.criterio];
+  return lista.includes('DISPONIBILIDAD') ? lista.filter((c) => c !== 'APERTURA_VENTA') : lista;
+}
+
+export function serializarEstado(
+  estado: EstadoDisponibilidad,
+  criterio?: string,
+): EstadoSerializado[] {
   // `deduplicarTrenes` es una red de seguridad para TODAS las fuentes: dos filas
   // con el mismo trenId y la misma salida son la misma fila vista dos veces (la
   // UI usaría la misma clave de React y los diffs por trenId se perderían una).
@@ -41,6 +81,8 @@ export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializad
         retrasoSeg: t.retrasoSeg ?? null,
         cancelado: t.cancelado === true,
       };
+      // Multi-criterio: cada fila se asocia al criterio cuya serie es
+      if (criterio) serializado.criterio = criterio;
       if (t.paradasSuprimidas && t.paradasSuprimidas.length > 0) {
         serializado.paradasSuprimidas = [...t.paradasSuprimidas];
       }
@@ -57,6 +99,31 @@ export function serializarEstado(estado: EstadoDisponibilidad): EstadoSerializad
       if (t.tarifa) serializado.tarifa = t.tarifa;
       return serializado;
     });
+}
+
+/**
+ * `ultimoEstado` agrupado por la etiqueta de criterio que lo etiquetó al
+ * guardarlo. Las filas SIN `criterio` (estado escrito por versiones anteriores)
+ * se asignan al criterio legado de la alerta: es el único que existía entonces,
+ * así el diff de una alerta antigua sigue comparando contra lo suyo.
+ */
+export function estadoAnteriorPorCriterio(
+  bruto: unknown,
+  criterioLegado: string,
+): Map<string, EstadoSerializado[]> {
+  const porEtiqueta = new Map<string, EstadoSerializado[]>();
+  if (!Array.isArray(bruto)) return porEtiqueta;
+  for (const item of bruto) {
+    if (!item || typeof item !== 'object') continue;
+    const fila = item as EstadoSerializado;
+    if (typeof fila.trenId !== 'string' || typeof fila.salida !== 'string') continue;
+    const etiqueta =
+      typeof fila.criterio === 'string' && fila.criterio ? fila.criterio : criterioLegado;
+    const lista = porEtiqueta.get(etiqueta);
+    if (lista) lista.push(fila);
+    else porEtiqueta.set(etiqueta, [fila]);
+  }
+  return porEtiqueta;
 }
 
 export function diffDisponibles(anterior: EstadoSerializado[], actual: EstadoSerializado[]) {
@@ -217,9 +284,10 @@ export async function registrarHistorialPrecios(
   }
 }
 
-function criterioCoincide(alerta: { criterio: string }, codigo: string): boolean {
-  if (alerta.criterio === codigo) return true;
-  if (codigo === 'DISPONIBILIDAD') return alerta.criterio === 'APERTURA_VENTA';
+/** ¿Este criterio se evalúa con la regla `codigo`? (APERTURA_VENTA = venta) */
+function criterioCoincide(criterio: string, codigo: string): boolean {
+  if (criterio === codigo) return true;
+  if (codigo === 'DISPONIBILIDAD') return criterio === 'APERTURA_VENTA';
   return false;
 }
 
@@ -391,6 +459,8 @@ export interface AvisoAlerta {
   destinoNombre: string;
   fechaViaje: Date;
   criterio: string;
+  // Lista multi-criterio (opcional: las alertas legadas solo traen `criterio`)
+  criterios?: readonly string[] | null;
   usuario: {
     // El sondeo lo trae en el include; solo se usa si la ruta permite email
     email?: string | null;
@@ -488,13 +558,35 @@ interface AvisoSondeo {
 }
 
 /**
- * Avisos que toca enviar al comparar el estado anterior con el actual (vacío si
- * no hay cambios). Solo se calculan aquí: el estado de la alerta y las
- * `Notificacion` se guardan después juntos, en una única transacción, y los
- * envíos van tras el commit.
+ * Avisos de UN criterio marcados con el criterio que los disparó: viaja en
+ * `Notificacion.datos` para poder distinguirlos en el buzón de una alerta
+ * multi-criterio.
  */
-function calcularAvisos(
+function calcularAvisosDeCriterio(
   alerta: AvisoAlerta & { precioObjetivo: number | null },
+  criterio: string,
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+  fechaTexto: string,
+  logger: Logger,
+): AvisoSondeo[] {
+  return avisosDeCriterio(alerta, criterio, anterior, actual, fechaTexto, logger).map((aviso) => ({
+    ...aviso,
+    datos: { ...aviso.datos, criterio },
+  }));
+}
+
+/**
+ * Avisos que toca enviar al comparar el estado anterior con el actual de UN
+ * criterio concreto (vacío si no hay cambios). Cada criterio de la alerta se
+ * evalúa por su cuenta con su propia serie, así que "plazas" y "retrasos" de la
+ * misma alerta son avisos independientes. Solo se calculan aquí: el estado de
+ * la alerta y las `Notificacion` se guardan después juntos, en una única
+ * transacción, y los envíos van tras el commit.
+ */
+function avisosDeCriterio(
+  alerta: AvisoAlerta & { precioObjetivo: number | null },
+  criterio: string,
   anterior: EstadoSerializado[],
   actual: EstadoSerializado[],
   fechaTexto: string,
@@ -503,7 +595,7 @@ function calcularAvisos(
   const avisos: AvisoSondeo[] = [];
   const alertaId = alerta.id;
 
-  if (criterioCoincide(alerta, 'DISPONIBILIDAD')) {
+  if (criterioCoincide(criterio, 'DISPONIBILIDAD')) {
     const { aparecen } = diffDisponibles(anterior, actual);
     if (aparecen.length === 0) {
       logger.debug({ alertaId }, 'Sin cambios de disponibilidad');
@@ -525,7 +617,7 @@ function calcularAvisos(
     return avisos;
   }
 
-  if (criterioCoincide(alerta, 'PRECIO')) {
+  if (criterioCoincide(criterio, 'PRECIO')) {
     const precioObjetivo = alerta.precioObjetivo;
     if (typeof precioObjetivo !== 'number') {
       logger.warn({ alertaId }, 'Alerta de precio sin precioObjetivo, se omite');
@@ -553,7 +645,7 @@ function calcularAvisos(
     return avisos;
   }
 
-  if (alerta.criterio === 'HORARIO') {
+  if (criterio === 'HORARIO') {
     const { nuevos, salidos, cambiados } = diffHorarios(anterior, actual);
     if (nuevos.length === 0 && salidos.length === 0 && cambiados.length === 0) {
       logger.debug({ alertaId }, 'Sin cambios de horario');
@@ -580,7 +672,7 @@ function calcularAvisos(
     return avisos;
   }
 
-  if (alerta.criterio === 'RETRASO') {
+  if (criterio === 'RETRASO') {
     const cancelaciones = nuevosCancelados(anterior, actual);
     if (cancelaciones.length > 0) {
       avisos.push({
@@ -654,7 +746,7 @@ function calcularAvisos(
     return avisos;
   }
 
-  logger.debug({ alertaId, criterio: alerta.criterio }, 'Criterio sin notificación');
+  logger.debug({ alertaId, criterio }, 'Criterio sin notificación');
   return avisos;
 }
 
@@ -694,7 +786,10 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
     ? alerta.fechaHasta.toISOString().slice(0, 10)
     : sumarDiasIso(desde, HORIZONTE_FLEXIBLE_DIAS);
   const fechas = fechasSondeoFlexible(desde, hasta, estado.indice);
-  const fuente = crearFuenteDatos(alerta.criterio);
+  // La rotación por fechas es del criterio (primero) de la alerta: es el que
+  // escoge la fuente y el que etiqueta el estado que se guarda para el detalle.
+  const criterios = criteriosDeAlerta(alerta);
+  const fuente = crearFuenteDatos(criterios[0] ?? alerta.criterio);
 
   const abiertas: Array<{ fecha: string; trenes: EstadoSerializado[] }> = [];
   let ultimaSerie: EstadoSerializado[] | null = null;
@@ -711,7 +806,7 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
         horaHasta: alerta.horaHasta,
         numeroTren: alerta.numeroTren,
       });
-      serie = serializarEstado(consultada);
+      serie = serializarEstado(consultada, criterios[0] ?? alerta.criterio);
     } catch (error) {
       logger.warn({ alertaId: alerta.id, fecha, err: error }, 'Fecha del rango sin sondear');
       continue;
@@ -740,6 +835,7 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
   const datosAviso = cuerpo
     ? {
         tipo: 'apertura',
+        criterio: criterios[0] ?? alerta.criterio,
         fechas: abiertas.map((a) => a.fecha),
         trenes: abiertas.flatMap((a) => a.trenes.slice(0, 3).map((t) => t.trenId)),
       }
@@ -853,33 +949,56 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     numeroTren: alerta.numeroTren,
   };
 
-  const fuente = crearFuenteDatos(alerta.criterio);
-  let estado: EstadoDisponibilidad;
-  try {
-    estado = await fuente.getDisponibilidad(consulta);
-  } catch (error) {
-    // `ultimoSondeoEn` ya lo ha marcado el claim: el fallo no lo deshace, así
-    // que el próximo intento espera el intervalo normal en vez de martillear
-    logger.error({ alertaId, err: error }, 'Falló el sondeo');
-    throw error;
+  // Multi-criterio: cada criterio se evalúa con su propia serie y contra SU
+  // estado anterior. Los que comparten fuente (p. ej. DISPONIBILIDAD y PRECIO)
+  // se consultan UNA vez y comparan contra la MISMA serie, así que
+  // `ultimoEstado` no guarda filas duplicadas ni se pisan los diffs.
+  const criterios = criteriosDeAlerta(alerta);
+  const etiquetas = [...new Set(criterios.map((c) => etiquetaEstado(c, criterios)))];
+
+  const series = new Map<string, EstadoSerializado[]>();
+  for (const etiqueta of etiquetas) {
+    const fuente = crearFuenteDatos(etiqueta);
+    let estado: EstadoDisponibilidad;
+    try {
+      estado = await fuente.getDisponibilidad(consulta);
+    } catch (error) {
+      // `ultimoSondeoEn` ya lo ha marcado el claim: el fallo no lo deshace, así
+      // que el próximo intento espera el intervalo normal en vez de martillear
+      logger.error({ alertaId, criterio: etiqueta, err: error }, 'Falló el sondeo');
+      throw error;
+    }
+
+    // Solo interesan los trenes dentro de la franja horaria de la alerta
+    if (consulta.horaDesde || consulta.horaHasta) {
+      estado = {
+        ...estado,
+        trenes: estado.trenes.filter((t) =>
+          enFranjaHoraria(t.salida, consulta.horaDesde ?? null, consulta.horaHasta ?? null),
+        ),
+      };
+    }
+    series.set(etiqueta, serializarEstado(estado, etiqueta));
   }
 
-  // Solo interesan los trenes dentro de la franja horaria de la alerta
-  if (consulta.horaDesde || consulta.horaHasta) {
-    estado = {
-      ...estado,
-      trenes: estado.trenes.filter((t) =>
-        enFranjaHoraria(t.salida, consulta.horaDesde ?? null, consulta.horaHasta ?? null),
-      ),
-    };
-  }
-
-  const actual = serializarEstado(estado);
-  const anterior = Array.isArray(alerta.ultimoEstado)
-    ? (alerta.ultimoEstado as unknown as EstadoSerializado[])
-    : [];
+  const actual = etiquetas.flatMap((etiqueta) => series.get(etiqueta) ?? []);
   const primeraVez = !Array.isArray(alerta.ultimoEstado);
-  const avisos = primeraVez ? [] : calcularAvisos(alerta, anterior, actual, fechaConsulta, logger);
+  const anteriores = estadoAnteriorPorCriterio(alerta.ultimoEstado, alerta.criterio);
+
+  // Un aviso por criterio que haya cambiado: los que salgan de aquí se
+  // persisten TODOS en la misma transacción de abajo.
+  const avisos = primeraVez
+    ? []
+    : criterios.flatMap((criterio) =>
+        calcularAvisosDeCriterio(
+          alerta,
+          criterio,
+          anteriores.get(etiquetaEstado(criterio, criterios)) ?? [],
+          series.get(etiquetaEstado(criterio, criterios)) ?? [],
+          fechaConsulta,
+          logger,
+        ),
+      );
 
   // Estado y avisos se guardan juntos en una única transacción: o se persisten
   // los dos o no se persiste nada (una Notificacion sin estado, o estado sin
@@ -903,18 +1022,24 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   // la fuente de venta (precio disponible). RETRASO/HORARIO/APERTURA_VENTA no
   // tienen precio que seguir. Se registra antes de notificar (y también en el
   // primer sondeo, que luego sale sin comparar) para no perder el punto inicial.
-  if (alerta.criterio === 'DISPONIBILIDAD' || alerta.criterio === 'PRECIO') {
-    const puntos = await registrarHistorialPrecios(alerta.id, anterior, actual, primeraVez, logger);
+  // Va una sola vez por la serie de la venta, aunque la vigilen dos criterios.
+  const criterioPrecio = criterios.find((c) => c === 'DISPONIBILIDAD' || c === 'PRECIO');
+  if (criterioPrecio) {
+    const etiqueta = etiquetaEstado(criterioPrecio, criterios);
+    const puntos = await registrarHistorialPrecios(
+      alerta.id,
+      anteriores.get(etiqueta) ?? [],
+      series.get(etiqueta) ?? [],
+      primeraVez,
+      logger,
+    );
     if (puntos > 0) {
       logger.debug({ alertaId, puntos }, 'Histórico de precios actualizado');
     }
   }
 
   if (primeraVez) {
-    logger.debug(
-      { alertaId, fuente: fuente.nombre, trenes: actual.length },
-      'Primer sondeo, estado guardado',
-    );
+    logger.debug({ alertaId, criterios, trenes: actual.length }, 'Primer sondeo, estado guardado');
     return;
   }
 

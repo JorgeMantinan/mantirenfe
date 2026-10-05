@@ -15,6 +15,18 @@ export function PaginaAuthCallback() {
       return;
     }
 
+    // Supabase exige `code` + `code_verifier`: una doble visita, un enlace
+    // antiguo o una sesión ya abierta llegan SIN código y el intercambio
+    // revienta con "both auth code and code verifier should be non-empty".
+    const codigo = new URLSearchParams(window.location.search).get('code');
+    if (!codigo) {
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => navigate(data.session ? '/dashboard' : '/login', { replace: true }))
+        .catch(() => navigate('/login', { replace: true }));
+      return;
+    }
+
     void supabase.auth.exchangeCodeForSession(window.location.href).then(({ error }) => {
       if (error) {
         toast.error(error.message);

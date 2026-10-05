@@ -57,12 +57,21 @@ function precioObjetivoValido(valor: number | null | undefined): boolean {
 /**
  * Con criterio PRECIO el umbral es obligatorio; en el resto de criterios el
  * campo es opcional y se ignora (la API lo guarda a null).
+ *
+ * Con la lista `criterios` (multi-criterio) basta con que PRECIO esté entre
+ * los elegidos; si la lista no llega (clientes legados) se mantiene el
+ * comportamiento viejo: solo cuenta el `criterio` único.
  */
 function exigirPrecioObjetivoSiPrecio(
-  valor: { criterio?: string | undefined; precioObjetivo?: number | null | undefined },
+  valor: {
+    criterio?: string | undefined;
+    criterios?: string[] | undefined;
+    precioObjetivo?: number | null | undefined;
+  },
   ctx: z.RefinementCtx,
 ) {
-  if (valor.criterio === 'PRECIO' && !precioObjetivoValido(valor.precioObjetivo)) {
+  const vigilados = valor.criterios && valor.criterios.length ? valor.criterios : [valor.criterio];
+  if (vigilados.includes('PRECIO') && !precioObjetivoValido(valor.precioObjetivo)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['precioObjetivo'],
@@ -120,6 +129,9 @@ export const crearAlertaSchema = z
       .nullable(),
     numeroTren: z.string().trim().max(20).optional().nullable(),
     criterio: criterioAlertaSchema.default('DISPONIBILIDAD'),
+    // Lista de criterios vigilados (multi-criterio: cada uno avisa por su cuenta).
+    // Opcional: sin ella la alerta es legada y vigila solo `criterio`.
+    criterios: z.array(criterioAlertaSchema).min(1, 'Elige al menos un criterio').max(4).optional(),
     // Solo con criterio PRECIO: umbral en € del aviso "avísame si baja de X".
     // En el resto de criterios es opcional y la API lo guarda a null.
     precioObjetivo: z
@@ -189,6 +201,9 @@ export const actualizarAlertaSchema = z
       .nullable(),
     numeroTren: z.string().trim().max(20).optional().nullable(),
     criterio: criterioAlertaSchema.optional(),
+    // Lista de criterios vigilados (multi-criterio). Si llega, manda ella:
+    // `criterio` se recalcula como el primero de la lista.
+    criterios: z.array(criterioAlertaSchema).min(1, 'Elige al menos un criterio').max(4).optional(),
     // Umbral en €: obligatorio si el criterio de este mismo parche pasa a PRECIO
     precioObjetivo: z
       .number()
@@ -221,7 +236,14 @@ export interface AlertaResponse {
   horaDesde: string | null;
   horaHasta: string | null;
   numeroTren: string | null;
+  /** Compatibilidad: el primero de `criterios` (así lo guarda la API). */
   criterio: CriterioAlerta;
+  /**
+   * Todos los criterios vigilados por la alerta (multi-criterio). SIEMPRE viene
+   * con al menos uno: la API deriva `criterios` de la lista guardada y, en las
+   * alertas legadas (lista vacía), devuelve `[criterio]`.
+   */
+  criterios: CriterioAlerta[];
   /** Solo con criterio PRECIO: umbral en €; null en el resto de criterios. */
   precioObjetivo: number | null;
   estado: EstadoAlerta;

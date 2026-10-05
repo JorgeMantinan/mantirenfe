@@ -1,0 +1,1 @@
+ALTER TABLE "Alerta" ADD COLUMN "criterios" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

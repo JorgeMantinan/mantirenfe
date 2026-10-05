@@ -176,6 +176,100 @@ describe('actualizarAlertaSchema (criterio PRECIO)', () => {
   });
 });
 
+describe('crearAlertaSchema (criterios múltiples)', () => {
+  const base = {
+    origenNombre: 'Madrid-Atocha',
+    destinoNombre: 'Barcelona-Sants',
+    fechaViaje: '2026-10-01',
+  };
+
+  it('acepta la lista de criterios y también seguirla omitiendo (legado)', () => {
+    const conLista = crearAlertaSchema.safeParse({
+      ...base,
+      criterios: ['RETRASO', 'DISPONIBILIDAD'],
+    });
+    expect(conLista.success).toBe(true);
+    if (conLista.success) {
+      expect(conLista.data.criterios).toEqual(['RETRASO', 'DISPONIBILIDAD']);
+    }
+    expect(crearAlertaSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('exige al menos un criterio y como mucho cuatro', () => {
+    expect(crearAlertaSchema.safeParse({ ...base, criterios: [] }).success).toBe(false);
+    // Criterio desconocido: zod lo rechaza aunque el test lo pase como unknown
+    expect(crearAlertaSchema.safeParse({ ...base, criterios: ['NINGUNO'] }).success).toBe(false);
+
+    const cinco = crearAlertaSchema.safeParse({
+      ...base,
+      criterios: ['DISPONIBILIDAD', 'HORARIO', 'RETRASO', 'APERTURA_VENTA', 'DISPONIBILIDAD'],
+    });
+    expect(cinco.success).toBe(false);
+    if (!cinco.success) {
+      expect(cinco.error.issues.some((i) => i.path.includes('criterios'))).toBe(true);
+    }
+
+    expect(
+      crearAlertaSchema.safeParse({
+        ...base,
+        criterios: ['DISPONIBILIDAD', 'HORARIO', 'RETRASO', 'APERTURA_VENTA'],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('exige el umbral si PRECIO está en la lista, aunque criterio no lo sea', () => {
+    const sinUmbral = crearAlertaSchema.safeParse({
+      ...base,
+      criterio: 'DISPONIBILIDAD',
+      criterios: ['DISPONIBILIDAD', 'PRECIO'],
+    });
+    expect(sinUmbral.success).toBe(false);
+    if (!sinUmbral.success) {
+      expect(sinUmbral.error.issues.some((i) => i.path.includes('precioObjetivo'))).toBe(true);
+    }
+
+    const conUmbral = crearAlertaSchema.safeParse({
+      ...base,
+      criterio: 'DISPONIBILIDAD',
+      criterios: ['DISPONIBILIDAD', 'PRECIO'],
+      precioObjetivo: 32,
+    });
+    expect(conUmbral.success).toBe(true);
+  });
+
+  it('sin PRECIO en la lista no hace falta el umbral', () => {
+    expect(
+      crearAlertaSchema.safeParse({
+        ...base,
+        criterio: 'DISPONIBILIDAD',
+        criterios: ['DISPONIBILIDAD', 'RETRASO'],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('actualizarAlertaSchema (criterios múltiples)', () => {
+  it('exige el umbral si el parche añade PRECIO a la lista', () => {
+    expect(actualizarAlertaSchema.safeParse({ criterios: ['PRECIO'] }).success).toBe(false);
+    expect(
+      actualizarAlertaSchema.safeParse({ criterios: ['PRECIO'], precioObjetivo: 25 }).success,
+    ).toBe(true);
+    expect(actualizarAlertaSchema.safeParse({ criterios: ['DISPONIBILIDAD'] }).success).toBe(true);
+    expect(
+      actualizarAlertaSchema.safeParse({ criterios: ['DISPONIBILIDAD', 'RETRASO'] }).success,
+    ).toBe(true);
+  });
+
+  it('rechaza listas vacías o con más de cuatro criterios', () => {
+    expect(actualizarAlertaSchema.safeParse({ criterios: [] }).success).toBe(false);
+    expect(
+      actualizarAlertaSchema.safeParse({
+        criterios: ['DISPONIBILIDAD', 'HORARIO', 'RETRASO', 'APERTURA_VENTA', 'PRECIO'],
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('criterioDisponibilidadSchema', () => {
   it('valida horas en formato HH:MM', () => {
     const result = criterioDisponibilidadSchema.safeParse({

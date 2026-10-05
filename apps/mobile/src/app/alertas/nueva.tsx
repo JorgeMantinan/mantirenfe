@@ -75,7 +75,8 @@ export default function NuevaAlerta() {
   const [dias, setDias] = useState<number[]>([...DIAS_LABORABLES]);
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
-  const [criterio, setCriterio] = useState<Criterio>('DISPONIBILIDAD');
+  // Criterios vigilados (multi-selección): nunca vacío y como mucho 4
+  const [criterios, setCriterios] = useState<Criterio[]>(['DISPONIBILIDAD']);
   const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState<string>('GENERAL');
@@ -155,6 +156,8 @@ export default function NuevaAlerta() {
       horaHasta: string | null;
       numeroTren: string | null;
       criterio: Criterio;
+      // Multi-criterio: ausente en respuestas de versiones anteriores
+      criterios?: Criterio[];
       precioObjetivo: number | null;
       recurrente: boolean;
       diasSemana: number[];
@@ -175,7 +178,8 @@ export default function NuevaAlerta() {
         setBono(a.bono);
         setNotas(a.notas ?? '');
         setNumeroTren(a.numeroTren ?? '');
-        setCriterio(a.criterio);
+        // Multi-criterio: la lista manda; las alertas legadas traen `[criterio]`
+        setCriterios(a.criterios?.length ? [...a.criterios] : [a.criterio]);
         setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
       })
       .catch(() => Alert.alert(t('comunes.error'), t('nueva.errorCargar')))
@@ -222,7 +226,7 @@ export default function NuevaAlerta() {
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (tarjeta + aviso final).
-  const criterioEtiqueta = etiquetasCriterio[criterio];
+  const criterioEtiqueta = criterios.map((c) => etiquetasCriterio[c]).join(', ');
   const resumenFecha = flexible
     ? t('nueva.resumenFlexible')
     : recurrente
@@ -236,7 +240,7 @@ export default function NuevaAlerta() {
       : null;
   const resumenCriterio = [
     criterioEtiqueta,
-    criterio === 'PRECIO' && precioObjetivo.trim() ? `≤ ${precioObjetivo.trim()} €` : null,
+    criterios.includes('PRECIO') && precioObjetivo.trim() ? `≤ ${precioObjetivo.trim()} €` : null,
     t('nueva.cadaMin', { min: intervalo }),
   ]
     .filter(Boolean)
@@ -250,6 +254,23 @@ export default function NuevaAlerta() {
     .filter(Boolean)
     .join(' · ');
   const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
+
+  /**
+   * Alterna un criterio de la multi-selección: la lista nunca se queda vacía
+   * (el último seleccionado no se desmarca) ni pasa del máximo permitido.
+   */
+  const alternarCriterio = (valor: Criterio) => {
+    if (cargandoEdicion) return;
+    if (criterios.includes(valor)) {
+      if (criterios.length > 1) setCriterios(criterios.filter((c) => c !== valor));
+      return;
+    }
+    if (criterios.length >= MAX_CRITERIOS) {
+      Alert.alert(t('nueva.revisaCampos'), t('nueva.errorMaxCriterios'));
+      return;
+    }
+    setCriterios([...criterios, valor]);
+  };
 
   /** Activa la vuelta con fecha por defecto (ida +2 días) y franja de la ida. */
   const alternarVuelta = (activo: boolean) => {
@@ -272,6 +293,14 @@ export default function NuevaAlerta() {
       Alert.alert(t('nueva.revisaCampos'), t('nueva.errorDias'));
       return;
     }
+    if (criterios.length === 0) {
+      Alert.alert(t('nueva.revisaCampos'), t('nueva.errorSinCriterio'));
+      return;
+    }
+    if (criterios.length > MAX_CRITERIOS) {
+      Alert.alert(t('nueva.revisaCampos'), t('nueva.errorMaxCriterios'));
+      return;
+    }
     const datos = {
       origenNombre: origen.trim(),
       destinoNombre: destino.trim(),
@@ -285,9 +314,12 @@ export default function NuevaAlerta() {
       horaDesde: horaDesde.trim() || null,
       horaHasta: horaHasta.trim() || null,
       numeroTren: numeroTren.trim() || null,
-      criterio,
-      // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
-      precioObjetivo: criterio === 'PRECIO' ? Number(precioObjetivo) : null,
+      // Multi-criterio: la lista es la que vigila la alerta; `criterio` sigue
+      // viajando como el primero de la lista (compatibilidad con la API vieja)
+      criterio: criterios[0] ?? 'DISPONIBILIDAD',
+      criterios,
+      // Solo aplica si se vigilan precios; en el resto lo mandamos a null
+      precioObjetivo: criterios.includes('PRECIO') ? Number(precioObjetivo) : null,
       intervaloSondeoMin: intervalo,
       bono,
       notas: notas.trim() || null,
@@ -395,25 +427,25 @@ export default function NuevaAlerta() {
 
       <Text style={s.etiqueta}>{t('nueva.tipoAviso')}</Text>
       <View style={s.chips}>
-        {CRITERIOS.map((valor) => (
-          <Text
-            key={valor}
-            style={[
-              s.chip,
-              criterio === valor && s.chipActivo,
-              cargandoEdicion && { opacity: 0.5 },
-            ]}
-            onPress={() => {
-              if (!cargandoEdicion) setCriterio(valor);
-            }}
-          >
-            {etiquetasCriterio[valor]}
-          </Text>
-        ))}
+        {CRITERIOS.map((valor) => {
+          const marcado = criterios.includes(valor);
+          return (
+            <Text
+              key={valor}
+              style={[s.chip, marcado && s.chipActivo, cargandoEdicion && { opacity: 0.5 }]}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: marcado, disabled: cargandoEdicion }}
+              onPress={() => alternarCriterio(valor)}
+            >
+              {etiquetasCriterio[valor]}
+            </Text>
+          );
+        })}
       </View>
-      <Text style={s.pista}>{descripcionesCriterio[criterio]}</Text>
+      <Text style={s.pista}>{criterios.map((c) => descripcionesCriterio[c]).join(' · ')}</Text>
+      <Text style={s.pista}>{t('nueva.criterioPista')}</Text>
 
-      {criterio === 'PRECIO' ? (
+      {criterios.includes('PRECIO') ? (
         <>
           <Text style={s.etiqueta}>{t('nueva.precioObjetivo')}</Text>
           <TextInput
@@ -749,6 +781,9 @@ export default function NuevaAlerta() {
 const CRITERIOS = ['DISPONIBILIDAD', 'RETRASO', 'HORARIO', 'APERTURA_VENTA', 'PRECIO'] as const;
 
 type Criterio = (typeof CRITERIOS)[number];
+
+/** Máximo de criterios vigilados a la vez (lo marca el schema compartido). */
+const MAX_CRITERIOS = 4;
 
 const FRECUENCIAS = ['fecha', 'flexible', 'diaria', 'dias'] as const;
 

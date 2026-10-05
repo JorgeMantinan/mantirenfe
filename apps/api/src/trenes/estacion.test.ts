@@ -31,6 +31,7 @@ interface ViajeTest {
   operador: string | null;
   fecha: Date;
   llegada: Date;
+  destinoEstacionId: string;
   origen: { nombre: string };
   destino: { nombre: string };
 }
@@ -58,6 +59,8 @@ function viaje(
     operador,
     fecha,
     llegada: new Date(llegada),
+    // El servicio excluye los viajes cuyo destino final es la estación consultada
+    destinoEstacionId: destino === ARCADE.nombre ? ARCADE.id : `dest_${destino}`,
     origen: { nombre: origen },
     destino: { nombre: destino },
   };
@@ -196,6 +199,16 @@ describe('TrenesService.salidasEstacion', () => {
         where: expect.objectContaining({ salidaMin: { not: null } }),
       }),
     );
+  });
+
+  it('excluye los viajes cuyo destino final es la estación consultada', async () => {
+    // Tren que TERMINA en Arcade: no hay dónde ir, no es una salida subible
+    dobleHorarios([viaje('T-termina', '09131', `${FECHA}T10:40:00.000Z`, 'Arcade')]);
+    dobleParadas([parada('T-termina', 5, 500)]);
+
+    const respuesta = await new TrenesService().salidasEstacion('Arcade', FECHA);
+
+    expect(respuesta).toEqual([]);
   });
 
   it('cruza solo con los viajes que operan ese día (ParadaHorario no tiene fecha)', async () => {

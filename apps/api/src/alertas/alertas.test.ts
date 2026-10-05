@@ -5,9 +5,12 @@ import {
   DIAS_LABORABLES,
 } from '@mantirenfe/shared-types';
 import {
+  criteriosGuardados,
   diasSemanaDe,
   esSoloLaborables,
+  formatearAlerta,
   formatearUltimoEstado,
+  normalizarCriterios,
   rangoFlexible,
 } from './alertas.service';
 
@@ -200,5 +203,101 @@ describe('formatearUltimoEstado (columnas de "Plazas de hoy")', () => {
     expect(formatearUltimoEstado(null)).toBeNull();
     expect(formatearUltimoEstado(undefined)).toBeNull();
     expect(formatearUltimoEstado({})).toBeNull();
+  });
+
+  it('conserva el criterio de cada fila si el estado lo trae etiquetado', () => {
+    const filas = formatearUltimoEstado([
+      {
+        trenId: 'a',
+        numeroTren: '04404',
+        salida: '19:33',
+        disponible: true,
+        criterio: 'RETRASO',
+      },
+    ]);
+    expect(filas?.[0]).toMatchObject({ trenId: 'a', criterio: 'RETRASO' });
+    // Sin etiqueta (estado legado) no aparece el campo
+    const legado = formatearUltimoEstado([
+      { trenId: 'b', numeroTren: '04404', salida: '19:33', disponible: true },
+    ]);
+    expect(legado?.[0]).not.toHaveProperty('criterio');
+  });
+});
+
+/** Fila mínima de `Alerta` con la que probar `formatearAlerta`. */
+function filaAlerta(
+  parcial: Partial<Parameters<typeof formatearAlerta>[0]> = {},
+): Parameters<typeof formatearAlerta>[0] {
+  return {
+    id: 'a1',
+    origenNombre: 'Madrid-Atocha',
+    destinoNombre: 'Barcelona-Sants',
+    fechaViaje: new Date('2026-11-15T00:00:00Z'),
+    horaDesde: null,
+    horaHasta: null,
+    numeroTren: null,
+    criterio: 'DISPONIBILIDAD',
+    precioObjetivo: null,
+    estado: 'ACTIVA',
+    recurrente: false,
+    diasSemana: [],
+    fechaFlexible: false,
+    fechaDesde: null,
+    fechaHasta: null,
+    intervaloSondeoMin: 10,
+    bono: 'GENERAL',
+    notas: null,
+    ultimoSondeoEn: null,
+    creadaEn: new Date('2026-11-01T10:00:00Z'),
+    grupoId: null,
+    ...parcial,
+  };
+}
+
+describe('normalizarCriterios (lista vigilada)', () => {
+  it('deduplica preservando el orden del cliente', () => {
+    expect(normalizarCriterios(['PRECIO', 'DISPONIBILIDAD', 'PRECIO'], 'PRECIO')).toEqual([
+      'PRECIO',
+      'DISPONIBILIDAD',
+    ]);
+  });
+
+  it('sin lista (o vacía) se queda con el criterio único legado', () => {
+    expect(normalizarCriterios(undefined, 'RETRASO')).toEqual(['RETRASO']);
+    expect(normalizarCriterios([], 'RETRASO')).toEqual(['RETRASO']);
+  });
+});
+
+describe('criteriosGuardados (fila de la BD)', () => {
+  it('lista vacía o ausente = alerta legada', () => {
+    expect(criteriosGuardados({ criterio: 'HORARIO', criterios: [] })).toEqual(['HORARIO']);
+    expect(criteriosGuardados({ criterio: 'HORARIO' })).toEqual(['HORARIO']);
+  });
+
+  it('con lista devuelve la lista entera', () => {
+    expect(
+      criteriosGuardados({ criterio: 'DISPONIBILIDAD', criterios: ['RETRASO', 'DISPONIBILIDAD'] }),
+    ).toEqual(['RETRASO', 'DISPONIBILIDAD']);
+  });
+});
+
+describe('formatearAlerta (respuesta multi-criterio)', () => {
+  it('devuelve la lista guardada y deja `criterio` como su primero', () => {
+    const respuesta = formatearAlerta(
+      filaAlerta({
+        criterio: 'DISPONIBILIDAD',
+        criterios: ['DISPONIBILIDAD', 'PRECIO'],
+        precioObjetivo: 30,
+      }),
+    );
+    expect(respuesta.criterios).toEqual(['DISPONIBILIDAD', 'PRECIO']);
+    expect(respuesta.criterio).toBe('DISPONIBILIDAD');
+    expect(respuesta.precioObjetivo).toBe(30);
+  });
+
+  it('una alerta legada (lista vacía) responde exactamente `[criterio]`', () => {
+    const respuesta = formatearAlerta(filaAlerta({ criterio: 'RETRASO', criterios: [] }));
+    expect(respuesta.criterios).toEqual(['RETRASO']);
+    expect(respuesta.criterio).toBe('RETRASO');
   });
 });

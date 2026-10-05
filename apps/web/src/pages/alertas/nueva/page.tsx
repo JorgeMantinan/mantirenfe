@@ -15,7 +15,12 @@ import { SELECT_CLS } from '@/lib/ui-constants';
 import { fechaCorta } from '@/lib/proximoViaje';
 import { BONOS, DIAS_LABORABLES, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
 import type { TFunction } from 'i18next';
-import { horaGtfs, type AlertaResponse, type HorarioTrenResponse } from '@mantirenfe/shared-types';
+import {
+  horaGtfs,
+  type AlertaResponse,
+  type CriterioAlerta,
+  type HorarioTrenResponse,
+} from '@mantirenfe/shared-types';
 
 /** Modalidades del bloque "¿Cuándo viajas?": fecha concreta, rango flexible o cotidiano. */
 type Frecuencia = 'fecha' | 'flexible' | 'diaria' | 'dias';
@@ -38,7 +43,7 @@ function etiquetasBonos(t: TFunction): Record<string, string> {
   };
 }
 
-/** Etiquetas cortas del criterio para el resumen (el select usa textos más largos). */
+/** Etiquetas cortas del criterio para el resumen (los chips usan textos más largos). */
 function etiquetasCriterio(t: TFunction): Record<string, string> {
   return {
     DISPONIBILIDAD: t('nuevaAlerta.criterioPlazas'),
@@ -48,6 +53,29 @@ function etiquetasCriterio(t: TFunction): Record<string, string> {
     PRECIO: t('nuevaAlerta.criterioPrecioCorto'),
   };
 }
+
+/** Etiquetas largas de los chips de criterio (los textos del antiguo select). */
+function etiquetasCriterioLargas(t: TFunction): Record<CriterioAlerta, string> {
+  return {
+    DISPONIBILIDAD: t('nuevaAlerta.criterioDisponibilidad'),
+    HORARIO: t('nuevaAlerta.criterioHorario'),
+    RETRASO: t('nuevaAlerta.criterioRetrasoTren'),
+    APERTURA_VENTA: t('nuevaAlerta.criterioVenta'),
+    PRECIO: t('nuevaAlerta.criterioPrecio'),
+  };
+}
+
+/** Orden de los chips de criterio (multi-selección). */
+const CRITERIOS: readonly CriterioAlerta[] = [
+  'DISPONIBILIDAD',
+  'HORARIO',
+  'RETRASO',
+  'APERTURA_VENTA',
+  'PRECIO',
+];
+
+/** Máximo de criterios vigilados a la vez (lo marca el schema compartido). */
+const MAX_CRITERIOS = 4;
 
 function frecuencias(t: TFunction): Array<{ valor: Frecuencia; etiqueta: string }> {
   return [
@@ -106,7 +134,8 @@ export function PaginaNuevaAlerta() {
   const [dias, setDias] = useState<number[]>([...DIAS_LABORABLES]);
   const [horaDesde, setHoraDesde] = useState('');
   const [horaHasta, setHoraHasta] = useState('');
-  const [criterio, setCriterio] = useState('DISPONIBILIDAD');
+  // Criterios vigilados (multi-selección): nunca vacío y como mucho 4
+  const [criterios, setCriterios] = useState<CriterioAlerta[]>(['DISPONIBILIDAD']);
   const [precioObjetivo, setPrecioObjetivo] = useState('');
   const [intervalo, setIntervalo] = useState(10);
   const [bono, setBono] = useState('GENERAL');
@@ -153,6 +182,23 @@ export function PaginaNuevaAlerta() {
     (campo === 'origen' ? busOrigen : busDestino).sugerir(texto);
   };
 
+  /**
+   * Alterna un criterio de la multi-selección. La lista nunca se queda vacía
+   * (el último seleccionado no se desmarca) ni pasa del máximo permitido.
+   */
+  const alternarCriterio = (valor: CriterioAlerta) => {
+    if (cargandoEdicion) return;
+    if (criterios.includes(valor)) {
+      if (criterios.length > 1) setCriterios(criterios.filter((c) => c !== valor));
+      return;
+    }
+    if (criterios.length >= MAX_CRITERIOS) {
+      toast.error(t('nuevaAlerta.errorMaxCriterios'));
+      return;
+    }
+    setCriterios([...criterios, valor]);
+  };
+
   // Precarga desde la búsqueda de trenes (?origen=&destino=&fecha=&numeroTren=)
   // o carga completa al modo edición (?editar=<id>)
   useEffect(() => {
@@ -177,7 +223,8 @@ export function PaginaNuevaAlerta() {
           setDias(a.diasSemana.length > 0 ? [...a.diasSemana] : [...DIAS_LABORABLES]);
           setHoraDesde(a.horaDesde ?? '');
           setHoraHasta(a.horaHasta ?? '');
-          setCriterio(a.criterio);
+          // Multi-criterio: la lista manda; las alertas legadas traen `[criterio]`
+          setCriterios(a.criterios?.length ? [...a.criterios] : [a.criterio]);
           setPrecioObjetivo(a.precioObjetivo != null ? String(a.precioObjetivo) : '');
           setIntervalo(a.intervaloSondeoMin);
           setBono(a.bono);
@@ -232,12 +279,13 @@ export function PaginaNuevaAlerta() {
   // Etiquetas i18n: se recalculan solo cuando cambia el idioma
   const etiquetasBono = useMemo(() => etiquetasBonos(t), [t]);
   const criteriosCortos = useMemo(() => etiquetasCriterio(t), [t]);
+  const criteriosLargos = useMemo(() => etiquetasCriterioLargas(t), [t]);
   const listaFrecuencias = useMemo(() => frecuencias(t), [t]);
   const inicialesDias = useMemo(() => letrasDias(t), [t]);
 
   // Resumen de la alerta: se recalcula en cada render con los campos actuales,
   // para poder distinguir dos alertas de la misma ruta (caja + toast final).
-  const criterioEtiqueta = criteriosCortos[criterio] ?? criterio;
+  const criterioEtiqueta = criterios.map((c) => criteriosCortos[c] ?? c).join(', ');
   const resumenFecha = flexible
     ? t('nuevaAlerta.resumenFlexible')
     : recurrente
@@ -249,7 +297,7 @@ export function PaginaNuevaAlerta() {
     horaDesde || horaHasta ? `${horaDesde || '00:00'}–${horaHasta || '23:59'}` : null;
   const resumenCriterio = [
     criterioEtiqueta,
-    criterio === 'PRECIO' && precioObjetivo ? `≤ ${precioObjetivo} €` : null,
+    criterios.includes('PRECIO') && precioObjetivo ? `≤ ${precioObjetivo} €` : null,
     t('alertas.cadaMin', { min: intervalo }),
   ]
     .filter(Boolean)
@@ -302,7 +350,15 @@ export function PaginaNuevaAlerta() {
       }
     }
     const objetivo = Number(precioObjetivo);
-    if (criterio === 'PRECIO' && !(Number.isFinite(objetivo) && objetivo > 0)) {
+    if (criterios.length === 0) {
+      toast.error(t('nuevaAlerta.errorSinCriterio'));
+      return;
+    }
+    if (criterios.length > MAX_CRITERIOS) {
+      toast.error(t('nuevaAlerta.errorMaxCriterios'));
+      return;
+    }
+    if (criterios.includes('PRECIO') && !(Number.isFinite(objetivo) && objetivo > 0)) {
       toast.error(t('nuevaAlerta.errorPrecio'));
       return;
     }
@@ -324,9 +380,12 @@ export function PaginaNuevaAlerta() {
         horaDesde: horaDesde || null,
         horaHasta: horaHasta || null,
         numeroTren: numeroTren.trim() || null,
-        criterio,
-        // Solo aplica con criterio PRECIO; en el resto lo mandamos a null
-        precioObjetivo: criterio === 'PRECIO' ? objetivo : null,
+        // Multi-criterio: la lista es la que vigila la alerta; `criterio` sigue
+        // viajando como el primero de la lista (compatibilidad con la API vieja)
+        criterio: criterios[0] ?? 'DISPONIBILIDAD',
+        criterios,
+        // Solo aplica si se vigilan precios; en el resto lo mandamos a null
+        precioObjetivo: criterios.includes('PRECIO') ? objetivo : null,
         intervaloSondeoMin: intervalo,
         bono,
         notas: notas.trim() || null,
@@ -598,41 +657,46 @@ export function PaginaNuevaAlerta() {
               )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="criterio">{t('nuevaAlerta.criterioLabel')}</Label>
-                <select
-                  id="criterio"
-                  className={SELECT_CLS}
-                  value={criterio}
-                  onChange={(e) => setCriterio(e.target.value)}
-                  disabled={cargandoEdicion}
-                >
-                  <option value="DISPONIBILIDAD">{t('nuevaAlerta.criterioDisponibilidad')}</option>
-                  <option value="HORARIO">{t('nuevaAlerta.criterioHorario')}</option>
-                  <option value="RETRASO">{t('nuevaAlerta.criterioRetrasoTren')}</option>
-                  <option value="APERTURA_VENTA">{t('nuevaAlerta.criterioVenta')}</option>
-                  <option value="PRECIO">{t('nuevaAlerta.criterioPrecio')}</option>
-                </select>
+            <div className="space-y-2">
+              <Label>{t('nuevaAlerta.criterioLabel')}</Label>
+              <div className="flex flex-wrap gap-2">
+                {CRITERIOS.map((valor) => {
+                  const marcado = criterios.includes(valor);
+                  return (
+                    <Button
+                      key={valor}
+                      type="button"
+                      variant={marcado ? 'default' : 'outline'}
+                      size="sm"
+                      aria-pressed={marcado}
+                      disabled={cargandoEdicion}
+                      onClick={() => alternarCriterio(valor)}
+                    >
+                      {criteriosLargos[valor]}
+                    </Button>
+                  );
+                })}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="intervalo">{t('nuevaAlerta.intervaloLabel')}</Label>
-                <select
-                  id="intervalo"
-                  className={SELECT_CLS}
-                  value={intervalo}
-                  onChange={(e) => setIntervalo(Number(e.target.value))}
-                >
-                  {INTERVALOS_SONDEO_MIN.map((min) => (
-                    <option key={min} value={min}>
-                      {t('nuevaAlerta.intervaloCada', { min })}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <p className="text-xs text-muted-foreground">{t('nuevaAlerta.criterioPista')}</p>
             </div>
 
-            {criterio === 'PRECIO' && (
+            <div className="space-y-2">
+              <Label htmlFor="intervalo">{t('nuevaAlerta.intervaloLabel')}</Label>
+              <select
+                id="intervalo"
+                className={SELECT_CLS}
+                value={intervalo}
+                onChange={(e) => setIntervalo(Number(e.target.value))}
+              >
+                {INTERVALOS_SONDEO_MIN.map((min) => (
+                  <option key={min} value={min}>
+                    {t('nuevaAlerta.intervaloCada', { min })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {criterios.includes('PRECIO') && (
               <div className="space-y-2">
                 <Label htmlFor="precioObjetivo">{t('nuevaAlerta.precioLabel')}</Label>
                 <Input

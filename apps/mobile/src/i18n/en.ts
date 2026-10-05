@@ -125,6 +125,8 @@ export const en: MismoArbol<Claves> = {
     pistaFlexible:
       'We will watch any date between today and 6 months from now: we will tell you as soon as tickets go on sale.',
     errorDias: 'Pick at least one day of the week',
+    errorSinCriterio: 'Choose at least one criterion',
+    errorMaxCriterios: 'You can choose at most 4 criteria',
     fechaViaje: 'Travel date',
     minimo: 'Minimum: {{fecha}}',
     franja: 'Time window (optional)',
@@ -161,6 +163,7 @@ export const en: MismoArbol<Claves> = {
       aperturaVenta: 'We will alert you when ticket sales open',
       precio: 'We will alert you if the price drops below your target',
     },
+    criterioPista: 'You can pick up to 4: each criterion notifies you on its own.',
     frecuencia: {
       fecha: 'One date',
       flexible: 'Any date',
@@ -188,7 +191,7 @@ export const en: MismoArbol<Claves> = {
     calendarioError:
       'The event could not be shared. Try again or open MantiRenfe in your browser to download the .ics file.',
     rangoFechas: 'From {{desde}} to {{hasta}}',
-    metaAlerta: '{{fecha}} · {{criterio}} · every {{min}} min · {{bono}}',
+    metaAlerta: '{{fecha}} · every {{min}} min · {{bono}}',
     objetivo: 'Target: alert me below {{precio}}',
     franja: 'Window: {{desde}} – {{hasta}}',
     trenSufijo: ' · train {{tren}}',

@@ -17,6 +17,7 @@ import {
   textoConexion,
   type AlertaResponse,
   type AvisoAlertaResponse,
+  type CriterioAlerta,
   type EstadoSerializado,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
@@ -50,6 +51,11 @@ function haceCuanto(iso: string, t: Traductor): string {
   if (minutos < 1) return t('detalle.haceMomento');
   if (minutos < 60) return t('detalle.haceMin', { min: minutos });
   return new Date(iso).toLocaleString(locale());
+}
+
+/** Todos los criterios vigilados por la alerta (legada: solo `criterio`). */
+function criteriosDe(alerta: AlertaResponse): CriterioAlerta[] {
+  return alerta.criterios?.length ? alerta.criterios : [alerta.criterio];
 }
 
 /**
@@ -205,6 +211,11 @@ export default function DetalleAlerta() {
                 >
                   {etiquetaEstado(alerta.estado)}
                 </Etiqueta>
+                {criteriosDe(alerta).map((c) => (
+                  <Etiqueta key={c} tono="neutro">
+                    {etiquetaCriterio(c)}
+                  </Etiqueta>
+                ))}
                 {alerta.fechaFlexible ? (
                   <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
                 ) : null}
@@ -221,12 +232,11 @@ export default function DetalleAlerta() {
                       hasta: fechaCorta(alerta.fechaHasta ?? alerta.fechaViaje),
                     })
                   : alerta.fechaViaje,
-                criterio: etiquetaCriterio(alerta.criterio),
                 min: alerta.intervaloSondeoMin,
                 bono: alerta.bono,
               })}
             </Text>
-            {alerta.criterio === 'PRECIO' && alerta.precioObjetivo != null ? (
+            {criteriosDe(alerta).includes('PRECIO') && alerta.precioObjetivo != null ? (
               <Text style={s.detalle}>
                 {t('detalle.objetivo', { precio: formatearPrecio(alerta.precioObjetivo) })}
               </Text>

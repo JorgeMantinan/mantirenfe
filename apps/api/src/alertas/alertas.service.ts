@@ -19,6 +19,7 @@ import {
   fechaIso,
   normalizarDiasSemana,
   type AvisoAlertaResponse,
+  type CriterioAlerta,
   type EstadoSerializado,
   type PuntoPrecio,
 } from '@mantirenfe/shared-types';
@@ -33,8 +34,8 @@ import { formatearPuntosPrecio } from './precios';
  *
  * Los campos de detalle (`tramo`, `conexionEn`, `conexionLlegada`,
  * `conexionSalida`, `esperaMin`, `horaLlegada`, `duracionMin`, `tipoTren`,
- * `tarifa`) son opcionales: se copian solo si traen el tipo esperado, para
- * tolerar estados guardados por versiones anteriores.
+ * `tarifa`, `criterio`) son opcionales: se copian solo si traen el tipo esperado,
+ * para tolerar estados guardados por versiones anteriores.
  */
 export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | null {
   if (!Array.isArray(valor)) return null;
@@ -56,6 +57,9 @@ export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | nul
       retrasoSeg: typeof t.retrasoSeg === 'number' ? t.retrasoSeg : null,
       cancelado: t.cancelado === true,
       ...(estaciones.length > 0 ? { paradasSuprimidas: estaciones } : {}),
+      // Multi-criterio: la serie a la que pertenece la fila (si el worker la
+      // etiquetó). La UI no lo pinta: lo usa quien quiera depurar los diffs.
+      ...(textoPropio(t.criterio) ? { criterio: t.criterio } : {}),
       ...(t.tramo === 'directo' || t.tramo === 'conexion' ? { tramo: t.tramo } : {}),
       ...(textoPropio(t.conexionEn) ? { conexionEn: t.conexionEn } : {}),
       ...(textoPropio(t.conexionLlegada) ? { conexionLlegada: t.conexionLlegada } : {}),
@@ -77,6 +81,26 @@ export function formatearUltimoEstado(valor: unknown): EstadoSerializado[] | nul
 /** Texto no vacío del Json de Prisma (los opcionales así se omiten si vienen mal). */
 function textoPropio(valor: unknown): valor is string {
   return typeof valor === 'string' && valor !== '';
+}
+
+/**
+ * Lista de criterios vigilados de una alerta: deduplicada y en el orden del
+ * cliente (el primero es el `criterio` canónico). Sin lista llega el criterio
+ * único legado, con lo que las alertas antiguas siguen vigilando lo mismo.
+ */
+export function normalizarCriterios(
+  criterios: readonly CriterioAlerta[] | undefined,
+  criterio: CriterioAlerta,
+): CriterioAlerta[] {
+  return criterios && criterios.length > 0 ? [...new Set(criterios)] : [criterio];
+}
+
+/** Criterios guardados en una fila: lista vacía = alerta legada (`criterio`). */
+export function criteriosGuardados(fila: {
+  criterio: string;
+  criterios?: readonly string[] | null;
+}): string[] {
+  return fila.criterios && fila.criterios.length > 0 ? [...fila.criterios] : [fila.criterio];
 }
 
 /** Suma días a una fecha `YYYY-MM-DD` sin depender de la zona horaria local. */
@@ -136,7 +160,7 @@ export function rangoFlexible(
   return { desde: d, hasta: h < d ? d : h };
 }
 
-function formatearAlerta(alerta: {
+export function formatearAlerta(alerta: {
   id: string;
   origenNombre: string;
   destinoNombre: string;
@@ -145,6 +169,8 @@ function formatearAlerta(alerta: {
   horaHasta: string | null;
   numeroTren: string | null;
   criterio: string;
+  // Lista multi-criterio (opcional para tolerar lecturas sin la columna)
+  criterios?: readonly string[] | null;
   precioObjetivo: number | null;
   estado: string;
   recurrente: boolean;
@@ -160,6 +186,11 @@ function formatearAlerta(alerta: {
   creadaEn: Date;
   grupoId: string | null;
 }): AlertaResponse {
+  // Multi-criterio: la lista manda; en las alertas legadas (lista vacía) el
+  // criterio único es el único vigilado. `criterio` sigue siendo el primero.
+  const criterios: CriterioAlerta[] = (
+    alerta.criterios && alerta.criterios.length > 0 ? alerta.criterios : [alerta.criterio]
+  ).map((c) => c as CriterioAlerta);
   return {
     id: alerta.id,
     origenNombre: alerta.origenNombre,
@@ -168,7 +199,8 @@ function formatearAlerta(alerta: {
     horaDesde: alerta.horaDesde,
     horaHasta: alerta.horaHasta,
     numeroTren: alerta.numeroTren,
-    criterio: alerta.criterio as AlertaResponse['criterio'],
+    criterio: (criterios[0] ?? alerta.criterio) as AlertaResponse['criterio'],
+    criterios,
     precioObjetivo: alerta.precioObjetivo,
     estado: alerta.estado as AlertaResponse['estado'],
     recurrente: alerta.recurrente,
@@ -372,6 +404,10 @@ export class AlertasService {
     );
     const fechaViaje = recurrente || datos.fechaFlexible ? fechaGtfs() : datos.fechaViaje;
 
+    // Multi-criterio: cada criterio de la lista avisa por su cuenta. `criterio`
+    // guarda siempre el primero para mantener el contrato legado.
+    const criterios = normalizarCriterios(datos.criterios, datos.criterio);
+
     const alerta = await prisma.alerta.create({
       data: {
         usuarioId: usuario.sub,
@@ -391,9 +427,11 @@ export class AlertasService {
         horaDesde: datos.horaDesde ?? null,
         horaHasta: datos.horaHasta ?? null,
         numeroTren: datos.numeroTren ?? null,
-        criterio: datos.criterio,
-        // El umbral solo aplica al criterio PRECIO: en el resto se ignora
-        precioObjetivo: datos.criterio === 'PRECIO' ? (datos.precioObjetivo ?? null) : null,
+        criterio: criterios[0] ?? datos.criterio,
+        criterios,
+        // El umbral solo aplica si se vigilan precios (PRECIO en la lista):
+        // en el resto de criterios se ignora
+        precioObjetivo: criterios.includes('PRECIO') ? (datos.precioObjetivo ?? null) : null,
         intervaloSondeoMin: datos.intervaloSondeoMin,
         bono: datos.bono,
         notas: datos.notas ?? null,
@@ -462,13 +500,36 @@ export class AlertasService {
     if (datos.estado !== undefined) data.estado = datos.estado;
     if (datos.intervaloSondeoMin !== undefined) data.intervaloSondeoMin = datos.intervaloSondeoMin;
     if (datos.notas !== undefined) data.notas = datos.notas;
-    if (datos.criterio !== undefined) {
+    const criteriosPrevios = criteriosGuardados(existente);
+    if (datos.criterios !== undefined) {
+      // Multi-criterio: la lista nueva manda y `criterio` pasa a ser su primero
+      // (los clientes legados siguen mandando solo el `criterio` único).
+      const criterios = normalizarCriterios(
+        datos.criterios,
+        datos.criterio ?? (existente.criterio as CriterioAlerta),
+      );
+      const cambiaCriterios =
+        criterios.length !== criteriosPrevios.length ||
+        criterios.some((c, i) => c !== criteriosPrevios[i]);
+      data.criterio = criterios[0] ?? (existente.criterio as CriterioAlerta);
+      data.criterios = criterios;
+      // Cambiar de criterios re-armaría el umbral: entrar en PRECIO exige
+      // objetivo (lo garantiza el zod) y salir de PRECIO lo borra. Si la lista
+      // no cambia, tocar el umbral no resetea el estado: el próximo sondeo
+      // re-evalúa el diff con el objetivo nuevo.
+      data.precioObjetivo = criterios.includes('PRECIO') ? (datos.precioObjetivo ?? null) : null;
+      // Que cambie el primero o la lista cuenta como cambio de alcance: resetea
+      // el estado (mismo efecto que un cambio de ruta).
+      if (cambiaCriterios) cambioRuta = true;
+    } else if (datos.criterio !== undefined) {
       data.criterio = datos.criterio;
+      // La lista se mantiene al día con el criterio único que manda el cliente
+      data.criterios = [datos.criterio];
       // Cambiar de criterio re-armaría el umbral: entrar en PRECIO exige objetivo
       // (lo garantiza el zod) y salir de PRECIO lo borra.
       data.precioObjetivo = datos.criterio === 'PRECIO' ? (datos.precioObjetivo ?? null) : null;
       cambioRuta = true;
-    } else if (datos.precioObjetivo !== undefined && existente.criterio === 'PRECIO') {
+    } else if (datos.precioObjetivo !== undefined && criteriosPrevios.includes('PRECIO')) {
       // Solo se toca el umbral si la alerta ya vigila precios; no resetea el
       // estado: el próximo sondeo re-evalúa el diff con el objetivo nuevo.
       data.precioObjetivo = datos.precioObjetivo;

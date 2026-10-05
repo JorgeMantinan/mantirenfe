@@ -124,6 +124,8 @@ export const es = {
     pistaFlexible:
       'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
     errorDias: 'Marca al menos un día de la semana',
+    errorSinCriterio: 'Elige al menos un criterio',
+    errorMaxCriterios: 'Puedes elegir como mucho 4 criterios',
     fechaViaje: 'Fecha del viaje',
     minimo: 'Mínimo: {{fecha}}',
     franja: 'Franja horaria (opcional)',
@@ -160,6 +162,7 @@ export const es = {
       aperturaVenta: 'Te avisaremos cuando se abra la venta de billetes',
       precio: 'Te avisaremos si el precio baja de tu objetivo',
     },
+    criterioPista: 'Puedes marcar hasta 4: cada criterio te avisa por su cuenta.',
     frecuencia: {
       fecha: 'Una fecha',
       flexible: 'Cualquier fecha',
@@ -187,7 +190,7 @@ export const es = {
     calendarioError:
       'No se ha podido compartir el evento. Vuelve a intentarlo o entra en MantiRenfe desde el navegador para descargar el archivo .ics.',
     rangoFechas: 'Del {{desde}} al {{hasta}}',
-    metaAlerta: '{{fecha}} · {{criterio}} · cada {{min}} min · {{bono}}',
+    metaAlerta: '{{fecha}} · cada {{min}} min · {{bono}}',
     objetivo: 'Objetivo: avisar si baja de {{precio}}',
     franja: 'Franja: {{desde}} – {{hasta}}',
     trenSufijo: ' · tren {{tren}}',

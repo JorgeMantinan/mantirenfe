@@ -588,14 +588,15 @@ export class TrenesService {
    *  3. Las paradas de la estación en esos viajes (solo con `salidaMin`).
    *
    * Semántica de la fila devuelta (tipo `HorarioTrenResponse`):
-   *  - `origenNombre` = **la estación consultada**: la ficha es de SUS salidas,
-   *    aunque el viaje haya empezado antes.
+   *  - `origenNombre` = **el primer extremo real del viaje** (no la estación
+   *    consultada): los trenes que terminan aquí ni siquiera se listan.
    *  - `destinoNombre`/`llegada` = destino y llegada finales del viaje (los
    *    extremos que guarda `HorarioTren`), y `salida` = la hora en la que el
    *    tren sale de ESTA estación (`salidaMin` GTFS → fecha + minutos), así
    *    que `duracionMin` es el trayecto restante hasta el destino final.
    *  - Solo salen trenes en los que se puede subir: una parada sin `salidaMin`
-   *    (el tren pasa o termina aquí sin permitir salida) no se lista.
+   *    no se lista, y los viajes cuyo destino final es la estación consultada
+   *    se excluyen (no son salidas).
    */
   async salidasEstacion(estacion: string, fecha: string): Promise<HorarioTrenResponse[]> {
     const prisma = getPrisma();
@@ -625,6 +626,7 @@ export class TrenesService {
         numeroTren: true,
         operador: true,
         llegada: true,
+        destinoEstacionId: true,
         origen: { select: { nombre: true } },
         destino: { select: { nombre: true } },
       },
@@ -668,6 +670,9 @@ export class TrenesService {
     for (const [tripId, salidaMin] of salidaPorTrip) {
       const viaje = porTrip.get(tripId);
       if (!viaje) continue;
+      // El viaje TERMINA en la estación consultada: no hay dónde ir, no es una
+      // salida subible (antes salían como "A Coruña -> A Coruña" de 0 min).
+      if (viaje.destinoEstacionId === mejor.id) continue;
       const salidaMs = baseMs + salidaMin * 60_000;
       salidas.push({
         numeroTren: viaje.numeroTren,

@@ -214,6 +214,13 @@ export interface EstadoSerializado {
   tipoTren?: string;
   /** Tarifa más barata (Básico, Elige...) */
   tarifa?: string;
+  /**
+   * Criterio de la alerta al que pertenece esta fila del estado (multi-criterio):
+   * `ultimoEstado` mezcla las series de los criterios vigilados y este campo es
+   * lo que permite comparar cada diff contra SU estado anterior. Los estados
+   * guardados por versiones anteriores no lo traen: son del criterio legado.
+   */
+  criterio?: string;
 }
 
 /**
