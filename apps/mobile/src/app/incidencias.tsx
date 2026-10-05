@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { formatoPeriodo, type IncidenciaResponse } from '@/lib/incidencias';
@@ -12,8 +24,11 @@ export default function Incidencias() {
   const [datos, setDatos] = useState<IncidenciaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  // Incidencia abierta en el modal de detalle (null = cerrado)
+  const [detalle, setDetalle] = useState<IncidenciaResponse | null>(null);
   const { paleta } = useTema();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
   // `cancelado` evita setState tras desmontar; `peticion` evita que una
@@ -83,30 +98,86 @@ export default function Incidencias() {
           ) : null
         }
         renderItem={({ item }) => (
-          <Tarjeta style={{ borderColor: paleta.aviso }}>
-            <View style={s.filaTitulo}>
-              <Ionicons name="warning-outline" size={20} color={paleta.aviso} />
-              <Text style={s.tituloIncidencia}>
-                {item.titulo ?? t('incidencias.fallbackTitulo')}
-              </Text>
-            </View>
-            <Text style={s.periodo}>{formatoPeriodo(item.desde, item.hasta)}</Text>
-            <View style={s.badges}>
-              {item.estacionesAfectadas.length > 0 ? (
-                item.estacionesAfectadas.map((estacion) => (
-                  <Etiqueta key={estacion} tono="aviso">
-                    {estacion}
-                  </Etiqueta>
-                ))
-              ) : (
-                <Text style={s.meta}>{t('incidencias.sinEstacion')}</Text>
-              )}
-              {item.causa ? <Etiqueta tono="primario">{item.causa}</Etiqueta> : null}
-            </View>
-            {item.mensaje ? <Text style={s.mensaje}>{item.mensaje}</Text> : null}
-          </Tarjeta>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${t('incidencias.verDetalle')}: ${
+              item.titulo ?? t('incidencias.fallbackTitulo')
+            }`}
+            onPress={() => setDetalle(item)}
+            style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+          >
+            <Tarjeta style={{ borderColor: paleta.aviso }}>
+              <View style={s.filaTitulo}>
+                <Ionicons name="warning-outline" size={20} color={paleta.aviso} />
+                <Text style={s.tituloIncidencia}>
+                  {item.titulo ?? t('incidencias.fallbackTitulo')}
+                </Text>
+              </View>
+              <Text style={s.periodo}>{formatoPeriodo(item.desde, item.hasta)}</Text>
+              <View style={s.badges}>
+                {item.estacionesAfectadas.length > 0 ? (
+                  item.estacionesAfectadas.map((estacion) => (
+                    <Etiqueta key={estacion} tono="aviso">
+                      {estacion}
+                    </Etiqueta>
+                  ))
+                ) : (
+                  <Text style={s.meta}>{t('incidencias.sinEstacion')}</Text>
+                )}
+                {item.causa ? <Etiqueta tono="primario">{item.causa}</Etiqueta> : null}
+              </View>
+              {item.mensaje ? <Text style={s.mensaje}>{item.mensaje}</Text> : null}
+            </Tarjeta>
+          </Pressable>
         )}
       />
+
+      {/* Detalle completo de la incidencia seleccionada */}
+      <Modal
+        visible={detalle !== null}
+        animationType="slide"
+        onRequestClose={() => setDetalle(null)}
+        accessibilityViewIsModal
+      >
+        <View style={[s.modal, { paddingTop: insets.top }]}>
+          <View style={s.modalCabecera}>
+            <Text style={s.modalTitulo}>{t('incidencias.detalleTitulo')}</Text>
+          </View>
+          <ScrollView
+            contentContainerStyle={[s.modalCuerpo, { paddingBottom: insets.bottom + espaciado.lg }]}
+          >
+            {detalle ? (
+              <>
+                <Text style={s.modalIncTitulo}>
+                  {detalle.titulo ?? t('incidencias.fallbackTitulo')}
+                </Text>
+                <Text style={s.periodo}>{formatoPeriodo(detalle.desde, detalle.hasta)}</Text>
+                <View style={s.badges}>
+                  {detalle.estacionesAfectadas.length > 0 ? (
+                    detalle.estacionesAfectadas.map((estacion) => (
+                      <Etiqueta key={estacion} tono="aviso">
+                        {estacion}
+                      </Etiqueta>
+                    ))
+                  ) : (
+                    <Text style={s.meta}>{t('incidencias.sinEstacion')}</Text>
+                  )}
+                  {detalle.causa ? <Etiqueta tono="primario">{detalle.causa}</Etiqueta> : null}
+                </View>
+                {detalle.mensaje ? <Text style={s.mensajeCompleto}>{detalle.mensaje}</Text> : null}
+              </>
+            ) : null}
+          </ScrollView>
+          <View style={[s.modalPie, { paddingBottom: insets.bottom + espaciado.sm }]}>
+            <Boton
+              titulo={t('comunes.cerrar')}
+              variante="contorno"
+              onPress={() => setDetalle(null)}
+              style={s.botonCerrar}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -174,5 +245,46 @@ const estilos = (c: Paleta) =>
       fontSize: 13,
       color: c.textoSecundario,
       textAlign: 'center',
+    },
+    // Modal de detalle a pantalla completa
+    modal: {
+      flex: 1,
+      backgroundColor: c.fondo,
+    },
+    modalCabecera: {
+      paddingHorizontal: espaciado.md,
+      paddingVertical: espaciado.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.borde,
+    },
+    modalTitulo: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: c.texto,
+    },
+    modalCuerpo: {
+      flex: 1,
+      paddingHorizontal: espaciado.md,
+      paddingTop: espaciado.md,
+      gap: espaciado.sm,
+    },
+    modalIncTitulo: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.texto,
+    },
+    mensajeCompleto: {
+      fontSize: 14,
+      color: c.texto,
+      lineHeight: 21,
+    },
+    modalPie: {
+      paddingHorizontal: espaciado.md,
+      paddingTop: espaciado.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.borde,
+    },
+    botonCerrar: {
+      width: '100%',
     },
   });

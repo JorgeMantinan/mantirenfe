@@ -377,6 +377,9 @@ export const en: MismoArbol<Claves> = {
     desde: 'From {{fecha}}',
     hasta: 'Until {{fecha}}',
     sinPeriodo: 'No period indicated',
+    // Full details in a modal (src/app/incidencias.tsx)
+    verDetalle: 'View incident details',
+    detalleTitulo: 'Incident details',
   },
 
   // ──────────────────────────────── suprimidos

@@ -23,6 +23,7 @@ export const en: MismoArbol<Claves> = {
     impuntuales: 'Late trains',
     cancelar: 'Cancel',
     eliminar: 'Delete',
+    cerrar: 'Close',
     error: 'Error',
     todoElDia: 'all day',
     logoAria: 'MantiRenfe home',
@@ -474,6 +475,9 @@ export const en: MismoArbol<Claves> = {
     periodoDesde: 'From {{fecha}}',
     periodoHasta: 'Until {{fecha}}',
     periodoSin: 'Period not specified',
+    // Full details in a dialog (ListaIncidencias)
+    verDetalle: 'View incident details',
+    detalleTitulo: 'Incident details',
   },
 
   // ──────────────────────────────── página de puntualidad
@@ -709,7 +713,8 @@ export const en: MismoArbol<Claves> = {
     misAlertasDesc: 'Routes we are watching',
     sinAlertas: 'Create your first alert and we will watch your train.',
     errorPanel: 'Could not load the dashboard: {{error}}',
-    estadoHecha: 'Done',
+    // Status of a completed alert (same label as `alertas.completada`)
+    estadoHecha: 'Completed',
     proximoViaje: 'Your next trip',
     sinSalidasTitulo: 'No departure in sight yet',
     sinAlertasTexto:

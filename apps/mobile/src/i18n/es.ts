@@ -376,6 +376,9 @@ export const es = {
     desde: 'Desde el {{fecha}}',
     hasta: 'Hasta el {{fecha}}',
     sinPeriodo: 'Periodo no indicado',
+    // Detalle completo en modal (src/app/incidencias.tsx)
+    verDetalle: 'Ver detalle de la incidencia',
+    detalleTitulo: 'Detalle de la incidencia',
   },
 
   // ──────────────────────────────── suprimidos

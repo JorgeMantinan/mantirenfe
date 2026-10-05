@@ -21,6 +21,7 @@ export const es = {
     impuntuales: 'Trenes impuntuales',
     cancelar: 'Cancelar',
     eliminar: 'Eliminar',
+    cerrar: 'Cerrar',
     error: 'Error',
     todoElDia: 'todo el día',
     logoAria: 'MantiRenfe inicio',
@@ -475,6 +476,9 @@ export const es = {
     periodoDesde: 'Desde el {{fecha}}',
     periodoHasta: 'Hasta el {{fecha}}',
     periodoSin: 'Periodo no indicado',
+    // Detalle completo en diálogo (ListaIncidencias)
+    verDetalle: 'Ver detalle de la incidencia',
+    detalleTitulo: 'Detalle de la incidencia',
   },
 
   // ──────────────────────────────── página de puntualidad
@@ -710,7 +714,8 @@ export const es = {
     misAlertasDesc: 'Trayectos que estamos vigilando',
     sinAlertas: 'Crea tu primera alerta y deja que vigilemos tu tren.',
     errorPanel: 'No se pudo cargar el panel: {{error}}',
-    estadoHecha: 'Hecha',
+    // Estado de una alerta cumplida (misma etiqueta que `alertas.completada`)
+    estadoHecha: 'Completada',
     proximoViaje: 'Tu próximo viaje',
     sinSalidasTitulo: 'Aún no hay ninguna salida en camino',
     sinAlertasTexto:

@@ -485,9 +485,11 @@ export function PaginaEstaciones() {
                           <th className="py-2 pr-3 font-medium">{t('tabla.destino')}</th>
                           <th className="py-2 pr-3 font-medium">{t('tabla.tren')}</th>
                           <th className="py-2 pr-3 font-medium">{t('tabla.operador')}</th>
-                          <th className="py-2 font-medium text-right">
-                            {t('estaciones.crearAlertaFila')}
+                          <th className="py-2 pr-3 font-medium text-right">
+                            {t('tabla.duracion')}
                           </th>
+                          {/* Columna de solo icono: la cabecera no debe ensanchar la tabla */}
+                          <th className="sr-only">{t('estaciones.crearAlertaFila')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -496,7 +498,9 @@ export function PaginaEstaciones() {
                             key={`${salida.numeroTren}-${salida.salida}`}
                             className="border-b last:border-b-0"
                           >
-                            <td className="py-2 pr-3 font-medium">{horaGtfs(salida.salida)}</td>
+                            <td className="py-2 pr-3 font-medium whitespace-nowrap">
+                              {horaGtfs(salida.salida)}
+                            </td>
                             <td className="py-2 pr-3">{salida.destinoNombre}</td>
                             <td className="py-2 pr-3">
                               <Badge variant="outline">{salida.numeroTren}</Badge>
@@ -504,7 +508,9 @@ export function PaginaEstaciones() {
                             <td className="py-2 pr-3">
                               {salida.operador ?? <span className="text-muted-foreground">—</span>}
                             </td>
-                            <td className="py-2 pr-3 text-right">{salida.duracionMin} min</td>
+                            <td className="py-2 pr-3 text-right whitespace-nowrap">
+                              {salida.duracionMin} min
+                            </td>
                             <td className="py-2 text-right">
                               {sel && salida.destinoNombre !== sel.nombre ? (
                                 <Button
@@ -514,6 +520,7 @@ export function PaginaEstaciones() {
                                   className="text-muted-foreground"
                                 >
                                   <Link
+                                    aria-label={t('estaciones.crearAlertaFila')}
                                     to={
                                       `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
                                       `&destino=${encodeURIComponent(salida.destinoNombre)}` +
