@@ -174,6 +174,18 @@ function candidatasDe(estaciones: Array<{ nombre: string }>): Candidata[] {
  * upsert por id de alerta y `activa = false` para las que ya no aparecen.
  * Cualquier error (red, protobuf, BD) se loguea como warn y no rompe el ciclo.
  */
+/**
+ * Caché de estaciones (código→nombre + regex candidatas): solo cambian con el
+ * sync GTFS, así que se reconstruye como mucho cada30 min (se recargaba en
+ * CADA barrido de1 min).
+ */
+let cacheEstaciones: {
+  en: number;
+  porCodigo: Map<string, string>;
+  candidatas: Candidata[];
+} | null = null;
+const TTL_ESTACIONES_MS = 30 * 60_000;
+
 export async function sincronizarIncidencias(logger: Logger): Promise<void> {
   const url = urlAlertas();
   try {
@@ -181,14 +193,24 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
     const alertas = parsearAlertasGtfsRt(datos);
     const prisma = getPrisma();
 
-    const porCodigo = new Map<string, string>();
+    let porCodigo = new Map<string, string>();
     let candidatas: Candidata[] = [];
     if (alertas.length > 0) {
-      const estaciones = await prisma.estacion.findMany({
-        select: { codigo: true, nombre: true },
-      });
-      for (const estacion of estaciones) porCodigo.set(estacion.codigo, estacion.nombre);
-      candidatas = candidatasDe(estaciones);
+      // Las estaciones solo cambian con el sync GTFS: caché de30 min. Antes se
+      // cargaban ~1.500 filas y se reconstruían ~1.500 regex CADA minuto (la
+      // mayor carga por barrido, con impacto directo en la memoria contenedor).
+      let cache = cacheEstaciones;
+      if (!cache || Date.now() - cache.en > TTL_ESTACIONES_MS) {
+        const estaciones = await prisma.estacion.findMany({
+          select: { codigo: true, nombre: true },
+        });
+        const porCodigoNuevo = new Map<string, string>();
+        for (const estacion of estaciones) porCodigoNuevo.set(estacion.codigo, estacion.nombre);
+        cache = { en: Date.now(), porCodigo: porCodigoNuevo, candidatas: candidatasDe(estaciones) };
+        cacheEstaciones = cache;
+      }
+      porCodigo = cache.porCodigo;
+      candidatas = cache.candidatas;
     }
 
     const vigentes = new Set<string>();

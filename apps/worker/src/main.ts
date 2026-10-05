@@ -252,27 +252,31 @@ async function main() {
       // Reset diario de los trayectos recurrentes: al cruzar la medianoche
       // peninsular se limpia el estado y los avisos del día para que cada día
       // haya baseline nuevo y se re-avisen recordatorios y resúmenes.
-      try {
-        const reseteadas = await prisma.alerta.updateMany({
-          where: {
-            recurrente: true,
-            estado: 'ACTIVA',
-            ultimoSondeoEn: { lt: hoy00 },
-            NOT: { ultimoSondeoEn: null },
-          },
-          data: {
-            ultimoEstado: Prisma.JsonNull,
-            ultimoSondeoEn: null,
-            recordatorioTrenesEnviados: [],
-            recordatorioEnviadoEn: null,
-            resumenEnviadoEn: null,
-          },
-        });
-        if (reseteadas.count > 0) {
-          logger.info({ reseteadas: reseteadas.count }, 'Alertas recurrentes reiniciadas hoy');
+      // (Reset y auto-completado solo cada15 min: son idempotentes y corrían en
+      // cada barrido — dos UPDATE por minuto contra el motor de Prisma.)
+      if (minutosDesdeSnapshot % 15 === 0) {
+        try {
+          const reseteadas = await prisma.alerta.updateMany({
+            where: {
+              recurrente: true,
+              estado: 'ACTIVA',
+              ultimoSondeoEn: { lt: hoy00 },
+              NOT: { ultimoSondeoEn: null },
+            },
+            data: {
+              ultimoEstado: Prisma.JsonNull,
+              ultimoSondeoEn: null,
+              recordatorioTrenesEnviados: [],
+              recordatorioEnviadoEn: null,
+              resumenEnviadoEn: null,
+            },
+          });
+          if (reseteadas.count > 0) {
+            logger.info({ reseteadas: reseteadas.count }, 'Alertas recurrentes reiniciadas hoy');
+          }
+        } catch (error) {
+          logger.error({ err: error }, 'Fallo reiniciando alertas recurrentes');
         }
-      } catch (error) {
-        logger.error({ err: error }, 'Fallo reiniciando alertas recurrentes');
       }
 
       // Snapshot de posiciones cada ~5 min: aunque nadie abra el mapa, la traza
@@ -285,22 +289,26 @@ async function main() {
       // Las alertas cuyo viaje ya pasó se completan solas (no se vuelven a sondear).
       // Las recurrentes (trayecto cotidiano) nunca caducan; las de fecha flexible
       // se agotan cuando termina su rango (hoy … hoy + 180 días).
-      try {
-        const completadas = await prisma.alerta.updateMany({
-          where: {
-            estado: 'ACTIVA',
-            OR: [
-              { recurrente: false, fechaFlexible: false, fechaViaje: { lt: hoy00 } },
-              { fechaFlexible: true, fechaHasta: { lt: hoy00 } },
-            ],
-          },
-          data: { estado: 'COMPLETADA' },
-        });
-        if (completadas.count > 0) {
-          logger.info({ completadas: completadas.count }, 'Alertas con fecha pasada completadas');
+      // (Auto-completado cada15 min: es idempotente y no hace falta un UPDATE
+      // por minuto contra el motor de Prisma.)
+      if (minutosDesdeSnapshot % 15 === 0) {
+        try {
+          const completadas = await prisma.alerta.updateMany({
+            where: {
+              estado: 'ACTIVA',
+              OR: [
+                { recurrente: false, fechaFlexible: false, fechaViaje: { lt: hoy00 } },
+                { fechaFlexible: true, fechaHasta: { lt: hoy00 } },
+              ],
+            },
+            data: { estado: 'COMPLETADA' },
+          });
+          if (completadas.count > 0) {
+            logger.info({ completadas: completadas.count }, 'Alertas con fecha pasada completadas');
+          }
+        } catch (error) {
+          logger.error({ err: error }, 'Fallo completando alertas caducadas');
         }
-      } catch (error) {
-        logger.error({ err: error }, 'Fallo completando alertas caducadas');
       }
 
       // El filtro por intervaloSondeoMin se aplica en memoria más abajo: en SQL
@@ -340,17 +348,20 @@ async function main() {
       }
       if (pendientes.length > 0) {
         logger.info({ procesadas: pendientes.length }, 'Barrido de alertas completado');
+      }
 
-        contadorMemoriaWorker += 1;
-        if (contadorMemoriaWorker % 5 === 0) {
-          const m = process.memoryUsage();
-          logger.info(
-            {
-              rssMb: Math.round(m.rss / 1_048_576),
-              heapUsadoMb: Math.round(m.heapUsed / 1_048_576),
-            },
-            'memoria worker',
-          );
+      // Diagnóstico de OOM de Render: memoria cada5 min SIEMPRE (antes solo con
+      // alertas pendientes y se perdían las ventanas tranquilas) + reinicio
+      // limpio preventivo al acercarse al techo del plan (512 MB): un exit(0)
+      // lo relanza sin registrar «server failure» mientras se afina la fuga.
+      contadorMemoriaWorker += 1;
+      if (contadorMemoriaWorker % 5 === 0) {
+        const m = process.memoryUsage();
+        const rssMb = Math.round(m.rss / 1_048_576);
+        logger.info({ rssMb, heapUsadoMb: Math.round(m.heapUsed / 1_048_576) }, 'memoria worker');
+        if (rssMb >= 430) {
+          logger.error({ rssMb }, 'Techo de memoria alcanzado: reinicio limpio preventivo');
+          process.exit(0);
         }
       }
 
