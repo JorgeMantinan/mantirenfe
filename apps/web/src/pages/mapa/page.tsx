@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleDot, RefreshCw, Search } from 'lucide-react';
 import type { PathOptions } from 'leaflet';
+import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useRefresco } from '@/hooks/useRefresco';
 import { locale } from '@/i18n';
@@ -130,6 +131,9 @@ const PopupTren = memo(function PopupTren({ tren, traza, cargandoTraza, onAltern
 
 export function PaginaMapa() {
   const { t } = useTranslation();
+  // Dentro de la APK (?app=1) el mapa ocupa casi toda la pantalla
+  const { search } = useLocation();
+  const embebido = new URLSearchParams(search).get('app') === '1';
   const [trenes, setTrenes] = useState<PosicionTrenResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -278,7 +282,9 @@ export function PaginaMapa() {
             <leaflet.MapContainer
               center={CENTRO_ESPANIA}
               zoom={6}
-              className="h-[480px] w-full"
+              className={
+                embebido ? 'h-[calc(100vh-15rem)] min-h-[320px] w-full' : 'h-[480px] w-full'
+              }
               scrollWheelZoom
             >
               <leaflet.TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />

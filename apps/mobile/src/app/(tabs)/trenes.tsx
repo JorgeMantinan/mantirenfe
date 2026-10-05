@@ -146,7 +146,7 @@ export default function Trenes() {
   const [impuntuales, setImpuntuales] = useState<PuntualidadTrenResponse[] | null>(null);
   const [errorImpuntuales, setErrorImpuntuales] = useState<string | null>(null);
 
-  const { paleta } = useTema();
+  const { paleta, oscuro } = useTema();
   const { t } = useTranslation();
   const s = useMemo(() => estilos(paleta), [paleta]);
 
@@ -530,7 +530,7 @@ export default function Trenes() {
           />
         )}
 
-        {modo === 'posiciones' && (
+        {modo === 'posiciones' && vistaPos === 'lista' && (
           <TextInput
             style={s.campo}
             placeholder={t('trenes.placeholderFiltrar')}
@@ -839,7 +839,8 @@ export default function Trenes() {
             <Text style={[s.vacio, { color: paleta.error }]}>{errorPosiciones}</Text>
           ) : null}
           <WebView
-            source={{ uri: `${ORIGEN_MAPA}/mapa` }}
+            // `app=1` = sin cabecera/menú de la web; `tema` = modo de la app
+            source={{ uri: `${ORIGEN_MAPA}/mapa?app=1&tema=${oscuro ? 'oscuro' : 'claro'}` }}
             style={{ flex: 1 }}
             startInLoadingState
             userAgent="MantiRenfeApp/1.0"
