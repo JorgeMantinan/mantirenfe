@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BellPlus, ExternalLink, Map, MapPin, RefreshCw, Search, TrainFront } from 'lucide-react';
+import { BellPlus, Map, MapPin, RefreshCw, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
@@ -26,8 +26,14 @@ function hoy(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function mapaExterno(latitud: number, longitud: number): string {
-  return `https://www.openstreetmap.org/?mlat=${latitud}&mlon=${longitud}#map=16/${latitud}/${longitud}`;
+/**
+ * Ruta interna a /mapa para la estación: el nombre siempre y, si sabemos sus
+ * coords, también `lat`/`lng` (así el mapa se centra sin tener que buscarla).
+ */
+function rutaMapaEstacion(nombre: string, latitud: number | null, longitud: number | null): string {
+  const base = `/mapa?estacion=${encodeURIComponent(nombre)}`;
+  if (latitud == null || longitud == null) return base;
+  return `${base}&lat=${encodeURIComponent(String(latitud))}&lng=${encodeURIComponent(String(longitud))}`;
 }
 
 /** Filas por página del listado general: el scroll infinito va de 20 en 20. */
@@ -225,7 +231,7 @@ export function PaginaEstaciones() {
 
   const latitud = detalle?.latitud ?? sel?.latitud ?? null;
   const longitud = detalle?.longitud ?? sel?.longitud ?? null;
-  const urlMapa = latitud != null && longitud != null ? mapaExterno(latitud, longitud) : null;
+  const rutaMapa = sel ? rutaMapaEstacion(sel.nombre, latitud, longitud) : '/mapa';
   const aforos = detalle?.aforos ?? null;
 
   return (
@@ -325,7 +331,7 @@ export function PaginaEstaciones() {
                   </Badge>
                 </div>
                 <Button variant="outline" asChild>
-                  <Link to="/mapa">
+                  <Link to={rutaMapa}>
                     <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapaBoton')}
                   </Link>
                 </Button>
@@ -371,12 +377,11 @@ export function PaginaEstaciones() {
                       </dl>
                     ) : null}
                   </div>
-                  {urlMapa ? (
+                  {latitud != null && longitud != null ? (
                     <Button variant="outline" size="sm" asChild>
-                      <a href={urlMapa} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4" aria-hidden="true" />{' '}
-                        {t('estaciones.verEnMapa')}
-                      </a>
+                      <Link to={rutaMapa}>
+                        <Map className="h-4 w-4" aria-hidden="true" /> {t('estaciones.verEnMapa')}
+                      </Link>
                     </Button>
                   ) : null}
                 </div>

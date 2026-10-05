@@ -20,3 +20,16 @@ export function Actualizador({ posiciones }: { posiciones: PosicionTrenResponse[
   }, [map, posiciones.length]);
   return null;
 }
+
+/**
+ * Centra el mapa en la estación que llega por URL. Se monta con `center` ya
+ * resuelto (coords de la URL o las devueltas por /estaciones), así que hace
+ * un único `setView` sin pisar el refresco periódico de posiciones.
+ */
+export function Centrador({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [map, center, zoom]);
+  return null;
+}

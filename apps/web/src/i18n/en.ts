@@ -622,6 +622,7 @@ export const en: MismoArbol<Claves> = {
   mapa: {
     titulo: 'Live map',
     subtitulo: 'GTFS-RT positions for commuter and long-distance trains · updated every 30 s',
+    estacionSeleccionada: 'Station: {{nombre}}',
     placeholder: 'Filter trains...',
     filtrarAria: 'Filter map trains',
     feedLento:
@@ -642,7 +643,7 @@ export const en: MismoArbol<Claves> = {
     cargando: 'Loading...',
     ocultarTraza: 'Hide track',
     verTraza: 'Show track (24 h)',
-    soloPunto: 'Only 1 point recorded (sampled every 10 min) — press again in a while.',
+    trazaNoDisponible: 'Track not available',
     errorCarga: 'Could not load the positions',
     pie: 'Renfe Punctuality Commitment (source: renfe.com, checked 27/09/2026) · informational only: the actual refund percentage depends on the service type and the applicable exclusions.',
   },

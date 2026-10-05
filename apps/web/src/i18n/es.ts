@@ -623,6 +623,7 @@ export const es = {
   mapa: {
     titulo: 'Mapa en tiempo real',
     subtitulo: 'Posiciones GTFS-RT de Cercanías y Larga Distancia · actualización cada 30 s',
+    estacionSeleccionada: 'Estación: {{nombre}}',
     placeholder: 'Filtrar trenes...',
     filtrarAria: 'Filtrar trenes del mapa',
     feedLento:
@@ -643,7 +644,7 @@ export const es = {
     cargando: 'Cargando...',
     ocultarTraza: 'Ocultar traza',
     verTraza: 'Ver traza (24 h)',
-    soloPunto: 'Solo 1 punto registrado (muestreo cada 10 min) — vuelve a pulsar en un rato.',
+    trazaNoDisponible: 'Traza no disponible',
     errorCarga: 'No se pudieron cargar las posiciones',
     pie: 'Compromiso de Puntualidad de Renfe (fuente: renfe.com, consulta 27/09/2026) · solo informativo: el porcentaje de devolución real depende del tipo de servicio y de las exclusiones aplicables.',
   },

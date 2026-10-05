@@ -6,6 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useRefresco } from '@/hooks/useRefresco';
 import { locale } from '@/i18n';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   funcionIndemnizacion,
   horaGtfs,
+  type EstacionResponse,
   type PosicionTrenResponse,
   type PuntoTraza,
 } from '@mantirenfe/shared-types';
@@ -31,6 +33,9 @@ const TILES_ATTRIBUTION =
 
 const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 
+/** Zoom de la estación seleccionada desde /estaciones (?estacion=...). */
+const ZOOM_ESTACION = 12;
+
 /** Estilo de los marcadores y de la traza: constantes, no se recrean por render. */
 const PATH_TREN: PathOptions = {
   color: '#75258c',
@@ -43,6 +48,13 @@ const PATH_TRAZA: PathOptions = {
   weight: 3,
   opacity: 0.8,
   dashArray: '6 8',
+};
+/** Marcador de la estación elegida: ámbar y radio mayor para distinguirlo de los trenes. */
+const PATH_ESTACION: PathOptions = {
+  color: '#f59e0b',
+  fillColor: '#f59e0b',
+  fillOpacity: 0.9,
+  weight: 3,
 };
 
 /** Parte la traza en segmentos si entre puntos hay más de maxMin de diferencia
@@ -66,13 +78,27 @@ interface PopupProps {
   tren: PosicionTrenResponse;
   traza: { vehiculo: string; puntos: PuntoTraza[] } | null;
   cargandoTraza: boolean;
+  trazaVisible: boolean;
   onAlternar: (vehiculo: string, tripId?: string | null) => void;
 }
 
-/** Contenido del popup, memoizado: solo cambia si cambia el tren o la traza. */
-const PopupTren = memo(function PopupTren({ tren, traza, cargandoTraza, onAlternar }: PopupProps) {
+/**
+ * Contenido del popup, memoizado: solo cambia si cambia el tren o la traza.
+ * La traza se precarga al abrir el popup, así que aquí solo se decide si el
+ * botón está cargando, si se puede mostrar u ocultar, o si no hay traza.
+ */
+const PopupTren = memo(function PopupTren({
+  tren,
+  traza,
+  cargandoTraza,
+  trazaVisible,
+  onAlternar,
+}: PopupProps) {
   const { t } = useTranslation();
   const indemnizacion = tren.retrasoSeg != null ? funcionIndemnizacion(tren.retrasoSeg) : null;
+  const trazaEste = traza?.vehiculo === tren.id ? traza : null;
+  const trazaDisponible = trazaEste !== null && trazaEste.puntos.length >= 2;
+  const visible = trazaEste !== null && trazaVisible;
 
   return (
     <div className="space-y-1 text-sm">
@@ -110,20 +136,16 @@ const PopupTren = memo(function PopupTren({ tren, traza, cargandoTraza, onAltern
           hora: new Date(tren.actualizadaEn).toLocaleTimeString(locale()),
         })}
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={cargandoTraza}
-        onClick={() => onAlternar(tren.id, tren.tripId)}
-      >
-        {cargandoTraza && traza?.vehiculo !== tren.id
-          ? t('mapa.cargando')
-          : traza?.vehiculo === tren.id
-            ? t('mapa.ocultarTraza')
-            : t('mapa.verTraza')}
-      </Button>
-      {traza?.vehiculo === tren.id && traza.puntos.length <= 1 && (
-        <p className="text-xs text-amber-600">{t('mapa.soloPunto')}</p>
+      {cargandoTraza && trazaEste === null ? (
+        <Button variant="outline" size="sm" disabled>
+          {t('mapa.cargando')}
+        </Button>
+      ) : trazaDisponible ? (
+        <Button variant="outline" size="sm" onClick={() => onAlternar(tren.id, tren.tripId)}>
+          {visible ? t('mapa.ocultarTraza') : t('mapa.verTraza')}
+        </Button>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t('mapa.trazaNoDisponible')}</p>
       )}
     </div>
   );
@@ -138,9 +160,27 @@ export function PaginaMapa() {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [traza, setTraza] = useState<{ vehiculo: string; puntos: PuntoTraza[] } | null>(null);
+  const [trazaVisible, setTrazaVisible] = useState(false);
   const [cargandoTraza, setCargandoTraza] = useState(false);
   const [filtro, setFiltro] = useState('');
   const [leaflet, setLeaflet] = useState<MapaLeaflet | null>(null);
+
+  // ?estacion=Nombre&lat=..&lng=..: llega desde /estaciones y se lee una sola
+  // vez, al montar; sin coords buscaremos la estación por nombre más abajo.
+  const [entrada] = useState(() => {
+    const params = new URLSearchParams(search);
+    const nombre = params.get('estacion')?.trim() || null;
+    const lat = params.get('lat');
+    const lng = params.get('lng');
+    const latNum = lat === null ? NaN : Number(lat);
+    const lngNum = lng === null ? NaN : Number(lng);
+    const conCoords = Number.isFinite(latNum) && Number.isFinite(lngNum);
+    return {
+      nombre,
+      coords: nombre !== null && conCoords ? ([latNum, lngNum] as [number, number]) : null,
+    };
+  });
+  const [centroEstacion, setCentroEstacion] = useState<[number, number] | null>(entrada.coords);
 
   // leaflet se carga una sola vez, al entrar en la página
   useEffect(() => {
@@ -155,27 +195,86 @@ export function PaginaMapa() {
     };
   }, []);
 
-  const alternarTraza = useCallback(
-    async (vehiculo: string, tripId?: string | null) => {
+  // Sin coords en la URL buscamos la estación por nombre: una única petición
+  // al montar (el endpoint admite `q` y devuelve la mejor coincidencia).
+  useEffect(() => {
+    if (entrada.nombre === null || entrada.coords !== null) return;
+    let cancelado = false;
+    api<EstacionResponse[]>(`/estaciones?q=${encodeURIComponent(entrada.nombre)}&limite=1`)
+      .then((r) => {
+        const estacion = r[0];
+        if (cancelado || !estacion || estacion.latitud == null || estacion.longitud == null) {
+          return;
+        }
+        setCentroEstacion([estacion.latitud, estacion.longitud]);
+      })
+      .catch(() => {
+        // Sin coords nos quedamos en la vista general: el mapa sigue siendo útil
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [entrada]);
+
+  // Única petición de traza viva: si cambia el popup (u otra llega antes),
+  // la anterior se aborta y su respuesta se descarta.
+  const peticionTraza = useRef<{ vehiculo: string; control: AbortController } | null>(null);
+  useEffect(
+    () => () => {
+      peticionTraza.current?.control.abort();
+    },
+    [],
+  );
+
+  /**
+   * Descarga la traza de un vehículo y la deja en caché. `mostrar` decide si
+   * se pinta la polilínea al llegar; si ya está en caché no se vuelve a pedir.
+   */
+  const cargarTraza = useCallback(
+    (vehiculo: string, tripId: string | null | undefined, mostrar: boolean) => {
       if (traza?.vehiculo === vehiculo) {
-        setTraza(null);
+        if (mostrar) setTrazaVisible(true);
         return;
       }
+      if (peticionTraza.current?.vehiculo === vehiculo) return; // ya está en vuelo
+      peticionTraza.current?.control.abort();
+      const control = new AbortController();
+      peticionTraza.current = { vehiculo, control };
       setCargandoTraza(true);
-      try {
-        const datos = await api<{ vehiculo: string; puntos: PuntoTraza[] }>(
-          `/trenes/posiciones/traza?vehiculo=${encodeURIComponent(vehiculo)}&horas=24${
-            tripId ? `&tripId=${encodeURIComponent(tripId)}` : ''
-          }`,
-        );
-        setTraza(datos);
-      } catch {
-        // popup efímero: no bloquear el mapa por un error de la traza
-      } finally {
-        setCargandoTraza(false);
-      }
+      api<{ vehiculo: string; puntos: PuntoTraza[] }>(
+        `/trenes/posiciones/traza?vehiculo=${encodeURIComponent(vehiculo)}&horas=24${
+          tripId ? `&tripId=${encodeURIComponent(tripId)}` : ''
+        }`,
+        { signal: control.signal },
+      )
+        .then((datos) => {
+          if (peticionTraza.current?.control !== control) return;
+          setTraza(datos);
+          setTrazaVisible(mostrar);
+        })
+        .catch(() => {
+          // popup efímero: no bloquear el mapa por un error de la traza
+        })
+        .finally(() => {
+          if (peticionTraza.current?.control === control) {
+            peticionTraza.current = null;
+            setCargandoTraza(false);
+          }
+        });
     },
     [traza?.vehiculo],
+  );
+
+  /** Al abrir el popup se precarga; el botón solo alterna mostrar/ocultar. */
+  const alternarTraza = useCallback(
+    (vehiculo: string, tripId?: string | null) => {
+      if (traza?.vehiculo === vehiculo && trazaVisible) {
+        setTrazaVisible(false);
+        return;
+      }
+      cargarTraza(vehiculo, tripId, true);
+    },
+    [cargarTraza, traza?.vehiculo, trazaVisible],
   );
 
   // La primera carga enseña el esqueleto; las siguientes son silenciosas.
@@ -230,7 +329,14 @@ export function PaginaMapa() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight">{t('mapa.titulo')}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-heading text-3xl font-bold tracking-tight">{t('mapa.titulo')}</h1>
+            {entrada.nombre !== null && (
+              <Badge variant="outline" className="border-primary text-primary">
+                {t('mapa.estacionSeleccionada', { nombre: entrada.nombre })}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">{t('mapa.subtitulo')}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -304,24 +410,42 @@ export function PaginaMapa() {
             >
               <leaflet.TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />
               <leaflet.Actualizador posiciones={trenes ?? []} />
+              {centroEstacion && <leaflet.Centrador center={centroEstacion} zoom={ZOOM_ESTACION} />}
               {visibles.map((tren) => (
                 <leaflet.CircleMarker
                   key={tren.id}
                   center={[tren.latitud, tren.longitud]}
                   radius={7}
                   pathOptions={PATH_TREN}
+                  eventHandlers={{
+                    // Al abrir el popup se precarga su traza (una sola petición)
+                    popupopen: () => cargarTraza(tren.id, tren.tripId, false),
+                  }}
                 >
                   <leaflet.Popup>
                     <PopupTren
                       tren={tren}
                       traza={traza}
                       cargandoTraza={cargandoTraza}
+                      trazaVisible={trazaVisible}
                       onAlternar={alternarTraza}
                     />
                   </leaflet.Popup>
                 </leaflet.CircleMarker>
               ))}
-              {traza &&
+              {entrada.nombre !== null && centroEstacion && (
+                <leaflet.CircleMarker
+                  center={centroEstacion}
+                  radius={9}
+                  pathOptions={PATH_ESTACION}
+                >
+                  <leaflet.Popup>
+                    {t('mapa.estacionSeleccionada', { nombre: entrada.nombre })}
+                  </leaflet.Popup>
+                </leaflet.CircleMarker>
+              )}
+              {trazaVisible &&
+                traza &&
                 visibles.some((v) => v.id === traza.vehiculo) &&
                 segmentarPorHuecos(traza.puntos).map((segmento, i) =>
                   segmento.length > 1 ? (
