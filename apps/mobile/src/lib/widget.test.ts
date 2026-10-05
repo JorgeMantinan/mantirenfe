@@ -66,6 +66,7 @@ function alerta(parcial: Partial<AlertaResponse> = {}): AlertaResponse {
     ultimoSondeoEn: `${HOY}T09:00:00`,
     ultimoEstado: SONDEO,
     creadaEn: '2026-09-27T20:00:00Z',
+    grupoId: null,
     ...parcial,
   };
 }

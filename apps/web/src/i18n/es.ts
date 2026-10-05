@@ -750,6 +750,10 @@ export const es = {
     estadoActiva: 'Activa',
     estadoPausa: 'En pausa',
     completada: 'Completada',
+    // Tarjeta agrupada ida/vuelta (la vuelta se pinta tras su ancla)
+    idaVuelta: 'Ida y vuelta',
+    ida: 'Ida',
+    vuelta: 'Vuelta',
     // Badge de frecuencia según los días marcados de la alerta
     diasTodos: 'Cada día',
     diasLaborables: 'L-V',
@@ -785,6 +789,7 @@ export const es = {
     dialogoTitulo: '¿Eliminar esta alerta?',
     dialogoTexto:
       'Se dejará de vigilar {{origen}} → {{destino}} el {{fecha}}. Esta acción no se puede deshacer.',
+    dialogoTambienVuelta: 'También se eliminará la alerta de vuelta ({{origen}} → {{destino}}).',
   },
 
   // ──────────────────────────────── alta/edición de alertas

@@ -301,22 +301,25 @@ export default function NuevaAlerta() {
 
     setEnviando(true);
     try {
-      await api(editandoId ? `/alertas/${editandoId}` : '/alertas', {
+      const ida = await api<{ id?: string }>(editandoId ? `/alertas/${editandoId}` : '/alertas', {
         method: editandoId ? 'PATCH' : 'POST',
         json: validacion.data,
       });
 
       if (!editandoId && tambienVuelta) {
-        // La ida ya está creada: la vuelta va como segunda petición con la
-        // misma alerta y los extremos invertidos. Solo celebramos si salen
-        // las dos; si no, avisamos de forma diferenciada.
+        // La ida ya está creada: la vuelta va como segunda petición con los
+        // extremos invertidos y `grupoId` apuntando a la ida (para que el
+        // listado las muestre juntas). Solo celebramos si salen las dos.
         try {
           await api('/alertas', {
             method: 'POST',
-            json: construirAlertaVuelta({
-              ...validacion.data,
-              fechaViaje: fechaVuelta || validacion.data.fechaViaje,
-            }),
+            json: {
+              ...construirAlertaVuelta({
+                ...validacion.data,
+                fechaViaje: fechaVuelta || validacion.data.fechaViaje,
+              }),
+              grupoId: ida?.id,
+            },
           });
           Alert.alert(t('nueva.creadasTitulo'), t('nueva.creadasCuerpo', { resumen }), [
             { text: t('nueva.entendido') },

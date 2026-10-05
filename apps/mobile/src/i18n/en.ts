@@ -418,6 +418,10 @@ export const en: MismoArbol<Claves> = {
     // Frequency badge built from the days the alert is set to
     diasTodos: 'Every day',
     diasLaborables: 'Mon-Fri',
+    // Grouped card on the alerts list ((tabs)/index.tsx): legs and badge
+    idaVuelta: 'Round trip',
+    ida: 'Outbound',
+    vuelta: 'Return',
   },
 
   // ──────────────────────────────── precios (lib/precios.ts)

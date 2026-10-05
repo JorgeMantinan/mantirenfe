@@ -107,6 +107,10 @@ export default function Alertas() {
     );
   };
 
+  // La API entrega cada vuelta justo detrás de su ancla: ahí se detectan las
+  // parejas; el resto de filas se pintan igual que hasta ahora.
+  const filas = useMemo(() => agruparAlertas(alertas), [alertas]);
+
   return (
     <View style={s.pantalla}>
       <View style={s.encabezado}>
@@ -145,8 +149,8 @@ export default function Alertas() {
       ) : null}
 
       <FlatList
-        data={alertas}
-        keyExtractor={(item) => item.id}
+        data={filas}
+        keyExtractor={(item) => (item.tipo === 'grupo' ? item.ida.id : item.alerta.id)}
         refreshControl={<RefreshControl refreshing={cargando} onRefresh={cargar} />}
         contentContainerStyle={s.lista}
         ListHeaderComponent={
@@ -168,82 +172,231 @@ export default function Alertas() {
             </View>
           )
         }
-        renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('lista.a11yVer', {
-              origen: item.origenNombre,
-              destino: item.destinoNombre,
-            })}
-            accessibilityHint={t('lista.a11yPista')}
-            onPress={() => router.push(`/alertas/${item.id}`)}
-            style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-          >
-            <Tarjeta>
-              <View style={s.filaAlerta}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={s.ruta}>
-                    {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
-                    {item.destinoNombre}
-                  </Text>
-                  <Text style={s.detalle}>
-                    {t('lista.metaAlerta', {
-                      fecha: item.fechaViaje,
-                      min: item.intervaloSondeoMin,
-                      bono: item.bono,
-                    })}
-                  </Text>
-                  <View style={s.filaAvisos}>
-                    <Ionicons
-                      name="notifications-outline"
-                      size={13}
-                      color={paleta.textoSecundario}
-                    />
-                    <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
-                  </View>
-                </View>
-                <View style={s.filaDerecha}>
-                  <Etiqueta
-                    tono={
-                      item.estado === 'ACTIVA'
-                        ? 'exito'
-                        : item.estado === 'PAUSA'
-                          ? 'aviso'
-                          : 'neutro'
-                    }
-                  >
-                    {etiquetaEstado(item.estado)}
-                  </Etiqueta>
-                  <Ionicons name="chevron-forward" size={16} color={paleta.textoSecundario} />
-                </View>
-              </View>
-              <View style={s.acciones}>
-                <Boton
-                  titulo={item.estado === 'ACTIVA' ? t('lista.pausar') : t('lista.reanudar')}
-                  variante="contorno"
-                  onPress={() => void alternar(item)}
-                  style={s.botonAccion}
-                />
-                <Boton
-                  titulo={t('comunes.editar')}
-                  variante="contorno"
-                  onPress={() =>
-                    router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })
-                  }
-                  style={s.botonAccion}
-                />
-                <Boton
-                  titulo={t('comunes.eliminar')}
-                  variante="fantasma"
-                  onPress={() => eliminar(item)}
-                  style={s.botonAccion}
-                />
-              </View>
-            </Tarjeta>
-          </Pressable>
-        )}
+        renderItem={({ item }) =>
+          item.tipo === 'grupo' ? (
+            <TarjetaIdaVuelta
+              ida={item.ida}
+              vuelta={item.vuelta}
+              alternar={alternar}
+              eliminar={eliminar}
+            />
+          ) : (
+            <FilaAlerta item={item.alerta} alternar={alternar} eliminar={eliminar} />
+          )
+        }
       />
     </View>
+  );
+}
+
+/**
+ * Fila de la lista: una alerta suelta o la pareja ida/vuelta pintada como una
+ * única tarjeta. `grupoId` (null en anclas y sueltas) permite detectarlas.
+ */
+type FilaAlertas =
+  | { tipo: 'suelta'; alerta: AlertaResponse }
+  | { tipo: 'grupo'; ida: AlertaResponse; vuelta: AlertaResponse };
+
+/**
+ * Detecta parejas en el orden que devuelve `GET /alertas`: una fila sin
+ * `grupoId` cuya SIGUIENTE tenga `grupoId === id` se pinta junto a ella (la
+ * vuelta deja de ser fila suelta). Anclas sin pareja y huérfanas quedan sueltas.
+ */
+function agruparAlertas(alertas: AlertaResponse[]): FilaAlertas[] {
+  const filas: FilaAlertas[] = [];
+  for (let i = 0; i < alertas.length; i++) {
+    const ida = alertas[i];
+    const vuelta = alertas[i + 1];
+    if (ida && vuelta && !ida.grupoId && vuelta.grupoId === ida.id) {
+      filas.push({ tipo: 'grupo', ida, vuelta });
+      i++;
+    } else if (ida) {
+      filas.push({ tipo: 'suelta', alerta: ida });
+    }
+  }
+  return filas;
+}
+
+/** Tono de la etiqueta de estado: la misma regla que en la fila suelta. */
+const tonoEstado = (estado: string): 'exito' | 'aviso' | 'neutro' =>
+  estado === 'ACTIVA' ? 'exito' : estado === 'PAUSA' ? 'aviso' : 'neutro';
+
+/**
+ * Fila de una alerta suelta: ruta, meta, avisos, estado y sus acciones.
+ * Navega a `/alertas/[id]` al tocarla.
+ */
+function FilaAlerta({
+  item,
+  alternar,
+  eliminar,
+}: {
+  item: AlertaResponse;
+  alternar: (alerta: AlertaResponse) => void;
+  eliminar: (alerta: AlertaResponse) => void;
+}) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('lista.a11yVer', {
+        origen: item.origenNombre,
+        destino: item.destinoNombre,
+      })}
+      accessibilityHint={t('lista.a11yPista')}
+      onPress={() => router.push(`/alertas/${item.id}`)}
+      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+    >
+      <Tarjeta>
+        <View style={s.filaAlerta}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={s.ruta}>
+              {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+              {item.destinoNombre}
+            </Text>
+            <Text style={s.detalle}>
+              {t('lista.metaAlerta', {
+                fecha: item.fechaViaje,
+                min: item.intervaloSondeoMin,
+                bono: item.bono,
+              })}
+            </Text>
+            <View style={s.filaAvisos}>
+              <Ionicons name="notifications-outline" size={13} color={paleta.textoSecundario} />
+              <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
+            </View>
+          </View>
+          <View style={s.filaDerecha}>
+            <Etiqueta tono={tonoEstado(item.estado)}>{etiquetaEstado(item.estado)}</Etiqueta>
+            <Ionicons name="chevron-forward" size={16} color={paleta.textoSecundario} />
+          </View>
+        </View>
+        <View style={s.acciones}>
+          <Boton
+            titulo={item.estado === 'ACTIVA' ? t('lista.pausar') : t('lista.reanudar')}
+            variante="contorno"
+            onPress={() => void alternar(item)}
+            style={s.botonAccion}
+          />
+          <Boton
+            titulo={t('comunes.editar')}
+            variante="contorno"
+            onPress={() => router.push({ pathname: '/alertas/nueva', params: { editar: item.id } })}
+            style={s.botonAccion}
+          />
+          <Boton
+            titulo={t('comunes.eliminar')}
+            variante="fantasma"
+            onPress={() => eliminar(item)}
+            style={s.botonAccion}
+          />
+        </View>
+      </Tarjeta>
+    </Pressable>
+  );
+}
+
+/**
+ * Tarjeta agrupada «Ida y vuelta»: badge de cabecera y dos tramos, cada uno con
+ * su etiqueta (Ida/Vuelta), su contenido y su estado; cada tramo navega al
+ * detalle SUYO (`/alertas/[id]`). Pausa, edición y eliminación van al id del
+ * ancla: la API propaga estado y borrado a la pareja (las ediciones son por
+ * tramo, así que solo tocan la ida).
+ */
+function TarjetaIdaVuelta({
+  ida,
+  vuelta,
+  alternar,
+  eliminar,
+}: {
+  ida: AlertaResponse;
+  vuelta: AlertaResponse;
+  alternar: (alerta: AlertaResponse) => void;
+  eliminar: (alerta: AlertaResponse) => void;
+}) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+
+  return (
+    <Tarjeta>
+      <Etiqueta tono="primario">{t('alertas.idaVuelta')}</Etiqueta>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('lista.a11yVer', {
+          origen: ida.origenNombre,
+          destino: ida.destinoNombre,
+        })}
+        accessibilityHint={t('lista.a11yPista')}
+        onPress={() => router.push(`/alertas/${ida.id}`)}
+        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      >
+        <View style={s.filaAlerta}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={s.grupoTramo}>{t('alertas.ida')}</Text>
+            <Text style={s.ruta}>
+              {ida.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+              {ida.destinoNombre}
+            </Text>
+            <Text style={s.detalle}>
+              {t('lista.metaAlerta', {
+                fecha: ida.fechaViaje,
+                min: ida.intervaloSondeoMin,
+                bono: ida.bono,
+              })}
+            </Text>
+          </View>
+          <View style={s.filaDerecha}>
+            <Etiqueta tono={tonoEstado(ida.estado)}>{etiquetaEstado(ida.estado)}</Etiqueta>
+            <Ionicons name="chevron-forward" size={16} color={paleta.textoSecundario} />
+          </View>
+        </View>
+      </Pressable>
+      <View style={s.grupoSeparador} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('lista.a11yVer', {
+          origen: vuelta.origenNombre,
+          destino: vuelta.destinoNombre,
+        })}
+        accessibilityHint={t('lista.a11yPista')}
+        onPress={() => router.push(`/alertas/${vuelta.id}`)}
+        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      >
+        <View style={s.filaAlerta}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={s.grupoTramo}>{t('alertas.vuelta')}</Text>
+            <Text style={s.ruta}>{vuelta.fechaViaje}</Text>
+          </View>
+          <View style={s.filaDerecha}>
+            <Etiqueta tono={tonoEstado(vuelta.estado)}>{etiquetaEstado(vuelta.estado)}</Etiqueta>
+            <Ionicons name="chevron-forward" size={16} color={paleta.textoSecundario} />
+          </View>
+        </View>
+      </Pressable>
+      <View style={s.acciones}>
+        <Boton
+          titulo={ida.estado === 'ACTIVA' ? t('lista.pausar') : t('lista.reanudar')}
+          variante="contorno"
+          onPress={() => void alternar(ida)}
+          style={s.botonAccion}
+        />
+        <Boton
+          titulo={t('comunes.editar')}
+          variante="contorno"
+          onPress={() => router.push({ pathname: '/alertas/nueva', params: { editar: ida.id } })}
+          style={s.botonAccion}
+        />
+        <Boton
+          titulo={t('comunes.eliminar')}
+          variante="fantasma"
+          onPress={() => eliminar(ida)}
+          style={s.botonAccion}
+        />
+      </View>
+    </Tarjeta>
   );
 }
 
@@ -538,6 +691,15 @@ const estilos = (c: Paleta) =>
       paddingVertical: 8,
       paddingHorizontal: 12,
       flex: 1,
+    },
+    grupoSeparador: {
+      height: 1,
+      backgroundColor: c.borde,
+    },
+    grupoTramo: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.textoSecundario,
     },
     vacio: {
       alignItems: 'center',

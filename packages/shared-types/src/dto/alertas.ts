@@ -151,6 +151,9 @@ export const crearAlertaSchema = z
       .default(10),
     bono: z.enum(BONOS).default('GENERAL'),
     notas: z.string().trim().max(500).optional().nullable(),
+    // Agrupación ida/vuelta: id de la alerta de IDA creada justo antes. La API
+    // comprueba que existe y que es del mismo usuario.
+    grupoId: z.string().trim().min(1).max(40).optional().nullable(),
   })
   .superRefine((valor, ctx) => {
     exigirPrecioObjetivoSiPrecio(valor, ctx);
@@ -246,6 +249,12 @@ export interface AlertaResponse {
   /** Último estado guardado por el worker (null si aún no hay sondeos). */
   ultimoEstado?: EstadoSerializado[] | null;
   creadaEn: string;
+  /**
+   * Agrupación ida/vuelta: id de la alerta de IDA (ancla) cuando esta es la
+   * vuelta; null en las sueltas y en la propia ida. El listado coloca cada
+   * vuelta justo detrás de su ancla.
+   */
+  grupoId: string | null;
   /**
    * Total de avisos (notificaciones) que ha dado esta alerta. Solo lo calcula
    * el listado (GET /alertas); el resto de endpoints lo omiten.

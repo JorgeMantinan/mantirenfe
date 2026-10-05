@@ -337,7 +337,11 @@ export function PaginaNuevaAlerta() {
         try {
           const vuelta = await api<{ id?: string; error?: unknown }>('/alertas', {
             method: 'POST',
-            json: construirAlertaVuelta({ ...datos, fechaViaje: fechaVuelta || datos.fechaViaje }),
+            json: {
+              ...construirAlertaVuelta({ ...datos, fechaViaje: fechaVuelta || datos.fechaViaje }),
+              // La vuelta apunta a la ida para que el listado las muestre juntas
+              grupoId: resultado.id,
+            },
           });
           vueltaCreada = !vuelta?.error;
         } catch {

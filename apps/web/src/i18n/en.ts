@@ -749,6 +749,10 @@ export const en: MismoArbol<Claves> = {
     estadoActiva: 'Active',
     estadoPausa: 'Paused',
     completada: 'Completed',
+    // Round-trip card (the return leg is rendered right after its anchor)
+    idaVuelta: 'Round trip',
+    ida: 'Outbound',
+    vuelta: 'Return',
     // Frequency badge built from the days the alert is set to
     diasTodos: 'Every day',
     diasLaborables: 'Mon–Fri',
@@ -784,6 +788,7 @@ export const en: MismoArbol<Claves> = {
     dialogoTitulo: 'Delete this alert?',
     dialogoTexto:
       'We will stop watching {{origen}} → {{destino}} on {{fecha}}. This action cannot be undone.',
+    dialogoTambienVuelta: 'The return alert will be deleted too ({{origen}} → {{destino}}).',
   },
 
   // ──────────────────────────────── alta/edición de alertas

@@ -151,8 +151,8 @@ function estacionesAfectadas(
   }
 
   if (nombres.length === 0) alerta.stopIds.forEach(agregar);
-  // �"Solo hay l�nea (C2, RL4, autob�s...)? la zona es la propia l�nea.
-  if (nombres.length === 0) alerta.routeIds.forEach((ruta) => agregar(`L�nea ${ruta}`));
+  // «Solo hay línea» (C2, RL4, autobús...): la zona es la propia línea.
+  if (nombres.length === 0) alerta.routeIds.forEach((ruta) => agregar(`Línea ${ruta}`));
   return nombres;
 }
 

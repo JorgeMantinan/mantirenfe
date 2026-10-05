@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { buscarEstaciones, getPrisma, Prisma } from '@mantirenfe/database';
@@ -152,6 +158,7 @@ function formatearAlerta(alerta: {
   ultimoSondeoEn: Date | null;
   ultimoEstado?: unknown;
   creadaEn: Date;
+  grupoId: string | null;
 }): AlertaResponse {
   return {
     id: alerta.id,
@@ -175,6 +182,7 @@ function formatearAlerta(alerta: {
     ultimoSondeoEn: alerta.ultimoSondeoEn?.toISOString() ?? null,
     ultimoEstado: formatearUltimoEstado(alerta.ultimoEstado),
     creadaEn: alerta.creadaEn.toISOString(),
+    grupoId: alerta.grupoId ?? null,
   };
 }
 
@@ -195,16 +203,51 @@ export class AlertasService {
     });
     if (alertas.length === 0) return [];
 
+    // Parejas ida/vuelta: la vuelta viaja JUSTO DETRÁS de su ancla (aunque el
+    // `take` las hubiera separado); una pareja fuera de la página se trae con
+    // una única query y una vuelta huérfana se pinta al final como suelta.
+    const enPagina = new Set(alertas.map((a) => a.id));
+    const idsAnclas = alertas.filter((a) => !a.grupoId).map((a) => a.id);
+    const parejas = idsAnclas.length
+      ? await prisma.alerta.findMany({
+          where: { usuarioId: usuario.sub, grupoId: { in: idsAnclas } },
+        })
+      : [];
+    const miembrosPorAncla = new Map<string, typeof alertas>();
+    for (const miembro of [...alertas, ...parejas]) {
+      if (!miembro.grupoId) continue;
+      const lista = miembrosPorAncla.get(miembro.grupoId) ?? [];
+      if (!lista.some((m) => m.id === miembro.id)) lista.push(miembro);
+      miembrosPorAncla.set(miembro.grupoId, lista);
+    }
+    const ordenadas: typeof alertas = [];
+    const pintadas = new Set<string>();
+    for (const a of alertas) {
+      if (a.grupoId) continue; // se pinta con su ancla (o al final, si es huérfana)
+      ordenadas.push(a);
+      pintadas.add(a.id);
+      for (const m of miembrosPorAncla.get(a.id) ?? []) {
+        ordenadas.push(m);
+        pintadas.add(m.id);
+      }
+    }
+    for (const a of alertas) {
+      if (a.grupoId && !pintadas.has(a.id)) {
+        ordenadas.push(a);
+        pintadas.add(a.id);
+      }
+    }
+
     // Una única query agregada por alerta (sin N+1): cuántos avisos ha dado
-    // cada una. Solo se piden los ids del listado, ya filtrados por usuario.
+    // cada una. Solo se pide los ids del listado, ya filtrados por usuario.
     const conteos = await prisma.notificacion.groupBy({
       by: ['alertaId'],
-      where: { usuarioId: usuario.sub, alertaId: { in: alertas.map((a) => a.id) } },
+      where: { usuarioId: usuario.sub, alertaId: { in: ordenadas.map((a) => a.id) } },
       _count: { _all: true },
     });
 
     return juntarConteoAvisos(
-      alertas.map(formatearAlerta),
+      ordenadas.map(formatearAlerta),
       conteos.map((fila) => ({ alertaId: fila.alertaId, total: fila._count._all })),
     );
   }
@@ -282,6 +325,17 @@ export class AlertasService {
     const prisma = getPrisma();
     await asegurarUsuario(prisma, usuario);
 
+    // Vuelta de una ida/vuelta: el ancla debe existir y ser del mismo usuario.
+    let grupoId: string | null = null;
+    if (datos.grupoId) {
+      const ancla = await prisma.alerta.findFirst({
+        where: { id: datos.grupoId, usuarioId: usuario.sub },
+        select: { id: true },
+      });
+      if (!ancla) throw new BadRequestException('La alerta de ida del grupo no existe');
+      grupoId = ancla.id;
+    }
+
     const [origen] = await buscarEstaciones(prisma, datos.origenNombre, 1);
     const [destino] = await buscarEstaciones(prisma, datos.destinoNombre, 1);
 
@@ -324,6 +378,7 @@ export class AlertasService {
         intervaloSondeoMin: datos.intervaloSondeoMin,
         bono: datos.bono,
         notas: datos.notas ?? null,
+        grupoId,
       },
     });
 
@@ -478,22 +533,52 @@ export class AlertasService {
     const alerta = await prisma.alerta.findUnique({ where: { id } });
     if (!alerta) throw new NotFoundException('Alerta no encontrada');
 
-    if (datos.estado === 'PAUSA' || datos.estado === 'COMPLETADA') {
-      await this.quitarSondeo(id);
-    } else if (datos.estado === 'ACTIVA' || cambioRuta) {
-      await this.encolarSondeo(id);
+    // Grupo ida/vuelta: un cambio de ESTADO en el ancla se propaga a la pareja
+    // (pausar/reanudar la tarjeta conjunta); el resto de ediciones son por tramo.
+    const miembrosEstado: string[] = [];
+    if (datos.estado !== undefined && !existente.grupoId) {
+      const miembros = await prisma.alerta.findMany({
+        where: { grupoId: id, usuarioId: usuario.sub },
+        select: { id: true },
+      });
+      miembrosEstado.push(...miembros.map((m) => m.id));
+      if (miembrosEstado.length > 0) {
+        await prisma.alerta.updateMany({
+          where: { id: { in: miembrosEstado }, usuarioId: usuario.sub },
+          data: { estado: datos.estado },
+        });
+      }
+    }
+
+    for (const objetivo of [id, ...miembrosEstado]) {
+      const esAncla = objetivo === id;
+      if (datos.estado === 'PAUSA' || datos.estado === 'COMPLETADA') {
+        await this.quitarSondeo(objetivo);
+      } else if (datos.estado === 'ACTIVA' || (cambioRuta && esAncla)) {
+        await this.encolarSondeo(objetivo);
+      }
     }
 
     return formatearAlerta(alerta);
   }
 
   async eliminar(usuario: UsuarioRequest, id: string): Promise<void> {
-    // Sin lectura previa: el borrado ya lleva al dueño en el WHERE (count 0 = 404)
-    const borradas = await getPrisma().alerta.deleteMany({
-      where: { id, usuarioId: usuario.sub },
+    const prisma = getPrisma();
+    // Grupo ida/vuelta: borrar el ANCLA (la tarjeta conjunta) se lleva también
+    // a la vuelta; borrar una pierna desde su detalle es individual.
+    const miembros = await prisma.alerta.findMany({
+      where: { grupoId: id, usuarioId: usuario.sub },
+      select: { id: true },
+    });
+    const borradas = await prisma.alerta.deleteMany({
+      where:
+        miembros.length > 0
+          ? { OR: [{ id }, { grupoId: id }], usuarioId: usuario.sub }
+          : { id, usuarioId: usuario.sub },
     });
     if (borradas.count === 0) throw new NotFoundException('Alerta no encontrada');
     await this.quitarSondeo(id);
+    for (const miembro of miembros) await this.quitarSondeo(miembro.id);
   }
 
   /**

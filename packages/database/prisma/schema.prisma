@@ -100,6 +100,11 @@ model Alerta {
   // En el resto de criterios se guarda null y se ignora.
   precioObjetivo    Float?
   estado            EstadoAlerta   @default(ACTIVA)
+  // Agrupación ida/vuelta: id de la alerta de IDA (ancla del grupo). Null en
+  // las alertas sueltas y en la propia ida; la vuelta apunta a la ida. La
+  // pausa/borrado desde la tarjeta conjunta se aplica al ancla y la API lo
+  // extiende a la vuelta.
+  grupoId           String?
   intervaloSondeoMin Int           @default(10)
   bono              String         @default("GENERAL")
   notas             String?
@@ -125,6 +130,8 @@ model Alerta {
   // fecha de viaje: sin estos, se barre y ordena toda la tabla del usuario.
   @@index([usuarioId, creadaEn])
   @@index([fechaViaje])
+  // Pareja de la ida/vuelta: buscar la vuelta de un ancla (y al revés).
+  @@index([grupoId])
 }
 
 // Historial de precios de disponibilidad por alerta: el worker solo inserta un

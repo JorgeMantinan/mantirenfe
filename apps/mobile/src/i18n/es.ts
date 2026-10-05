@@ -417,6 +417,10 @@ export const es = {
     // Etiqueta de frecuencia según los días marcados de la alerta
     diasTodos: 'Cada día',
     diasLaborables: 'L-V',
+    // Tarjeta agrupada de la lista ((tabs)/index.tsx): tramos y badge
+    idaVuelta: 'Ida y vuelta',
+    ida: 'Ida',
+    vuelta: 'Vuelta',
   },
 
   // ──────────────────────────────── precios (lib/precios.ts)
