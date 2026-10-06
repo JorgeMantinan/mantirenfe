@@ -6,7 +6,7 @@
 # que Alpine ya no incluye. Debian 12 tampoco trae libssl1.1 (solo OpenSSL 3),
 # así que se instala desde snapshot.debian.org para que funcione tanto el
 # engine debian-openssl-1.1.x como el debian-openssl-3.0.x de Prisma.
-FROM node:22-slim AS build
+FROM node:25-slim AS build
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates wget \
   && rm -rf /var/lib/apt/lists/* \
@@ -20,7 +20,7 @@ RUN pnpm install --frozen-lockfile
 RUN DATABASE_URL="postgresql://user:pass@localhost:5432/build" pnpm --filter @mantirenfe/database db:generate
 RUN pnpm turbo build --filter=@mantirenfe/api --filter=@mantirenfe/worker
 
-FROM node:22-slim AS runner
+FROM node:25-slim AS runner
 ENV NODE_ENV=production
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates wget \
