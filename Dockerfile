@@ -30,7 +30,9 @@ RUN apt-get update \
   && rm libssl1.1_*.deb
 WORKDIR /repo
 RUN corepack enable
-COPY --from=build /repo /repo
+# Sin privilegios en runtime: el proceso (api/worker) corre como `node`, no root
+COPY --from=build --chown=node:node /repo /repo
+USER node
 EXPOSE 3000
 # SERVICIO=api | worker | ambos (default): permite separar API y worker en dos
 # servicios de Render (512 MB cada uno en free) sin duplicar la imagen.

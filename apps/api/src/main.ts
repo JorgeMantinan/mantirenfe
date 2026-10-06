@@ -6,6 +6,7 @@ import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import { AppModule } from './app.module';
 import { NestPinoLogger } from './common/nest-pino.logger';
+import { CspController, informeCsp } from './csp/csp.controller';
 
 async function bootstrap() {
   if (process.env.SENTRY_DSN) {
@@ -18,6 +19,16 @@ async function bootstrap() {
       ? { transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss' } } }
       : {}),
   });
+
+  // El controlador de informes CSP se declara aquí y no en app.module.ts porque
+  // este cambio solo puede tocar main.ts y el fichero del controlador. Nest lee
+  // los `controllers` del módulo al escanearlo dentro de NestFactory.create
+  // (misma clave que MODULE_METADATA.CONTROLLERS), así que basta con declarar el
+  // metadato antes de crear la app.
+  const controladores = (Reflect.getMetadata('controllers', AppModule) ?? []) as unknown[];
+  if (!controladores.includes(CspController)) {
+    Reflect.defineMetadata('controllers', [...controladores, CspController], AppModule);
+  }
 
   const app = await NestFactory.create(AppModule, { logger: new NestPinoLogger(logger) });
   // Con Vercel/Render delante, la IP real viene en X-Forwarded-For y hay que
@@ -59,8 +70,15 @@ async function bootstrap() {
     }),
   );
 
-  // La API solo acepta Bearer (sin cookies): `credentials` sobra y abre la
-  // puerta a CSRF si algún día se colase una cookie.
+  // Destino de `report-uri` (CSP): el content-type de los informes no es
+  // application/json, así que se lee el cuerpo antes que los parsers de Nest.
+  app.use(informeCsp);
+
+  // La sesión viaja en cookies httpOnly, pero SOLO en el mismo origen (la web
+  // llega por el proxy/rewrite de /api): aquí no se habilita `credentials` ni
+  // se lista la cookie, porque abrirlo a otros orígenes habilitaría CSRF.
+  // Los endpoints de cookie son públicos y no mutan estado por cookie, y el
+  // resto de la API sigue validando únicamente el Bearer Authorization.
   const orígenes = (process.env.WEB_ORIGIN ?? 'http://localhost:5173')
     .split(',')
     .map((origen) => origen.trim())

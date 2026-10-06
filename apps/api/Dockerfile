@@ -10,6 +10,8 @@ FROM node:22-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /repo
 RUN corepack enable
-COPY --from=build /repo /repo
+# Sin privilegios en runtime: el proceso corre como `node`, no root
+COPY --from=build --chown=node:node /repo /repo
+USER node
 EXPOSE 3000
 CMD ["node", "apps/api/dist/main.js"]

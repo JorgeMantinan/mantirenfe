@@ -1,0 +1,35 @@
+# Dependabot: actualizaciones semanales de dependencias (security updates llegan
+# antes, el día que se publiquen). Monorepo pnpm + acciones de CI + imágenes base.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /apps/api
+      - /apps/web
+      - /apps/worker
+      - /apps/mobile
+      - /packages/database
+      - /packages/shared-types
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minors-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /apps/api
+      - /apps/web
+      - /apps/worker
+    schedule:
+      interval: weekly

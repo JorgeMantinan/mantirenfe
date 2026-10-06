@@ -44,10 +44,13 @@ jobs:
           ls -lh "$nombre"
           echo "NOMBRE=$nombre" >> "$GITHUB_ENV"
 
-      - name: Subir artefacto (retencion 30 dias)
+      # Retención corta: los artefactos consumen la cuota gratuita de GitHub
+      # (500 MB en planes free). Con backup semanal basta conservar1 semana;
+      # la copia histórica larga la aportan los backups diarios de Supabase.
+      - name: Subir artefacto (retencion 7 dias)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NOMBRE }}
           path: ${{ env.NOMBRE }}
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: error

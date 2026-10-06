@@ -1,5 +1,5 @@
 import { i18n } from '@/i18n';
-import { supabase } from './supabase';
+import { consultarSesionCookie, supabase, tokenEnMemoria } from './supabase';
 
 export class ErrorApi extends Error {
   constructor(
@@ -104,17 +104,41 @@ function detalleUtil(datos: unknown): string | null {
   return texto;
 }
 
-async function obtenerToken(): Promise<string | null> {
+async function tokenDeSupabase(): Promise<string | null> {
   if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token ?? null;
+    if (token) tokenEnMemoria.fijar(token);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Token para `Authorization: Bearer`, en este orden:
+ *  1. el que hay en memoria (viene de la cookie httpOnly vía
+ *     `GET /api/auth/session`, o de una sesión legada de supabase-js);
+ *  2. si no, `GET /api/auth/session` —que además renueva el access token con
+ *     `mv_rt` si caducó—. Solo en rutas privadas: las públicas no necesitan
+ *     sesión y no hay que martillear el endpoint en cada carga;
+ *  3. por último la sesión guardada en localStorage por supabase-js.
+ */
+async function obtenerToken(esPublica: boolean): Promise<string | null> {
+  const enMemoria = tokenEnMemoria.vigente();
+  if (enMemoria) return enMemoria;
+  if (!esPublica) {
+    const sesion = await consultarSesionCookie();
+    if (sesion) return tokenEnMemoria.vigente() ?? sesion.access_token;
+  }
+  return tokenDeSupabase();
 }
 
 export async function api<T>(
   ruta: string,
   opciones: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
-  const token = await obtenerToken();
   const rutasPublicas = [
     '/estaciones',
     '/incidencias',
@@ -125,6 +149,7 @@ export async function api<T>(
     '/health',
   ];
   const esPublica = rutasPublicas.some((r) => ruta.startsWith(r));
+  const token = await obtenerToken(esPublica);
   if (!token && !esPublica) {
     // Falla en local para no mandar una petición que sabemos que será 401
     throw new ErrorApi(401, i18n.t('errores.sinSesion'));
