@@ -27,7 +27,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx src/seed.ts",
     "db:studio": "prisma studio",
-    "db:audit": "tsx scripts/audit-privilegios.ts"
+    "db:audit": "tsx scripts/audit-privilegios.ts",
+    "db:seguridad": "prisma db execute --file scripts/seguridad-rls.sql"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

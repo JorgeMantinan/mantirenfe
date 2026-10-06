@@ -16,6 +16,7 @@
     "db:push": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:push",
     "db:migrate": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:migrate",
     "db:seed": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:seed",
+    "db:seguridad": "dotenv -e .env -- pnpm --filter @mantirenfe/database db:seguridad",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,css,md,yml,yaml}\"",
     "prepare": "husky"
