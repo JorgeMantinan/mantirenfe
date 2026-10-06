@@ -35,11 +35,9 @@ function crearControlador(
     get: (clave: string) =>
       clave === 'NODE_ENV' ? (opciones.nodeEnv ?? 'development') : undefined,
   } as unknown as ConfigService;
-  const controlador = new SesionController(
-    servicio as unknown as SesionService,
-    config,
-    res as unknown as Response,
-  );
+  // `@Res` ya NO va en el constructor: es argumento de ruta (en el constructor
+  // Nest intenta inyectar `Response` y el arranque revienta).
+  const controlador = new SesionController(servicio as unknown as SesionService, config);
   return { controlador, servicio, res };
 }
 
@@ -53,7 +51,7 @@ describe('POST /auth/login', () => {
     const { controlador, servicio, res } = crearControlador();
 
     await expect(
-      controlador.login({ email: 'ana@example.com', password: 'secreta' }),
+      controlador.login({ email: 'ana@example.com', password: 'secreta' }, res as never),
     ).resolves.toEqual({ ok: true });
 
     expect(servicio.login).toHaveBeenCalledWith('ana@example.com', 'secreta');
@@ -72,31 +70,31 @@ describe('POST /auth/login', () => {
 
   it('en producción añade Secure a las dos', async () => {
     const { controlador, res } = crearControlador({ nodeEnv: 'production' });
-    await controlador.login({ email: 'ana@example.com', password: 'secreta' });
+    await controlador.login({ email: 'ana@example.com', password: 'secreta' }, res as never);
     for (const cookie of cookiesFijadas(res)) expect(cookie).toContain('Secure');
   });
 
   it('rechaza entradas inválidas sin tocar Supabase', async () => {
-    const { controlador, servicio } = crearControlador();
-    await expect(controlador.login({ email: 'no-es-email', password: 'x' })).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(controlador.login({ email: 'ana@example.com', password: '' })).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(controlador.login(undefined)).rejects.toThrow(BadRequestException);
+    const { controlador, servicio, res } = crearControlador();
+    await expect(
+      controlador.login({ email: 'no-es-email', password: 'x' }, res as never),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      controlador.login({ email: 'ana@example.com', password: '' }, res as never),
+    ).rejects.toThrow(BadRequestException);
+    await expect(controlador.login(undefined, res as never)).rejects.toThrow(BadRequestException);
     expect(servicio.login).not.toHaveBeenCalled();
   });
 
   it('propaga el error de Supabase (400) tal cual llega al filtro global', async () => {
-    const { controlador } = crearControlador({
+    const { controlador, res } = crearControlador({
       servicio: {
         login: vi.fn().mockRejectedValue(new BadRequestException('Invalid login credentials')),
       },
     });
-    await expect(controlador.login({ email: 'ana@example.com', password: 'x' })).rejects.toThrow(
-      'Invalid login credentials',
-    );
+    await expect(
+      controlador.login({ email: 'ana@example.com', password: 'x' }, res as never),
+    ).rejects.toThrow('Invalid login credentials');
   });
 });
 
@@ -105,7 +103,7 @@ describe('POST /auth/callback', () => {
     const { controlador, servicio, res } = crearControlador();
 
     await expect(
-      controlador.callback({ code: 'codigo-123', code_verifier: 'verifier-123456' }),
+      controlador.callback({ code: 'codigo-123', code_verifier: 'verifier-123456' }, res as never),
     ).resolves.toEqual({ ok: true });
 
     expect(servicio.canjearCodigo).toHaveBeenCalledWith('codigo-123', 'verifier-123456');
@@ -113,15 +111,18 @@ describe('POST /auth/callback', () => {
   });
 
   it('valida code y code_verifier antes de llamar a Supabase', async () => {
-    const { controlador, servicio } = crearControlador();
-    await expect(controlador.callback({ code: '', code_verifier: 'x' })).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(controlador.callback({ code: 'c', code_verifier: 'corto' })).rejects.toThrow(
-      BadRequestException,
-    );
+    const { controlador, servicio, res } = crearControlador();
     await expect(
-      controlador.callback({ code: 'c con espacio', code_verifier: 'verifier-largo' }),
+      controlador.callback({ code: '', code_verifier: 'x' }, res as never),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      controlador.callback({ code: 'c', code_verifier: 'corto' }, res as never),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      controlador.callback(
+        { code: 'c con espacio', code_verifier: 'verifier-largo' },
+        res as never,
+      ),
     ).rejects.toThrow(BadRequestException);
     expect(servicio.canjearCodigo).not.toHaveBeenCalled();
   });
@@ -134,14 +135,16 @@ describe('GET /auth/session', () => {
 
   it('devuelve { session: null } sin cookies y sin setear nada', async () => {
     const { controlador, res } = crearControlador();
-    await expect(controlador.session(peticion())).resolves.toEqual({ session: null });
+    await expect(controlador.session(peticion(), res as never)).resolves.toEqual({
+      session: null,
+    });
     expect(res.setHeader).not.toHaveBeenCalledWith('Set-Cookie', expect.anything());
     // La respuesta lleva un access token en el cuerpo: nada de cachearla
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
   });
 
   it('lee las cookies de la cabecera y devuelve la sesión', async () => {
-    const { controlador, servicio } = crearControlador({
+    const { controlador, servicio, res } = crearControlador({
       servicio: {
         sesionDeCookies: vi.fn().mockResolvedValue({
           sesion: SESION_WEB,
@@ -151,9 +154,9 @@ describe('GET /auth/session', () => {
       },
     });
 
-    await expect(controlador.session(peticion('mv_at=at-jwt; mv_rt=rt-1'))).resolves.toEqual({
-      session: SESION_WEB,
-    });
+    await expect(
+      controlador.session(peticion('mv_at=at-jwt; mv_rt=rt-1'), res as never),
+    ).resolves.toEqual({ session: SESION_WEB });
     expect(servicio.sesionDeCookies).toHaveBeenCalledWith({ mv_at: 'at-jwt', mv_rt: 'rt-1' });
   });
 
@@ -168,7 +171,7 @@ describe('GET /auth/session', () => {
       },
     });
 
-    await controlador.session(peticion('mv_at=viejo; mv_rt=rt-1'));
+    await controlador.session(peticion('mv_at=viejo; mv_rt=rt-1'), res as never);
     expect(cookiesFijadas(res).join(' ')).toContain('mv_at=at-nuevo');
     expect(cookiesFijadas(res).join(' ')).toContain('mv_rt=rt-nuevo');
   });
@@ -184,7 +187,7 @@ describe('GET /auth/session', () => {
       },
     });
 
-    await controlador.session(peticion('mv_at=viejo'));
+    await controlador.session(peticion('mv_at=viejo'), res as never);
     const cookies = cookiesFijadas(res);
     expect(cookies).toHaveLength(2);
     for (const cookie of cookies) expect(cookie).toContain('Max-Age=0');
@@ -194,7 +197,7 @@ describe('GET /auth/session', () => {
 describe('POST /auth/logout', () => {
   it('borra las dos cookies con Max-Age=0', async () => {
     const { controlador, res } = crearControlador();
-    await expect(controlador.logout()).resolves.toEqual({ ok: true });
+    await expect(controlador.logout(res as never)).resolves.toEqual({ ok: true });
     const cookies = cookiesFijadas(res);
     expect(cookies).toHaveLength(2);
     expect(cookies[0]).toContain('mv_at=');
