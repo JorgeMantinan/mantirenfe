@@ -14,6 +14,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # TS7 (compilador nativo) rompe tsup --dts / rollup-plugin-dts en el
+      # build de shared-types: se sube cuando el toolchain lo soporte.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
     groups:
       minors-patch:
         update-types:
@@ -33,3 +38,8 @@ updates:
       - /apps/worker
     schedule:
       interval: weekly
+    ignore:
+      # Saltar de node:22 a node:25/26 (o del nginx actual) es una subida de
+      # runtime mayor: se decide a mano, no en un PR automático.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
