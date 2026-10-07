@@ -367,6 +367,16 @@ async function main() {
   const workerSync = new Worker(
     COLA_SYNC_GTFS,
     async () => {
+      // El sync pesado es cosa de GitHub Actions (sync-gtfs.yml): correrlo aquí
+      // puede OOMar el contenedor (512 MB) y no hay productor en el código
+      // actual — solo repeats antiguos que queden en Redis. Se omite salvo
+      // activación explícita; para un sync manual está el CLI (sync-gtfs.ts).
+      if (process.env.WORKER_SYNC_GTFS !== '1') {
+        logger.warn(
+          'Sync GTFS omitido en el worker (dueño: GitHub Actions; WORKER_SYNC_GTFS=1 lo fuerza)',
+        );
+        return;
+      }
       await sincronizarEstaciones(logger);
       await sincronizarHorarios(logger);
     },

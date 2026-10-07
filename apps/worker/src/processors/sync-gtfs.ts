@@ -65,11 +65,11 @@ const ENTRADAS_PEQUENAS = [
 ];
 
 /**
- * Filas por createMany de ParadaHorario. 10k filas ≈1MB de parámetros: grande
- * suficiente para que el viaje a la BD no domine el sync, pequeño para no
- * desbancar la memoria del contenedor free (512MB).
+ * Filas por createMany de ParadaHorario: 2k filas (~200 kB de parámetros).
+ * El pooler de Supabase ha matado lotes de 1 MB con P1017 ("Server has closed
+ * the connection") y matar la conexión paraba el sync entero.
  */
-const TAM_LOTE_PARADAS = 10_000;
+const TAM_LOTE_PARADAS = 2_000;
 /** Chunks de id para los deleteMany (el límite de parámetros de PG es65.535). */
 const TAM_LOTE_IDS = 5_000;
 /** Filas por createMany de Estacion (5 campos: cómodamente bajo el límite de PG). */
