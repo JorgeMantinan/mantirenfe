@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  borrarSesionLegacy,
   canjearCodigoConCookie,
   cerrarSesionCookie,
   claveStorageSupabase,
@@ -266,6 +267,48 @@ describe('claveStorageSupabase', () => {
   it('con URL inválida o vacía usa la clave fija de auth-js', () => {
     expect(claveStorageSupabase('no-es-url')).toBe('supabase.auth.token');
     expect(claveStorageSupabase('')).toBe('supabase.auth.token');
+  });
+});
+
+describe('borrarSesionLegacy (B6)', () => {
+  it('borra la clave legada de la sesión de supabase-js de localStorage', () => {
+    const removeItem = vi.fn();
+    vi.stubGlobal('localStorage', { removeItem });
+
+    borrarSesionLegacy();
+
+    expect(removeItem).toHaveBeenCalledTimes(1);
+    expect(removeItem).toHaveBeenCalledWith(claveStorageSupabase());
+  });
+
+  it('solo borra la clave de sesión: la del code_verifier PKCE se queda', () => {
+    const sesion = claveStorageSupabase();
+    const claves = [sesion, `${sesion}-code-verifier`];
+
+    borrarSesionLegacy({
+      removeItem: (clave) => {
+        const i = claves.indexOf(clave);
+        if (i >= 0) claves.splice(i, 1);
+      },
+    });
+
+    expect(claves).toEqual([`${sesion}-code-verifier`]);
+  });
+
+  it('modo privado: si localStorage lanza al borrar, no se rompe nada', () => {
+    expect(() =>
+      borrarSesionLegacy({
+        removeItem: () => {
+          throw new Error('SecurityError: storage bloqueado');
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('sin localStorage accesible es un no-op (no lanza)', () => {
+    vi.stubGlobal('localStorage', undefined);
+    expect(() => borrarSesionLegacy()).not.toThrow();
+    expect(() => borrarSesionLegacy(null)).not.toThrow();
   });
 });
 

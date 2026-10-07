@@ -3,6 +3,7 @@ const js = require('@eslint/js');
 const globals = require('globals');
 const tseslint = require('typescript-eslint');
 const reactHooks = require('eslint-plugin-react-hooks');
+const pluginSecurity = require('eslint-plugin-security');
 
 module.exports = tseslint.config(
   {
@@ -20,6 +21,15 @@ module.exports = tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  // Seguridad (flat config del plugin,15 reglas). TODAS en "warn": son
+  // hotspots con muchos falsos positivos que triagea una persona, y `pnpm
+  // lint` debe seguir saliendo en exit 0 mientras se revisan.
+  pluginSecurity.configs.recommended,
+  {
+    rules: Object.fromEntries(
+      Object.keys(pluginSecurity.rules).map((regla) => [`security/${regla}`, 'warn']),
+    ),
+  },
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx,mts,cts}'],
     rules: {

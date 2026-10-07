@@ -11,6 +11,7 @@ import {
 import type { Session, User } from '@supabase/supabase-js';
 import {
   authConfigurada,
+  borrarSesionLegacy,
   cerrarSesionCookie,
   consultarSesionCookie,
   loginConCookie,
@@ -53,12 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setFuente(nueva);
   }, []);
 
+  /**
+   * Pone la app en modo cookie. Es el ÚNICO punto que borra la clave legada de
+   * localStorage (B6): solo se llega aquí cuando el flujo se resolvió con la
+   * cookie, sin usar el fallback de supabase-js (que NECESITA su clave viva).
+   */
   const aplicarCookie = useCallback(
     (sesionCookie: SesionCookie) => {
       const nueva = sesionDeCookie(sesionCookie);
       setSession(nueva);
       setUser(nueva.user);
       marcarFuente('cookie');
+      // Tras `entrar()` con cookie, tras el callback con cookie y en cada
+      // `recargarSesion()` en la que la cookie da sesión: la sesión ya vive en
+      // la cookie httpOnly y el token legado de localStorage no se usa.
+      borrarSesionLegacy();
     },
     [marcarFuente],
   );
@@ -70,7 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       aplicarCookie(enCookie);
       return true;
     }
-    // 2) Sesión legada en localStorage (convive con la cookie; no se borra)
+    // 2) Sesión legada en localStorage: solo se usa si la cookie no dio sesión
+    //    (en ese caso su clave NO se borra, la necesita el fallback)
     if (supabase) {
       try {
         const { data } = await supabase.auth.getSession();

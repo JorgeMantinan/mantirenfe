@@ -114,7 +114,13 @@ export class SesionController {
   @Post('logout')
   @HttpCode(200)
   @EsPublico()
-  async logout(@Res({ passthrough: true }) res: Response): Promise<{ ok: true }> {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
+    // ANTES de borrar las cookies: si no, un mv_rt copiado seguiría
+    // renovando30 días. `revocarSesion` nunca lanza (solo warn).
+    await this.sesionService.revocarSesion(leerCookies(req.headers.cookie));
     res.setHeader('Set-Cookie', cookiesBorrado(this.secure()));
     return { ok: true };
   }

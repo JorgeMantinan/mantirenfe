@@ -1,125 +1,33 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
-import { construirAlertaVuelta, etiquetaDiasSemana } from '@/lib/alertas';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { SELECT_CLS } from '@/lib/ui-constants';
-import { fechaCorta } from '@/lib/proximoViaje';
-import { BONOS, DIAS_LABORABLES, INTERVALOS_SONDEO_MIN } from '@mantirenfe/shared-types';
-import type { TFunction } from 'i18next';
+import { construirAlertaVuelta } from '@/lib/alertas';
+import { DIAS_LABORABLES } from '@mantirenfe/shared-types';
+import type { AlertaResponse, CriterioAlerta, HorarioTrenResponse } from '@mantirenfe/shared-types';
 import {
-  horaGtfs,
-  type AlertaResponse,
-  type CriterioAlerta,
-  type HorarioTrenResponse,
-} from '@mantirenfe/shared-types';
-
-/** Modalidades del bloque "¿Cuándo viajas?": fecha concreta, rango flexible o cotidiano. */
-type Frecuencia = 'fecha' | 'flexible' | 'diaria' | 'dias';
-
-/** Formato HH:MM de 24 h que acepta la API (mismo que el schema de la alerta). */
-const RE_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-/** Etiquetas del bono de la alerta, en el idioma activo. */
-function etiquetasBonos(t: TFunction): Record<string, string> {
-  return {
-    GENERAL: t('nuevaAlerta.bonoGeneral'),
-    BONO_10: t('nuevaAlerta.bonoBono10'),
-    BONO_20: t('nuevaAlerta.bonoBono20'),
-    JUVENIL: t('nuevaAlerta.bonoJuvenil'),
-    ESTUDIANTE: t('nuevaAlerta.bonoEstudiante'),
-    DISCAPACIDAD: t('nuevaAlerta.bonoDiscapacidad'),
-    FAMILIA_NUMEROSA: t('nuevaAlerta.bonoFamilia'),
-    MAYOR_60: t('nuevaAlerta.bonoMayor60'),
-    OTRO: t('nuevaAlerta.bonoOtro'),
-  };
-}
-
-/** Etiquetas cortas del criterio para el resumen (los chips usan textos más largos). */
-function etiquetasCriterio(t: TFunction): Record<string, string> {
-  return {
-    DISPONIBILIDAD: t('nuevaAlerta.criterioPlazas'),
-    RETRASO: t('nuevaAlerta.criterioRetraso'),
-    HORARIO: t('nuevaAlerta.criterioHorarioCorto'),
-    APERTURA_VENTA: t('nuevaAlerta.criterioVentaCorta'),
-    PRECIO: t('nuevaAlerta.criterioPrecioCorto'),
-  };
-}
-
-/** Etiquetas largas de los chips de criterio (los textos del antiguo select). */
-function etiquetasCriterioLargas(t: TFunction): Record<CriterioAlerta, string> {
-  return {
-    DISPONIBILIDAD: t('nuevaAlerta.criterioDisponibilidad'),
-    HORARIO: t('nuevaAlerta.criterioHorario'),
-    RETRASO: t('nuevaAlerta.criterioRetrasoTren'),
-    APERTURA_VENTA: t('nuevaAlerta.criterioVenta'),
-    PRECIO: t('nuevaAlerta.criterioPrecio'),
-  };
-}
-
-/** Orden de los chips de criterio (multi-selección). */
-const CRITERIOS: readonly CriterioAlerta[] = [
-  'DISPONIBILIDAD',
-  'HORARIO',
-  'RETRASO',
-  'APERTURA_VENTA',
-  'PRECIO',
-];
-
-/** Máximo de criterios vigilados a la vez (lo marca el schema compartido). */
-const MAX_CRITERIOS = 4;
-
-function frecuencias(t: TFunction): Array<{ valor: Frecuencia; etiqueta: string }> {
-  return [
-    { valor: 'fecha', etiqueta: t('nuevaAlerta.frecuenciaFecha') },
-    { valor: 'flexible', etiqueta: t('nuevaAlerta.frecuenciaFlexible') },
-    { valor: 'diaria', etiqueta: t('nuevaAlerta.frecuenciaDiaria') },
-    { valor: 'dias', etiqueta: t('nuevaAlerta.frecuenciaDias') },
-  ];
-}
-
-/** Modalidad a partir de lo que hay guardado en la alerta (modo edición). */
-function frecuenciaDe(alerta: AlertaResponse): Frecuencia {
-  if (alerta.fechaFlexible) return 'flexible';
-  if (!alerta.recurrente) return 'fecha';
-  return alerta.diasSemana.length > 0 ? 'dias' : 'diaria';
-}
-
-/** Letras de los chips de días, en orden 0 = domingo … 6 = sábado. */
-function letrasDias(t: TFunction): string[] {
-  return t('comunes.diasIniciales').split(',');
-}
-
-/**
- * Deja solo las salidas que aún no han salido (si no es el día de hoy no se
- * toca nada) y se queda con las 3 próximas, para pintar los chips.
- */
-function salidasFuturas(
-  lista: HorarioTrenResponse[],
-  fechaEfectiva: string,
-  hoyIso: string,
-): HorarioTrenResponse[] {
-  const horaAhora = new Intl.DateTimeFormat('es-ES', {
-    timeZone: 'Europe/Madrid',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(new Date());
-  const futuros = lista.filter((t) => {
-    if (t.transbordo) return false;
-    if (fechaEfectiva !== hoyIso) return true;
-    return horaGtfs(t.salida) > horaAhora;
-  });
-  return futuros.slice(0, 3);
-}
+  MAX_CRITERIOS,
+  calcularResumen,
+  datosDeAlerta,
+  errorDeFormulario,
+  frecuenciaDe,
+  salidasFuturas,
+  type EstadoFormulario,
+  type Frecuencia,
+} from './logica';
+import { CabeceraSeccion } from './cabecera-seccion';
+import { FormularioSeccion } from './formulario-seccion';
+import { TrayectoSeccion } from './trayecto-seccion';
+import { FrecuenciaSeccion } from './frecuencia-seccion';
+import { FranjaSeccion } from './franja-seccion';
+import { TrenSeccion } from './tren-seccion';
+import { CriteriosSeccion } from './criterios-seccion';
+import { BonoSeccion } from './bono-seccion';
+import { NotasSeccion } from './notas-seccion';
+import { VueltaSeccion } from './vuelta-seccion';
+import { ResumenSeccion } from './resumen-seccion';
 
 export function PaginaNuevaAlerta() {
   const { t } = useTranslation();
@@ -159,7 +67,6 @@ export function PaginaNuevaAlerta() {
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const fechaMin = hoyIso;
   // La fecha que viaja al servidor: cotidiano y "cualquier fecha" se anclan a hoy
-  const recurrente = frecuencia === 'diaria' || frecuencia === 'dias';
   const flexible = frecuencia === 'flexible';
   const fechaEfectiva = frecuencia === 'fecha' ? fecha : hoyIso;
 
@@ -182,6 +89,49 @@ export function PaginaNuevaAlerta() {
   const sugerir = (campo: 'origen' | 'destino', texto: string) => {
     limpiarSugerencias(campo);
     (campo === 'origen' ? busOrigen : busDestino).sugerir(texto);
+  };
+
+  const cambiarOrigen = (valor: string) => {
+    setOrigen(valor);
+    sugerir('origen', valor);
+    setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
+  };
+
+  const cambiarDestino = (valor: string) => {
+    setDestino(valor);
+    sugerir('destino', valor);
+    setNumeroTren('');
+  };
+
+  const cambiarFecha = (valor: string) => {
+    setFecha(valor);
+    setNumeroTren(''); // el tren elegido es de otra fecha
+  };
+
+  const alternarDia = (dia: number, marcado: boolean) => {
+    setDias((prev) =>
+      marcado ? prev.filter((d) => d !== dia) : [...prev, dia].sort((a, b) => a - b),
+    );
+  };
+
+  /**
+   * Marca o desmarca la vuelta. Al activarla se precargan los valores por
+   * defecto: fecha +2 días (o de hoy) y la franja horaria de la ida.
+   */
+  const cambiarVuelta = (activo: boolean) => {
+    setTambienVuelta(activo);
+    if (activo) {
+      if (!fechaVuelta) {
+        // Por defecto, dos días después de la ida (o de hoy)
+        const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
+        const d = new Date(`${base}T12:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 2);
+        setFechaVuelta(d.toISOString().slice(0, 10));
+      }
+      // La vuelta arranca con la franja de la ida (editable después)
+      if (!horaDesdeVuelta) setHoraDesdeVuelta(horaDesde);
+      if (!horaHastaVuelta) setHoraHastaVuelta(horaHasta);
+    }
   };
 
   /**
@@ -279,90 +229,35 @@ export function PaginaNuevaAlerta() {
     };
   }, [origen, destino, fechaEfectiva, hoyIso, flexible]);
 
-  // Etiquetas i18n: se recalculan solo cuando cambia el idioma
-  const etiquetasBono = useMemo(() => etiquetasBonos(t), [t]);
-  const criteriosCortos = useMemo(() => etiquetasCriterio(t), [t]);
-  const criteriosLargos = useMemo(() => etiquetasCriterioLargas(t), [t]);
-  const listaFrecuencias = useMemo(() => frecuencias(t), [t]);
-  const inicialesDias = useMemo(() => letrasDias(t), [t]);
-
-  // Resumen de la alerta: se recalcula en cada render con los campos actuales,
-  // para poder distinguir dos alertas de la misma ruta (caja + toast final).
-  const criterioEtiqueta = criterios.map((c) => criteriosCortos[c] ?? c).join(', ');
-  const resumenFecha = flexible
-    ? t('nuevaAlerta.resumenFlexible')
-    : recurrente
-      ? etiquetaDiasSemana(t, dias)
-      : fecha
-        ? fechaCorta(fecha)
-        : t('nuevaAlerta.resumenSinFecha');
-  const resumenFranja =
-    horaDesde || horaHasta ? `${horaDesde || '00:00'}–${horaHasta || '23:59'}` : null;
-  const resumenCriterio = [
-    criterioEtiqueta,
-    criterios.includes('PRECIO') && precioObjetivo ? `≤ ${precioObjetivo} €` : null,
-    t('alertas.cadaMin', { min: intervalo }),
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const resumen = [
-    `${origen.trim() || '—'} → ${destino.trim() || '—'}`,
-    resumenFecha,
-    resumenFranja,
-    resumenCriterio,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const salidasResumen = trenesSugeridos.slice(0, 3).map((t) => horaGtfs(t.salida));
+  // Fotografía del formulario en este render: la validan, resumen y payload
+  const estado: EstadoFormulario = {
+    origen,
+    destino,
+    frecuencia,
+    fecha,
+    dias,
+    horaDesde,
+    horaHasta,
+    criterios,
+    conexiones,
+    precioObjetivo,
+    intervalo,
+    bono,
+    numeroTren,
+    notas,
+    tambienVuelta,
+    fechaVuelta,
+    horaDesdeVuelta,
+    horaHastaVuelta,
+  };
+  const resumenAlerta = calcularResumen(estado, trenesSugeridos, t);
+  const resumen = resumenAlerta.texto;
 
   const enviar = async (event: FormEvent) => {
     event.preventDefault();
-    if (origen.trim().length < 2 || destino.trim().length < 2) {
-      toast.error(t('nuevaAlerta.errorOrigenDestino'));
-      return;
-    }
-    if (frecuencia === 'fecha' && !fecha) {
-      toast.error(t('nuevaAlerta.errorFecha'));
-      return;
-    }
-    if (frecuencia === 'dias' && dias.length === 0) {
-      toast.error(t('nuevaAlerta.errorDias'));
-      return;
-    }
-    if (tambienVuelta && !fechaVuelta) {
-      toast.error(t('nuevaAlerta.errorFechaVuelta'));
-      return;
-    }
-    if (tambienVuelta && frecuencia === 'fecha' && fecha && fechaVuelta < fecha) {
-      toast.error(t('nuevaAlerta.errorFechaVueltaOrden'));
-      return;
-    }
-    const desdeVuelta = horaDesdeVuelta.trim();
-    const hastaVuelta = horaHastaVuelta.trim();
-    if (tambienVuelta && (desdeVuelta || hastaVuelta)) {
-      if (
-        (desdeVuelta && !RE_HORA.test(desdeVuelta)) ||
-        (hastaVuelta && !RE_HORA.test(hastaVuelta))
-      ) {
-        toast.error(t('nuevaAlerta.errorFranjaVuelta'));
-        return;
-      }
-      if (desdeVuelta && hastaVuelta && desdeVuelta > hastaVuelta) {
-        toast.error(t('nuevaAlerta.errorFranjaVueltaOrden'));
-        return;
-      }
-    }
-    const objetivo = Number(precioObjetivo);
-    if (criterios.length === 0) {
-      toast.error(t('nuevaAlerta.errorSinCriterio'));
-      return;
-    }
-    if (criterios.length > MAX_CRITERIOS) {
-      toast.error(t('nuevaAlerta.errorMaxCriterios'));
-      return;
-    }
-    if (criterios.includes('PRECIO') && !(Number.isFinite(objetivo) && objetivo > 0)) {
-      toast.error(t('nuevaAlerta.errorPrecio'));
+    const error = errorDeFormulario(estado, t);
+    if (error) {
+      toast.error(error);
       return;
     }
 
@@ -370,32 +265,7 @@ export function PaginaNuevaAlerta() {
     try {
       const url = editandoId ? `/alertas/${editandoId}` : '/alertas';
       const metodo = editandoId ? 'PATCH' : 'POST';
-      const datos = {
-        origenNombre: origen.trim(),
-        destinoNombre: destino.trim(),
-        // Un trayecto cotidiano o "cualquier fecha" se ancla a hoy
-        fechaViaje: fechaEfectiva,
-        recurrente,
-        // Único formato de días: vacío = todos los días
-        diasSemana: recurrente ? [...dias].sort((a, b) => a - b) : [],
-        // "Cualquier fecha en los próximos 6 meses": el worker rota el rango
-        fechaFlexible: flexible,
-        horaDesde: horaDesde || null,
-        horaHasta: horaHasta || null,
-        numeroTren: numeroTren.trim() || null,
-        // Multi-criterio: la lista es la que vigila la alerta; `criterio` sigue
-        // viajando como el primero de la lista (compatibilidad con la API vieja)
-        criterio: criterios[0] ?? 'DISPONIBILIDAD',
-        criterios,
-        // Solo aplica con DISPONIBILIDAD vigilado: si se desmarca, el checkbox
-        // se oculta y aquí se manda false (la API también lo fuerza a false)
-        conexiones: criterios.includes('DISPONIBILIDAD') && conexiones,
-        // Solo aplica si se vigilan precios; en el resto lo mandamos a null
-        precioObjetivo: criterios.includes('PRECIO') ? objetivo : null,
-        intervaloSondeoMin: intervalo,
-        bono,
-        notas: notas.trim() || null,
-      };
+      const datos = datosDeAlerta(estado, fechaEfectiva);
       // Formulario de la vuelta precargado (extremos invertidos): lo usan la
       // acción del toast y el aviso de fallo para poder reintentarla.
       const rutaVuelta = `/alertas/nueva?origen=${encodeURIComponent(
@@ -412,6 +282,11 @@ export function PaginaNuevaAlerta() {
         toast.error(t('nuevaAlerta.errorCampos'));
         return;
       }
+
+      const accionVuelta = {
+        label: t('nuevaAlerta.accionVuelta'),
+        onClick: () => navigate(rutaVuelta),
+      };
 
       if (editandoId) {
         toast.success(t('nuevaAlerta.toastActualizada', { resumen }));
@@ -442,21 +317,12 @@ export function PaginaNuevaAlerta() {
         if (vueltaCreada) {
           toast.success(t('nuevaAlerta.toastCreadasVuelta', { resumen }), { duration: 8000 });
         } else {
-          toast.error(t('nuevaAlerta.errorVuelta'), {
-            duration: 10000,
-            action: {
-              label: t('nuevaAlerta.accionVuelta'),
-              onClick: () => navigate(rutaVuelta),
-            },
-          });
+          toast.error(t('nuevaAlerta.errorVuelta'), { duration: 10000, action: accionVuelta });
         }
       } else {
         toast.success(t('nuevaAlerta.toastCreada', { resumen }), {
           duration: 8000,
-          action: {
-            label: t('nuevaAlerta.accionVuelta'),
-            onClick: () => navigate(rutaVuelta),
-          },
+          action: accionVuelta,
         });
       }
       navigate('/alertas');
@@ -469,408 +335,55 @@ export function PaginaNuevaAlerta() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 animate-fade-in">
-      <div className="space-y-1">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/alertas')} className="-ml-2">
-          <ArrowLeft aria-hidden="true" /> {t('nuevaAlerta.volver')}
-        </Button>
-        <h1 className="font-heading text-3xl font-bold tracking-tight">
-          {editandoId ? t('nuevaAlerta.editarTitulo') : t('nuevaAlerta.nuevaTitulo')}
-        </h1>
-        <p className="text-muted-foreground">
-          {editandoId ? t('nuevaAlerta.editarSub') : t('nuevaAlerta.nuevaSub')}
-        </p>
-      </div>
+      <CabeceraSeccion editando={Boolean(editandoId)} onVolver={() => navigate('/alertas')} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <BellRing className="h-5 w-5 text-primary" aria-hidden="true" />
-            {t('nuevaAlerta.trayectoTitulo')}
-          </CardTitle>
-          <CardDescription>{t('nuevaAlerta.trayectoDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={enviar} className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="origen">{t('trayectos.etiquetaOrigen')}</Label>
-                <Input
-                  id="origen"
-                  list="estaciones-origen"
-                  value={origen}
-                  onChange={(e) => {
-                    setOrigen(e.target.value);
-                    sugerir('origen', e.target.value);
-                    setNumeroTren(''); // la ruta cambió: el tren elegido ya no aplica
-                  }}
-                  placeholder="Madrid-Atocha"
-                  required
-                  minLength={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="destino">{t('trayectos.etiquetaDestino')}</Label>
-                <Input
-                  id="destino"
-                  list="estaciones-destino"
-                  value={destino}
-                  onChange={(e) => {
-                    setDestino(e.target.value);
-                    sugerir('destino', e.target.value);
-                    setNumeroTren('');
-                  }}
-                  placeholder="Barcelona-Sants"
-                  required
-                  minLength={2}
-                />
-              </div>
-            </div>
-            <datalist id="estaciones-origen">
-              {sugOrigen.map((e) => (
-                <option key={e.id} value={e.nombre}>
-                  {e.ciudad}
-                </option>
-              ))}
-            </datalist>
-            <datalist id="estaciones-destino">
-              {sugDestino.map((e) => (
-                <option key={e.id} value={e.nombre}>
-                  {e.ciudad}
-                </option>
-              ))}
-            </datalist>
-
-            <div className="space-y-2">
-              <Label>{t('nuevaAlerta.cuandoViajas')}</Label>
-              <div className="flex flex-wrap gap-2">
-                {listaFrecuencias.map((f) => (
-                  <Button
-                    key={f.valor}
-                    type="button"
-                    variant={frecuencia === f.valor ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setFrecuencia(f.valor)}
-                  >
-                    {f.etiqueta}
-                  </Button>
-                ))}
-              </div>
-              {frecuencia === 'diaria' && (
-                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.recurrenteDiaria')}</p>
-              )}
-              {flexible && (
-                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.pistaFlexible')}</p>
-              )}
-              {frecuencia === 'dias' && (
-                <>
-                  <p className="text-xs text-muted-foreground">{t('nuevaAlerta.pistaDias')}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {inicialesDias.map((letra, dia) => {
-                      const marcado = dias.includes(dia);
-                      return (
-                        <Button
-                          key={dia}
-                          type="button"
-                          variant={marcado ? 'default' : 'outline'}
-                          size="sm"
-                          aria-pressed={marcado}
-                          className="h-8 w-8 px-0"
-                          onClick={() =>
-                            setDias((prev) =>
-                              marcado
-                                ? prev.filter((d) => d !== dia)
-                                : [...prev, dia].sort((a, b) => a - b),
-                            )
-                          }
-                        >
-                          {letra}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div
-              className={`grid gap-4 ${frecuencia === 'fecha' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}
-            >
-              {frecuencia === 'fecha' && (
-                <div className="space-y-2">
-                  <Label htmlFor="fecha">{t('nuevaAlerta.fechaLabel')}</Label>
-                  <Input
-                    id="fecha"
-                    type="date"
-                    min={fechaMin}
-                    value={fecha}
-                    onChange={(e) => {
-                      setFecha(e.target.value);
-                      setNumeroTren(''); // el tren elegido es de otra fecha
-                    }}
-                    required
-                  />
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="horaDesde">{t('nuevaAlerta.horaDesdeLabel')}</Label>
-                <Input
-                  id="horaDesde"
-                  type="time"
-                  value={horaDesde}
-                  onChange={(e) => setHoraDesde(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="horaHasta">{t('nuevaAlerta.horaHastaLabel')}</Label>
-                <Input
-                  id="horaHasta"
-                  type="time"
-                  value={horaHasta}
-                  onChange={(e) => setHoraHasta(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="numeroTren">{t('nuevaAlerta.trenLabel')}</Label>
-              <Input
-                id="numeroTren"
-                value={numeroTren}
-                onChange={(e) => setNumeroTren(e.target.value)}
-                placeholder={t('nuevaAlerta.trenPlaceholder')}
-                maxLength={20}
-              />
-              {trenesSugeridos.length > 0 && !numeroTren.trim() && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{t('nuevaAlerta.proximos')}</span>
-                  {trenesSugeridos.map((t) => (
-                    <Button
-                      key={`${t.numeroTren}-${t.salida}`}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setNumeroTren(t.numeroTren)}
-                    >
-                      {horaGtfs(t.salida)} · {t.numeroTren}
-                      {t.operador ? ` · ${t.operador}` : ''}
-                    </Button>
-                  ))}
-                </div>
-              )}
-              {trenesSugeridos.length > 0 && !numeroTren.trim() && (
-                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.elegirProximo')}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t('nuevaAlerta.criterioLabel')}</Label>
-              <div className="flex flex-wrap gap-2">
-                {CRITERIOS.map((valor) => {
-                  const marcado = criterios.includes(valor);
-                  return (
-                    <Button
-                      key={valor}
-                      type="button"
-                      variant={marcado ? 'default' : 'outline'}
-                      size="sm"
-                      aria-pressed={marcado}
-                      disabled={cargandoEdicion}
-                      onClick={() => alternarCriterio(valor)}
-                    >
-                      {criteriosLargos[valor]}
-                    </Button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground">{t('nuevaAlerta.criterioPista')}</p>
-              {criterios.includes('DISPONIBILIDAD') && (
-                <div className="flex items-start gap-2 rounded-lg border p-3">
-                  <input
-                    id="conexiones"
-                    type="checkbox"
-                    checked={conexiones}
-                    disabled={cargandoEdicion}
-                    onChange={(e) => setConexiones(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
-                  />
-                  <div className="space-y-1">
-                    <Label htmlFor="conexiones">{t('nuevaAlerta.conexiones')}</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t('nuevaAlerta.conexionesPista')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="intervalo">{t('nuevaAlerta.intervaloLabel')}</Label>
-              <select
-                id="intervalo"
-                className={SELECT_CLS}
-                value={intervalo}
-                onChange={(e) => setIntervalo(Number(e.target.value))}
-              >
-                {INTERVALOS_SONDEO_MIN.map((min) => (
-                  <option key={min} value={min}>
-                    {t('nuevaAlerta.intervaloCada', { min })}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {criterios.includes('PRECIO') && (
-              <div className="space-y-2">
-                <Label htmlFor="precioObjetivo">{t('nuevaAlerta.precioLabel')}</Label>
-                <Input
-                  id="precioObjetivo"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="0.01"
-                  value={precioObjetivo}
-                  onChange={(e) => setPrecioObjetivo(e.target.value)}
-                  placeholder={t('nuevaAlerta.precioPlaceholder')}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">{t('nuevaAlerta.precioTexto')}</p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="bono">{t('nuevaAlerta.bonoLabel')}</Label>
-              <select
-                id="bono"
-                className={SELECT_CLS}
-                value={bono}
-                onChange={(e) => setBono(e.target.value)}
-              >
-                {BONOS.map((b) => (
-                  <option key={b} value={b}>
-                    {etiquetasBono[b] ?? b}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">{t('nuevaAlerta.bonoTexto')}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notas">{t('nuevaAlerta.notasLabel')}</Label>
-              <Textarea
-                id="notas"
-                value={notas}
-                onChange={(e) => setNotas(e.target.value)}
-                placeholder={t('nuevaAlerta.notasPlaceholder')}
-                maxLength={500}
-              />
-            </div>
-
-            {!editandoId && (
-              <div className="space-y-2 rounded-lg border p-3">
-                <div className="flex items-start gap-2">
-                  <input
-                    id="tambienVuelta"
-                    type="checkbox"
-                    checked={tambienVuelta}
-                    onChange={(e) => {
-                      const activo = e.target.checked;
-                      setTambienVuelta(activo);
-                      if (activo) {
-                        if (!fechaVuelta) {
-                          // Por defecto, dos días después de la ida (o de hoy)
-                          const base = frecuencia === 'fecha' && fecha ? fecha : hoyIso;
-                          const d = new Date(`${base}T12:00:00Z`);
-                          d.setUTCDate(d.getUTCDate() + 2);
-                          setFechaVuelta(d.toISOString().slice(0, 10));
-                        }
-                        // La vuelta arranca con la franja de la ida (editable después)
-                        if (!horaDesdeVuelta) setHoraDesdeVuelta(horaDesde);
-                        if (!horaHastaVuelta) setHoraHastaVuelta(horaHasta);
-                      }
-                    }}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
-                  />
-                  <div className="space-y-1">
-                    <Label htmlFor="tambienVuelta">{t('nuevaAlerta.tambienVuelta')}</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t('nuevaAlerta.tambienVueltaDesc')}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('nuevaAlerta.tambienVueltaRiesgo')}
-                    </p>
-                  </div>
-                </div>
-                {tambienVuelta && (
-                  <div className="space-y-2 pt-2">
-                    <Label htmlFor="fechaVuelta">{t('nuevaAlerta.fechaVueltaLabel')}</Label>
-                    <Input
-                      id="fechaVuelta"
-                      type="date"
-                      min={fechaMin}
-                      value={fechaVuelta}
-                      onChange={(e) => setFechaVuelta(e.target.value)}
-                      required
-                    />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="horaDesdeVuelta">
-                          {t('nuevaAlerta.horaDesdeVueltaLabel')}
-                        </Label>
-                        <Input
-                          id="horaDesdeVuelta"
-                          type="time"
-                          value={horaDesdeVuelta}
-                          onChange={(e) => setHoraDesdeVuelta(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="horaHastaVuelta">
-                          {t('nuevaAlerta.horaHastaVueltaLabel')}
-                        </Label>
-                        <Input
-                          id="horaHastaVuelta"
-                          type="time"
-                          value={horaHastaVuelta}
-                          onChange={(e) => setHoraHastaVuelta(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t('nuevaAlerta.pistaFranjaVuelta')}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-1 rounded-lg border bg-muted/40 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('nuevaAlerta.resumenTitulo')}
-              </p>
-              <p className="text-sm font-medium">
-                {origen.trim() || '—'} → {destino.trim() || '—'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {[resumenFecha, resumenFranja, resumenCriterio].filter(Boolean).join(' · ')}
-              </p>
-              {salidasResumen.length > 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {t('nuevaAlerta.resumenProximas', { horas: salidasResumen.join(', ') })}
-                </p>
-              ) : null}
-            </div>
-
-            <Button type="submit" className="w-full" disabled={enviando}>
-              {enviando
-                ? t('nuevaAlerta.guardando')
-                : editandoId
-                  ? t('nuevaAlerta.guardarCambios')
-                  : t('nuevaAlerta.crearYVigilar')}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <FormularioSeccion onSubmit={enviar} enviando={enviando} editando={Boolean(editandoId)}>
+        <TrayectoSeccion
+          estado={estado}
+          onOrigen={cambiarOrigen}
+          onDestino={cambiarDestino}
+          sugerenciasOrigen={sugOrigen}
+          sugerenciasDestino={sugDestino}
+        />
+        <FrecuenciaSeccion
+          estado={estado}
+          onFrecuencia={setFrecuencia}
+          onAlternarDia={alternarDia}
+        />
+        <FranjaSeccion
+          estado={estado}
+          fechaMin={fechaMin}
+          onFecha={cambiarFecha}
+          onHoraDesde={setHoraDesde}
+          onHoraHasta={setHoraHasta}
+        />
+        <TrenSeccion
+          estado={estado}
+          onNumeroTren={setNumeroTren}
+          trenesSugeridos={trenesSugeridos}
+        />
+        <CriteriosSeccion
+          estado={estado}
+          cargandoEdicion={cargandoEdicion}
+          onAlternar={alternarCriterio}
+          onConexiones={setConexiones}
+          onIntervalo={setIntervalo}
+          onPrecioObjetivo={setPrecioObjetivo}
+        />
+        <BonoSeccion estado={estado} onBono={setBono} />
+        <NotasSeccion estado={estado} onNotas={setNotas} />
+        {!editandoId && (
+          <VueltaSeccion
+            estado={estado}
+            fechaMin={fechaMin}
+            onTambienVuelta={cambiarVuelta}
+            onFechaVuelta={setFechaVuelta}
+            onHoraDesdeVuelta={setHoraDesdeVuelta}
+            onHoraHastaVuelta={setHoraHastaVuelta}
+          />
+        )}
+        <ResumenSeccion estado={estado} resumen={resumenAlerta} />
+      </FormularioSeccion>
     </div>
   );
 }

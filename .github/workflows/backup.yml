@@ -1,6 +1,9 @@
 # Secrets requeridos (Settings > Secrets and variables > Actions) — los añade el dueño del repo:
 #   BACKUP_DATABASE_URL  (obligatorio) DATABASE_URL de producción (Supabase > Project Settings >
 #                        Database > Connection string > URI). Sin él el job falla con un error claro.
+#   BACKUP_GPG_PASSPHRASE (obligatorio) passphrase del cifrado simétrico AES256 del artefacto.
+#                        El usuario lo guarda en SU gestor de contraseñas (no en el repo ni en el
+#                        .env): sin él la copia es inservible y el job falla con un error claro.
 name: Backup semanal de BD
 
 on:
@@ -21,20 +24,32 @@ permissions:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    # pg_dump17: el plan free de Supabase corre PostgreSQL 17; un pg_dump más
+    # pg_dump 17: el plan free de Supabase corre PostgreSQL 17; un pg_dump más
     # antiguo (el del runner, v16) aborta con "server version mismatch".
     container: postgres:17
     steps:
-      - name: Verificar BACKUP_DATABASE_URL
+      - name: Verificar secrets requeridos
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
         run: |
           if [ -z "$BACKUP_DATABASE_URL" ]; then
             echo "::error::Falta el secret BACKUP_DATABASE_URL (Settings > Secrets and variables > Actions)."
             exit 1
           fi
+          if [ -z "$BACKUP_GPG_PASSPHRASE" ]; then
+            echo "::error::Falta el secret BACKUP_GPG_PASSPHRASE (Settings > Secrets and variables > Actions). Guarda la passphrase en tu gestor de contraseñas: sin ella no se puede descifrar el backup."
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
+
+      # postgres:17 es Debian slim y NO trae gpg: sin este paso el cifrado revienta.
+      - name: Instalar gnupg
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends gnupg
 
       - name: pg_dump | gzip
         env:
@@ -48,13 +63,25 @@ jobs:
           ls -lh "$nombre"
           echo "NOMBRE=$nombre" >> "$GITHUB_ENV"
 
+      # El artefacto se sube SOLO cifrado: la copia en claro se borra aquí mismo.
+      # El passphrase viaja en el secret BACKUP_GPG_PASSPHRASE y el usuario lo
+      # guarda en su gestor de contraseñas (nunca en el repo).
+      - name: Cifrar con GPG (AES256 simétrico)
+        env:
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          echo "$BACKUP_GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 --cipher-algo AES256 --symmetric -o "$NOMBRE.gpg" "$NOMBRE"
+          rm "$NOMBRE"
+          ls -lh "$NOMBRE.gpg"
+
       # Retención corta: los artefactos consumen la cuota gratuita de GitHub
-      # (500 MB en planes free). Con backup semanal basta conservar1 semana;
+      # (500 MB en planes free). Con backup semanal basta conservar 1 semana;
       # la copia histórica larga la aportan los backups diarios de Supabase.
-      - name: Subir artefacto (retencion 7 dias)
+      - name: Subir artefacto cifrado (retencion 7 dias)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NOMBRE }}
-          path: ${{ env.NOMBRE }}
+          name: ${{ env.NOMBRE }}.gpg
+          path: ${{ env.NOMBRE }}.gpg
           retention-days: 7
           if-no-files-found: error

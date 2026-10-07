@@ -236,6 +236,26 @@ export function claveStorageSupabase(destino = url): string {
 }
 
 /**
+ * B6: borra la clave legada de la sesión de supabase-js en `localStorage`
+ * cuando la sesión vive en la cookie httpOnly (el token ya caducado no debe
+ * quedarse ahí). Solo se llama desde los flujos que acaban en modo cookie; los
+ * que usan el fallback de supabase-js NO la borran porque ahí esa clave ES la
+ * sesión. Tolerante al modo privado: si el storage lanza, no se rompe nada.
+ */
+export function borrarSesionLegacy(
+  almacen?: Pick<Storage, 'removeItem'> | null,
+  claveAlmacen?: string,
+): void {
+  const destino = almacen ?? (typeof localStorage === 'undefined' ? null : localStorage);
+  if (!destino) return;
+  try {
+    destino.removeItem(claveAlmacen ?? claveStorageSupabase());
+  } catch {
+    // Storage bloqueado (modo privado): no hay nada que limpiar a mano
+  }
+}
+
+/**
  * El `code_verifier` del flujo PKCE vive en el storage del navegador y lo
  * escribe supabase-js: con él la web puede canjear el código contra
  * `POST /api/auth/callback` (cookies) en vez de contra supabase-js.

@@ -28,6 +28,7 @@ function crearControlador(
     sesionDeCookies: vi
       .fn()
       .mockResolvedValue({ sesion: null, renovado: null, cookiesInvalidas: false }),
+    revocarSesion: vi.fn().mockResolvedValue(undefined),
     ...opciones.servicio,
   };
   const res = { setHeader: vi.fn() };
@@ -195,14 +196,52 @@ describe('GET /auth/session', () => {
 });
 
 describe('POST /auth/logout', () => {
-  it('borra las dos cookies con Max-Age=0', async () => {
-    const { controlador, res } = crearControlador();
-    await expect(controlador.logout(res as never)).resolves.toEqual({ ok: true });
+  function peticion(cookie?: string): Request {
+    return { headers: cookie ? { cookie } : {} } as unknown as Request;
+  }
+
+  it('revoca la sesión en Supabase con las cookies leídas y borra las dos', async () => {
+    const { controlador, servicio, res } = crearControlador();
+
+    await expect(
+      controlador.logout(peticion('mv_at=at-jwt; mv_rt=rt-1'), res as never),
+    ).resolves.toEqual({ ok: true });
+
+    expect(servicio.revocarSesion).toHaveBeenCalledWith({ mv_at: 'at-jwt', mv_rt: 'rt-1' });
     const cookies = cookiesFijadas(res);
     expect(cookies).toHaveLength(2);
     expect(cookies[0]).toContain('mv_at=');
     expect(cookies[1]).toContain('mv_rt=');
     for (const cookie of cookies) expect(cookie).toContain('Max-Age=0');
+  });
+
+  it('revoca ANTES de fijar el borrado de cookies', async () => {
+    const orden: string[] = [];
+    const { controlador, servicio, res } = crearControlador({
+      servicio: {
+        revocarSesion: vi.fn().mockImplementation(() => {
+          orden.push('revocar');
+          return Promise.resolve();
+        }),
+      },
+    });
+    res.setHeader.mockImplementation((clave: string) => {
+      orden.push(clave === 'Set-Cookie' ? 'cookies' : 'otra');
+    });
+
+    await controlador.logout(peticion('mv_rt=rt-1'), res as never);
+
+    expect(orden).toEqual(['revocar', 'cookies']);
+    expect(servicio.revocarSesion).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin cookies la revocación es un no-op y las cookies se borran igual', async () => {
+    const { controlador, servicio, res } = crearControlador();
+
+    await controlador.logout(peticion(), res as never);
+
+    expect(servicio.revocarSesion).toHaveBeenCalledWith({});
+    expect(cookiesFijadas(res)).toHaveLength(2);
   });
 });
 

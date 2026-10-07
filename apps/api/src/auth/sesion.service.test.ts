@@ -58,6 +58,17 @@ function crear(configurado?: ConfigService): SesionService {
   return new SesionService(configurado ?? config());
 }
 
+/** Sustituye el `logger` privado por uno que solo recoge los avisos. */
+function espiarAvisos(servicio: SesionService): string[] {
+  const avisos: string[] = [];
+  (servicio as unknown as { logger: { warn: (mensaje: string) => void } }).logger = {
+    warn: (mensaje: string) => {
+      avisos.push(mensaje);
+    },
+  };
+  return avisos;
+}
+
 describe('SesionService.login', () => {
   it('llama al grant de password con la anon key y devuelve los tokens', async () => {
     fetchMock.mockResolvedValueOnce(
@@ -196,6 +207,100 @@ describe('SesionService.refrescar', () => {
   it('sin token o con caracteres raros no se llama a Supabase', async () => {
     await expect(crear().refrescar('rt con espacios')).rejects.toThrow(RefreshInvalidoError);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('SesionService.revocarSesion', () => {
+  it('con mv_at vigente revoca en Supabase con scope global (una sola llamada)', async () => {
+    fetchMock.mockResolvedValueOnce(respuesta(null, 204));
+    const access = jwt(payloadValido());
+
+    await crear().revocarSesion({ mv_at: access, mv_rt: 'rt-test-refresh-token-01' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${URL}/auth/v1/logout`);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({
+      apikey: 'anon-key',
+      Authorization: `Bearer ${access}`,
+      'Content-Type': 'application/json',
+    });
+    expect(JSON.parse(init.body as string)).toEqual({ scope: 'global' });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('si el access está caducado rota el refresh y revoca con el nuevo', async () => {
+    const caducado = jwt(payloadValido({ exp: Math.floor(Date.now() / 1000) - 10 }));
+    const nuevo = jwt(payloadValido());
+    fetchMock
+      .mockResolvedValueOnce(
+        respuesta({ access_token: nuevo, refresh_token: 'rt-test-refresh-token-rotado' }),
+      )
+      .mockResolvedValueOnce(respuesta(null, 204));
+
+    await crear().revocarSesion({ mv_at: caducado, mv_rt: 'rt-test-refresh-token-viejo' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${URL}/auth/v1/token?grant_type=refresh_token`);
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({
+      refresh_token: 'rt-test-refresh-token-viejo',
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${URL}/auth/v1/logout`);
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toMatchObject({
+      Authorization: `Bearer ${nuevo}`,
+    });
+  });
+
+  it('un fallo de red NO lanza: solo avisa (el borrado de cookies sigue)', async () => {
+    const servicio = crear();
+    const avisos = espiarAvisos(servicio);
+    fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await expect(
+      servicio.revocarSesion({ mv_at: jwt(payloadValido()), mv_rt: 'rt-test-refresh-token-01' }),
+    ).resolves.toBeUndefined();
+
+    expect(avisos).toEqual([expect.stringContaining('ECONNREFUSED')]);
+  });
+
+  it('si el refresh está rechazado tampoco lanza', async () => {
+    const servicio = crear();
+    const avisos = espiarAvisos(servicio);
+    fetchMock.mockResolvedValueOnce(respuesta({ msg: 'Invalid Refresh Token' }, 401));
+
+    await expect(servicio.revocarSesion({ mv_rt: 'rt-malo' })).resolves.toBeUndefined();
+    expect(avisos).toHaveLength(1);
+  });
+
+  it('si el logout devuelve 4xx solo avisa (no lanza)', async () => {
+    const servicio = crear();
+    const avisos = espiarAvisos(servicio);
+    fetchMock.mockResolvedValueOnce(respuesta({ msg: 'expired' }, 401));
+
+    await servicio.revocarSesion({ mv_at: jwt(payloadValido()), mv_rt: 'rt-1' });
+
+    expect(avisos).toEqual([expect.stringContaining('401')]);
+  });
+
+  it('sin mv_rt no hay nada que revocar', async () => {
+    await crear().revocarSesion({ mv_at: jwt(payloadValido()) });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('mv_at corrupto con mv_rt: rota el refresh y revoca con el nuevo', async () => {
+    const nuevo = jwt(payloadValido());
+    fetchMock
+      .mockResolvedValueOnce(
+        respuesta({ access_token: nuevo, refresh_token: 'rt-test-refresh-token-rotado' }),
+      )
+      .mockResolvedValueOnce(respuesta(null, 204));
+
+    await crear().revocarSesion({ mv_at: 'no-es-un-jwt', mv_rt: 'rt-test-refresh-token-01' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${URL}/auth/v1/token?grant_type=refresh_token`);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${URL}/auth/v1/logout`);
   });
 });
 

@@ -183,6 +183,56 @@ export class SesionService {
   }
 
   /**
+   * Revoca la sesión en Supabase antes de borrar las cookies: sin esto, un
+   * `mv_rt` copiado seguiría renovando30 días desde cualquier sitio.
+   *
+   *  - `mv_at` válido y vigente → `POST /auth/v1/logout` (scope global).
+   *  - Si no lo está → se renueva con `mv_rt` y se revoca con el access nuevo
+   *    (de paso rota el refresh token, que queda invalidado).
+   *  - Cualquier fallo es solo un `logger.warn`: NUNCA puede romper el
+   *    borrado de cookies que hace el controller.
+   */
+  async revocarSesion(cookies: Record<string, string>): Promise<void> {
+    const refresh = cookies[COOKIE_RT];
+    if (!refresh) return;
+    if (!this.supabaseUrl || !this.anonKey) {
+      this.logger.warn('No se pudo revocar la sesión: Supabase no está configurado');
+      return;
+    }
+
+    const vigente = this.sesionDesdeToken(cookies[COOKIE_AT] ?? '');
+    let access = vigente?.access_token;
+
+    if (!access) {
+      try {
+        access = (await this.refrescar(refresh)).access_token;
+      } catch (error) {
+        this.logger.warn(`No se pudo revocar la sesión: ${textoError(error)}`);
+        return;
+      }
+    }
+
+    try {
+      const respuesta = await fetch(`${this.supabaseUrl}/auth/v1/logout`, {
+        method: 'POST',
+        headers: {
+          apikey: this.anonKey,
+          Authorization: `Bearer ${access}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ scope: 'global' }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!respuesta.ok) {
+        this.logger.warn(`Supabase rechazó el logout (HTTP ${respuesta.status})`);
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo revocar la sesión: ${textoError(error)}`);
+    }
+  }
+
+  /**
    * Lee el JWT SIN verificar la firma (la verificación real la hace
    * `JwtAuthGuard` en cada petición autenticada): basta `sub` + `exp` + `iss`
    * para decir si la cookie sigue viva.
@@ -286,6 +336,11 @@ function textoConfig(config: ConfigService, clave: string): string | undefined {
   if (typeof valor !== 'string') return undefined;
   const limpio = valor.trim();
   return limpio === '' ? undefined : limpio;
+}
+
+/** Mensaje de un error listo para un `logger.warn` (sin volcar el stack). */
+function textoError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function leerJson(respuesta: Response): Promise<unknown> {

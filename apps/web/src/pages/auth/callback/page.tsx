@@ -37,7 +37,8 @@ export function PaginaAuthCallback() {
     void (async () => {
       // 1) BFF con cookie: se canjea el código contra la API con el verifier
       //    que supabase-js guardó en el storage (la sesión NO toca
-      //    localStorage: el access token se queda en memoria).
+      //    localStorage: el access token se queda en memoria y, al aplicar la
+      //    cookie en recargarSesion(), se limpia la clave legada — B6).
       const verifier = leerCodeVerifierPkce();
       if (verifier) {
         const cookie = await canjearCodigoConCookie(codigo, verifier);
