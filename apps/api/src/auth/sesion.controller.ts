@@ -93,6 +93,9 @@ export class SesionController {
 
   @Get('session')
   @EsPublico()
+  // Pública: sin tope fino, un atacante con mv_rt basura martillaría el
+  // refresh de Supabase desde nuestra IP (el global son60/min por IP).
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   async session(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,

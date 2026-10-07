@@ -26,6 +26,10 @@ services:
         value: production
       - key: API_PORT
         value: '3000'
+      # Vercel (edge) → Render =2 saltos: sin esto el rate limit ve la IP del
+      # proxy y todos los usuarios comparten bucket.
+      - key: TRUST_PROXY_HOPS
+        value: '2'
       - key: FUENTE_DISPONIBILIDAD
         value: dwr
       - key: RETRASO_UMBRAL_SEG

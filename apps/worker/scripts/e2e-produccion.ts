@@ -11,10 +11,17 @@
  * email/contraseña a secrets de Actions.
  */
 const BASE = 'https://mantirenfe.vercel.app/api';
-const SUPA_URL = 'https://mcntuqhmtnzoppkhpjxn.supabase.co';
-const SUPA_KEY = 'sb_publishable_ad22iEbBBSSEMdH6bFvgEA_8RrMC48W';
-const E2E_EMAIL = 'jorge.e2e@gmail.com';
-const E2E_PASSWORD = 'Mantirenfe-E2E-2026!';
+// Clave publishable de Supabase: PÚBLICA por diseño (va en el bundle de la web).
+const SUPA_URL = process.env.E2E_SUPA_URL ?? 'https://mcntuqhmtnzoppkhpjxn.supabase.co';
+const SUPA_KEY = process.env.E2E_SUPA_KEY ?? 'sb_publishable_ad22iEbBBSSEMdH6bFvgEA_8RrMC48W';
+// Cuenta de pruebas: como SECRETS de Actions. ¡La contraseña se rotó al sacarla
+// del código (siguió en el historial de git)!
+const E2E_EMAIL = process.env.E2E_EMAIL ?? '';
+const E2E_PASSWORD = process.env.E2E_PASSWORD ?? '';
+if (!E2E_EMAIL || !E2E_PASSWORD) {
+  console.error('Faltan E2E_EMAIL / E2E_PASSWORD (secrets de GitHub Actions)');
+  process.exit(1);
+}
 
 interface Resultado {
   nombre: string;

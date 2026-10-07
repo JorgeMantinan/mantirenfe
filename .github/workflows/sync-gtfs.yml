@@ -13,6 +13,10 @@ on:
     - cron: '0 4 * * *' # 04:00 UTC = 05:00/06:00 peninsular (antes del pico de mañana)
   workflow_dispatch:
 
+# Permisos mínimos del token del workflow
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest

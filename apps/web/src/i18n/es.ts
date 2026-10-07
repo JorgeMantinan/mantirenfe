@@ -815,7 +815,7 @@ export const es = {
     frecuenciaDias: 'Días concretos',
     recurrenteDiaria:
       'Trayecto cotidiano: te avisaremos cada día. No hace falta fecha: se renueva automáticamente.',
-    pistaDias: 'Te avisaremos solo en los días marcados',
+    pistaDias: 'Sondeamos a diario el próximo día marcado y te avisamos en cuanto cambie',
     pistaFlexible:
       'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
     errorDias: 'Marca al menos un día de la semana',

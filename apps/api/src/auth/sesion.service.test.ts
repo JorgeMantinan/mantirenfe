@@ -61,12 +61,15 @@ function crear(configurado?: ConfigService): SesionService {
 describe('SesionService.login', () => {
   it('llama al grant de password con la anon key y devuelve los tokens', async () => {
     fetchMock.mockResolvedValueOnce(
-      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-1' }),
+      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-test-refresh-token-01' }),
     );
 
     const tokens = await crear().login('ana@example.com', 'secreta');
 
-    expect(tokens).toEqual({ access_token: expect.stringContaining('.'), refresh_token: 'rt-1' });
+    expect(tokens).toEqual({
+      access_token: expect.stringContaining('.'),
+      refresh_token: 'rt-test-refresh-token-01',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${URL}/auth/v1/token?grant_type=password`);
@@ -128,7 +131,7 @@ describe('mensajeSupabase', () => {
 describe('SesionService.canjearCodigo', () => {
   it('usa grant_type=pkce (el que envía auth-js) en el primer intento', async () => {
     fetchMock.mockResolvedValueOnce(
-      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-2' }),
+      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-test-refresh-token-02' }),
     );
 
     await crear().canjearCodigo('codigo-1', 'verifier-1');
@@ -145,14 +148,17 @@ describe('SesionService.canjearCodigo', () => {
     fetchMock
       .mockResolvedValueOnce(respuesta({ code: 400, msg: 'unsupported grant type' }, 400))
       .mockResolvedValueOnce(
-        respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-3' }),
+        respuesta({
+          access_token: jwt(payloadValido()),
+          refresh_token: 'rt-test-refresh-token-03',
+        }),
       );
 
     const tokens = await crear().canjearCodigo('codigo-1', 'verifier-1');
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${URL}/auth/v1/token?grant_type=pkce_code`);
-    expect(tokens.refresh_token).toBe('rt-3');
+    expect(tokens.refresh_token).toBe('rt-test-refresh-token-03');
   });
 
   it('un código ya canjeado (400 sin «grant») no reintenta', async () => {
@@ -167,16 +173,24 @@ describe('SesionService.canjearCodigo', () => {
 describe('SesionService.refrescar', () => {
   it('renueva los tokens con el refresh', async () => {
     fetchMock.mockResolvedValueOnce(
-      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-nuevo' }),
+      respuesta({
+        access_token: jwt(payloadValido()),
+        refresh_token: 'rt-test-refresh-token-nuevo',
+      }),
     );
-    const tokens = await crear().refrescar('rt-viejo');
-    expect(tokens).toEqual({ access_token: expect.any(String), refresh_token: 'rt-nuevo' });
+    const tokens = await crear().refrescar('rt-test-refresh-token-viejo');
+    expect(tokens).toEqual({
+      access_token: expect.any(String),
+      refresh_token: 'rt-test-refresh-token-nuevo',
+    });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${URL}/auth/v1/token?grant_type=refresh_token`);
   });
 
   it('refresh rechazado → RefreshInvalidoError (borrado de cookie)', async () => {
     fetchMock.mockResolvedValueOnce(respuesta({ msg: 'Invalid Refresh Token' }, 400));
-    await expect(crear().refrescar('rt-viejo')).rejects.toThrow(RefreshInvalidoError);
+    await expect(crear().refrescar('rt-test-refresh-token-viejo')).rejects.toThrow(
+      RefreshInvalidoError,
+    );
   });
 
   it('sin token o con caracteres raros no se llama a Supabase', async () => {
@@ -213,7 +227,11 @@ describe('SesionService.sesionDesdeToken', () => {
   });
 
   it('rellena los huecos de metadata con valores por defecto', () => {
-    const token = jwt({ sub: 'u-2', exp: Math.floor(Date.now() / 1000) + 60 });
+    const token = jwt({
+      sub: 'u-2',
+      exp: Math.floor(Date.now() / 1000) + 60,
+      iss: `${URL}/auth/v1`,
+    });
     expect(crear().sesionDesdeToken(token)?.user).toEqual({
       sub: 'u-2',
       email: '',
@@ -227,7 +245,10 @@ describe('SesionService.sesionDesdeToken', () => {
 describe('SesionService.sesionDeCookies', () => {
   it('con mv_at vigente no toca Supabase', async () => {
     const token = jwt(payloadValido());
-    const resultado = await crear().sesionDeCookies({ mv_at: token, mv_rt: 'rt-1' });
+    const resultado = await crear().sesionDeCookies({
+      mv_at: token,
+      mv_rt: 'rt-test-refresh-token-01',
+    });
     expect(resultado.sesion?.access_token).toBe(token);
     expect(resultado.renovado).toBeNull();
     expect(resultado.cookiesInvalidas).toBe(false);
@@ -237,13 +258,19 @@ describe('SesionService.sesionDeCookies', () => {
   it('mv_at caducado con mv_rt vivo: renueva y devuelve los tokens nuevos', async () => {
     const caducado = jwt(payloadValido({ exp: Math.floor(Date.now() / 1000) - 10 }));
     fetchMock.mockResolvedValueOnce(
-      respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-rotado' }),
+      respuesta({
+        access_token: jwt(payloadValido()),
+        refresh_token: 'rt-test-refresh-token-rotado',
+      }),
     );
 
-    const resultado = await crear().sesionDeCookies({ mv_at: caducado, mv_rt: 'rt-viejo' });
+    const resultado = await crear().sesionDeCookies({
+      mv_at: caducado,
+      mv_rt: 'rt-test-refresh-token-viejo',
+    });
 
     expect(resultado.sesion?.user.sub).toBe('u-1');
-    expect(resultado.renovado?.refresh_token).toBe('rt-rotado');
+    expect(resultado.renovado?.refresh_token).toBe('rt-test-refresh-token-rotado');
     expect(resultado.cookiesInvalidas).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -254,7 +281,10 @@ describe('SesionService.sesionDeCookies', () => {
       respuesta({ access_token: jwt(payloadValido()), refresh_token: 'rt-n' }),
     );
 
-    const resultado = await crear().sesionDeCookies({ mv_at: porCaducar, mv_rt: 'rt-viejo' });
+    const resultado = await crear().sesionDeCookies({
+      mv_at: porCaducar,
+      mv_rt: 'rt-test-refresh-token-viejo',
+    });
 
     expect(resultado.renovado?.refresh_token).toBe('rt-n');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -275,7 +305,7 @@ describe('SesionService.sesionDeCookies', () => {
 
   it('caída de red: sin sesión pero SIN borrar cookies', async () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
-    const resultado = await crear().sesionDeCookies({ mv_rt: 'rt-1' });
+    const resultado = await crear().sesionDeCookies({ mv_rt: 'rt-test-refresh-token-01' });
     expect(resultado).toEqual({ sesion: null, renovado: null, cookiesInvalidas: false });
   });
 

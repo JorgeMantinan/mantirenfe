@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { NestPinoLogger } from './common/nest-pino.logger';
 import { CspController, informeCsp } from './csp/csp.controller';
@@ -84,6 +85,23 @@ async function bootstrap() {
     .map((origen) => origen.trim())
     .filter((origen) => origen !== '');
   app.enableCors({ origin: orígenes });
+  // Login/callback/logout no aceptan POST cross-site (login CSRF: fijar la
+  // sesión del atacante en la víctima; y logout forzado como molestia).
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'POST' || !req.path.startsWith('/api/auth/')) return next();
+    const sitio = req.headers['sec-fetch-site'];
+    if (sitio === 'cross-site') {
+      res.status(403).json({ message: 'Origen no permitido' });
+      return;
+    }
+    const origen = req.headers.origin;
+    if (origen && !orígenes.includes(origen)) {
+      res.status(403).json({ message: 'Origen no permitido' });
+      return;
+    }
+    next();
+  });
+
   app.setGlobalPrefix('api');
 
   // Swagger fuera en producción salvo que se habilite explícitamente

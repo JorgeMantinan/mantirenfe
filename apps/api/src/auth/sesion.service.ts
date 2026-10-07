@@ -124,8 +124,16 @@ export class SesionService {
     throw this.errorDeFallo(primero);
   }
 
+  /** Forma de un refresh token de Supabase: charset compacto,16..512 chars. */
+  private static readonly FORMATO_RT = /^[\w.:+/-]{16,512}$/;
+
   async refrescar(refreshToken: string): Promise<TokensSupabase> {
-    if (!valorCookieSeguro(refreshToken)) throw new RefreshInvalidoError('Refresh token inválido');
+    // Cualquier cookie no vacía pasaría `valorCookieSeguro`: sin este filtro,
+    // un atacante martillea el endpoint de Auth de Supabase desde nuestra IP
+    // (amplificación) con basura en mv_rt.
+    if (!valorCookieSeguro(refreshToken) || !SesionService.FORMATO_RT.test(refreshToken)) {
+      throw new RefreshInvalidoError('Refresh token inválido');
+    }
     const respuesta = await this.solicitarToken('refresh_token', { refresh_token: refreshToken });
     if (respuesta.ok) return this.extraerTokens(respuesta.datos);
     if (respuesta.status >= 400 && respuesta.status < 500) {
@@ -189,8 +197,12 @@ export class SesionService {
     }
     if (typeof payload.sub !== 'string' || payload.sub === '') return null;
     if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now() + margenMs) return null;
-    if (this.supabaseUrl && payload.iss !== undefined && payload.iss !== null) {
+    if (this.supabaseUrl) {
+      // Sin `iss` el token no es nuestro: se rechaza en vez de aceptarlo a ciegas
       if (payload.iss !== `${this.supabaseUrl}/auth/v1`) return null;
+    }
+    if (payload.aud !== undefined && payload.aud !== null && payload.aud !== 'authenticated') {
+      return null;
     }
     const metadata = (payload.user_metadata ?? {}) as Record<string, unknown>;
     const appMetadata = (payload.app_metadata ?? {}) as Record<string, unknown>;

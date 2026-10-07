@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { NextFunction, Request, Response } from 'express';
 import pino from 'pino';
 import { EsPublico } from '../common/es-publico.decorator';
@@ -33,7 +34,7 @@ type RequestConCuerpo = Request & { _body?: boolean };
  * llegaría al controlador sin cuerpo: se lee el stream a mano, truncado, y se
  * marca `req._body` para que los parsers de Nest no vuelvan a consumirlo.
  */
-export function informeCsp(req: Request, _res: Response, next: NextFunction): void {
+export function informeCsp(req: Request, res: Response, next: NextFunction): void {
   const cabecera = req.headers['content-type'];
   const contenido = Array.isArray(cabecera) ? cabecera.join(';') : (cabecera ?? '');
   const tipo = contenido.split(';')[0]?.trim().toLowerCase() ?? '';
@@ -42,16 +43,38 @@ export function informeCsp(req: Request, _res: Response, next: NextFunction): vo
     return;
   }
 
+  // Solo la ruta del endpoint: el resto de rutas no debe pagar el parser.
+  if (req.path !== '/api/csp-report' && req.path !== '/csp-report') {
+    next();
+    return;
+  }
+
+  // Tope por cabecera: ni se abre el stream (antes se descargaba el cuerpo entero)
+  const largo = Number(req.headers['content-length'] ?? '0');
+  if (Number.isFinite(largo) && largo > LIMITE_CUERPO) {
+    res.statusCode = 413;
+    res.end();
+    return;
+  }
+
   const peticion = req as RequestConCuerpo;
   let cuerpo = '';
+  let cortado = false;
   peticion.setEncoding('utf8');
 
   const acumular = (fragmento: string) => {
-    if (cuerpo.length < LIMITE_CUERPO) {
-      cuerpo += fragmento.slice(0, LIMITE_CUERPO - cuerpo.length);
+    if (cortado) return;
+    if (cuerpo.length >= LIMITE_CUERPO) {
+      // Cuerpo mayor que el tope: se corta la conexión en vez de seguir
+      // descargando gigabytes en un contenedor de 512 MB.
+      cortado = true;
+      peticion.destroy();
+      return;
     }
+    cuerpo += fragmento.slice(0, LIMITE_CUERPO - cuerpo.length);
   };
   const terminar = () => {
+    if (cortado) return;
     peticion.body = cuerpo;
     peticion._body = true;
     next();
@@ -71,6 +94,8 @@ export class CspController {
    */
   @Post()
   @EsPublico()
+  // Ruta pública: sin tope, un atacante martillea el log (4 KB/petición)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @HttpCode(204)
   recibir(@Body() cuerpo: unknown): void {
     logger.warn({ informe: aInformable(cuerpo) }, 'CSP violation');

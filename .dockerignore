@@ -13,3 +13,7 @@ web-build
 dump.rdb
 playwright-report
 test-results
+**/.env
+**/.env.*
+**/.vercel
+.vercel

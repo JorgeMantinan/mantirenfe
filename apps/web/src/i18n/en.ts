@@ -814,7 +814,7 @@ export const en: MismoArbol<Claves> = {
     frecuenciaDias: 'Specific days',
     recurrenteDiaria:
       'Everyday commute: we will alert you every day. No date needed: it renews automatically.',
-    pistaDias: 'We will only alert you on the days you pick',
+    pistaDias: 'We check the next marked day daily and alert you as soon as it changes',
     pistaFlexible:
       'We will watch any date between today and 6 months from now: we will tell you as soon as tickets go on sale.',
     errorDias: 'Pick at least one day of the week',

@@ -219,8 +219,9 @@ describe('rate limiting', () => {
     expect(meta(SesionController.prototype.callback, 'LIMIT')).toBe(10);
   });
 
-  it('session y logout usan el límite global del módulo', () => {
-    expect(meta(SesionController.prototype.session, 'TTL')).toBeUndefined();
+  it('session tiene tope propio (20/min) y logout usa el límite global', () => {
+    expect(meta(SesionController.prototype.session, 'TTL')).toBe(60_000);
+    expect(meta(SesionController.prototype.session, 'LIMIT')).toBe(20);
     expect(meta(SesionController.prototype.logout, 'TTL')).toBeUndefined();
   });
 });

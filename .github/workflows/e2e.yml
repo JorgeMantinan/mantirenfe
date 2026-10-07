@@ -9,6 +9,10 @@ on:
     - cron: '40 5 * * *' # 05:40 UTC = 06:40/07:40 peninsular (tras el sync de las 04:00)
   workflow_dispatch:
 
+# Permisos mínimos del token del workflow
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -28,3 +32,6 @@ jobs:
 
       - name: Ejecutar E2E de producción
         run: pnpm --filter @mantirenfe/worker exec tsx scripts/e2e-produccion.ts
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}

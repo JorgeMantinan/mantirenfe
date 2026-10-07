@@ -10,6 +10,8 @@ dotenv.config({ path: '../../.env' });
  * - Revoca a anon/authenticated/service_role el acceso a todas las tablas,
  *   secuencias y (a anon) functions del schema public: la app no usa PostgREST,
  *   solo el rol mantirenfe_app vía Prisma.
+ * - Garantiza RLS + policy `app_dml` para mantirenfe_app en TODAS las tablas
+ *   (nunca desactiva el RLS: eso rompería el endurecimiento de seguridad).
  * - Comprueba que mantirenfe_app es un rol restringido (sin super/bypassrls).
  *
  * Nota: los default privileges heredados de supabase_admin no se pueden alterar
@@ -34,19 +36,35 @@ async function main() {
     }
   }
 
-  // Tablas creadas por fuera (db push en otros entornos / dashboard) pueden nacer
-  // con RLS activo y sin policies: eso niega al rol de la app. Se desactiva aquí.
+  // NUNCA se desactiva el RLS (desactivarlo deshacía db:seguridad: era un fallo
+  // crítico de la auditoría). En su lugar se GARANTIZA por tabla: RLS activo +
+  // policy app_dml para mantirenfe_app si falta (idempotente y cubre las tablas
+  // que nacen con RLS gracias al event trigger `ensure_rls` de Supabase).
   try {
-    const conRls = await prisma.$queryRawUnsafe<Array<{ relname: string }>>(
+    const tablas = await prisma.$queryRawUnsafe<Array<{ relname: string }>>(
       `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-       WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity`,
+       WHERE n.nspname='public' AND c.relkind IN ('r','p') AND c.relname <> '_prisma_migrations'`,
     );
-    for (const tabla of conRls) {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "${tabla.relname}" DISABLE ROW LEVEL SECURITY`);
-      console.log(`RLS desactivado en ${tabla.relname}`);
+    for (const tabla of tablas) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE public."${tabla.relname}" ENABLE ROW LEVEL SECURITY`,
+      );
+      const sinPolicy = await prisma.$queryRaw<Array<{ n: number }>>(
+        `SELECT count(*)::int AS n FROM pg_policies
+         WHERE schemaname='public' AND tablename=${tabla.relname}
+           AND policyname='app_dml' AND 'mantirenfe_app' = ANY (roles)`,
+      );
+      if ((sinPolicy[0]?.n ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          `CREATE POLICY "app_dml" ON public."${tabla.relname}"
+             TO mantirenfe_app USING (true) WITH CHECK (true)`,
+        );
+        console.log(`Policy app_dml creada en ${tabla.relname}`);
+      }
     }
+    console.log(`RLS + policy app_dml garantizados en ${tablas.length} tablas`);
   } catch (e) {
-    problemas.push(`Desactivar RLS: ${String(e).slice(0, 120)}`);
+    problemas.push(`Garantizar RLS/policy: ${String(e).slice(0, 120)}`);
   }
 
   // El rol de la app necesita DML en todas las tablas (idempotente)

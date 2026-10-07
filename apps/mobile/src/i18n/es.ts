@@ -120,7 +120,7 @@ export const es = {
     placeholderDestino: 'Estación de destino',
     cuando: '¿Cuándo viajas?',
     cotidianoDiaria: 'Trayecto cotidiano: te avisaremos cada día. No hace falta indicar fecha.',
-    pistaDias: 'Te avisaremos solo en los días marcados',
+    pistaDias: 'Sondeamos a diario el próximo día marcado y te avisamos en cuanto cambie',
     pistaFlexible:
       'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
     errorDias: 'Marca al menos un día de la semana',
