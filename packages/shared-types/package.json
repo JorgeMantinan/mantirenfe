@@ -21,7 +21,7 @@
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "lint": "eslint src && prettier --check \"src/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "clean": "rm -rf dist"
   },

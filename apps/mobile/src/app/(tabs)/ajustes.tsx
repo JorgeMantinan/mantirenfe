@@ -14,8 +14,9 @@ import {
   registrarPushMovil,
   type EstadoPermisoPush,
 } from '@/lib/push';
+import { chipModo, chipModoActivo, pista } from '@/lib/estilos-comunes';
 import { useTema, type ModoTema } from '@/lib/tema-contexto';
-import { espaciado, radio, type Paleta } from '@/lib/tema';
+import { espaciado, type Paleta } from '@/lib/tema';
 import { repintarWidget } from '@/widget/actualizarWidget';
 
 const MODOS_TEMA: readonly ModoTema[] = ['claro', 'oscuro', 'sistema'];
@@ -339,22 +340,8 @@ const estilos = (c: Paleta) =>
       gap: espaciado.sm,
       paddingTop: espaciado.xs,
     },
-    modo: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: c.textoSecundario,
-      borderWidth: 1,
-      borderColor: c.borde,
-      borderRadius: radio.completo,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      overflow: 'hidden',
-    },
-    modoActivo: {
-      color: c.primarioOscuro,
-      borderColor: c.primario,
-      backgroundColor: c.acento,
-    },
+    modo: chipModo(c),
+    modoActivo: chipModoActivo(c),
     fila: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -367,10 +354,8 @@ const estilos = (c: Paleta) =>
       color: c.texto,
       flex: 1,
     },
-    pie: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
+    // Misma pista de 12 px que el resto de la app
+    pie: pista(c),
     botonAjustes: {
       alignSelf: 'flex-start',
       minHeight: 40,

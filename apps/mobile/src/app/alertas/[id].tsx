@@ -26,6 +26,7 @@ import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
 import { etiquetaCriterio, etiquetaDiasSemana, etiquetaEstado } from '@/lib/alertas';
+import { contenidoLista, meta, nombreFlex, pista } from '@/lib/estilos-comunes';
 import { construirIcs } from '@/lib/ics';
 import { fechaCorta } from '@/lib/proximoViaje';
 import {
@@ -485,22 +486,14 @@ const FilaNotificacion = memo(function FilaNotificacion({ aviso }: { aviso: Avis
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({
-    lista: {
-      padding: espaciado.md,
-      gap: espaciado.sm,
-    },
+    lista: contenidoLista(),
     fila: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
       gap: espaciado.sm,
     },
-    ruta: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-      flex: 1,
-    },
+    ruta: nombreFlex(c),
     etiquetas: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -509,10 +502,7 @@ const estilos = (c: Paleta) =>
       justifyContent: 'flex-end',
       maxWidth: '55%',
     },
-    detalle: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
+    detalle: meta(c),
     subtitulo: {
       fontSize: 13,
       fontWeight: '700',
@@ -546,10 +536,7 @@ const estilos = (c: Paleta) =>
       fontWeight: '600',
       color: c.aviso,
     },
-    fecha: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
+    fecha: pista(c),
     grupo: {
       gap: espaciado.xs,
       backgroundColor: c.fondoSecundario,

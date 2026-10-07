@@ -6,8 +6,20 @@ import { fechaGtfs, type EstacionResponse, type SuprimidoResponse } from '@manti
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
+import {
+  campoTexto,
+  contenidoLista,
+  filaEspaciada,
+  filaTitulo,
+  fondoPantalla,
+  meta,
+  nombre,
+  nombreFlex,
+  pista,
+  sugerencia,
+} from '@/lib/estilos-comunes';
 import { useTema } from '@/lib/tema-contexto';
-import { espaciado, radio, type Paleta } from '@/lib/tema';
+import { espaciado, type Paleta } from '@/lib/tema';
 
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -208,43 +220,17 @@ export default function Suprimidos() {
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({
-    pantalla: {
-      flex: 1,
-      backgroundColor: c.fondoSecundario,
-    },
-    lista: {
-      padding: espaciado.md,
-      gap: espaciado.sm,
-    },
-    filaTitulo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: espaciado.sm,
-    },
-    titulo: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-    },
+    pantalla: fondoPantalla(c),
+    lista: contenidoLista(),
+    filaTitulo: filaTitulo(c),
+    titulo: nombre(c),
     etiqueta: {
       fontSize: 14,
       fontWeight: '600',
       color: c.texto,
     },
-    campo: {
-      borderWidth: 1,
-      borderColor: c.borde,
-      borderRadius: radio.md,
-      paddingHorizontal: espaciado.md,
-      paddingVertical: 10,
-      fontSize: 15,
-      color: c.texto,
-      backgroundColor: c.fondoSecundario,
-    },
-    pista: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
+    campo: campoTexto(c),
+    pista: pista(c),
     pistaError: {
       fontSize: 12,
       color: c.error,
@@ -253,28 +239,10 @@ const estilos = (c: Paleta) =>
       fontSize: 13,
       color: c.error,
     },
-    sugerencia: {
-      fontSize: 14,
-      color: c.primario,
-      paddingVertical: 4,
-      paddingHorizontal: 4,
-    },
-    fila: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: espaciado.sm,
-    },
-    nombre: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-    },
-    meta: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
+    sugerencia: sugerencia(c),
+    fila: filaEspaciada(c),
+    nombre: nombreFlex(c),
+    meta: meta(c),
     vacio: {
       textAlign: 'center',
       color: c.textoSecundario,

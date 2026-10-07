@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Providers } from './components/providers';
 import { Skeleton } from './components/ui/skeleton';
 import { IdiomaProvider } from './i18n/IdiomaProvider';
+import { i18nListo } from './i18n';
 import './styles/globals.css';
 
 registerSW({ immediate: true });
@@ -32,6 +33,9 @@ async function iniciarSentry() {
 
 async function arrancar() {
   await iniciarSentry();
+  // Si el idioma inicial es EN, aquí se descarga su diccionario y se inicializa
+  // i18next: React pinta con las claves ya resueltas (nunca claves crudas).
+  await i18nListo;
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

@@ -87,7 +87,9 @@ export async function api<T>(
   } catch (e) {
     // Un error HTTP real (ErrorApi) manda sobre el timeout: solo el corte
     // del propio fetch se traduce a un mensaje nuestro de i18n
-    if (agotado && !(e instanceof ErrorApi)) throw new Error(t('comunes.timeout'));
+    if (agotado && !(e instanceof ErrorApi)) {
+      throw new Error(t('comunes.timeout'), { cause: e });
+    }
     throw e;
   } finally {
     clearTimeout(tiempo);

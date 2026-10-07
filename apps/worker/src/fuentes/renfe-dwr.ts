@@ -678,7 +678,7 @@ export async function consultarVentaDwr(
       ...cabeceros(cookieSesion, SEARCH_URL.replace(/\?.*/, '')),
       'content-type': 'text/plain; charset=utf-8',
     },
-    body: payloadTrainList(batchId++, searchId, scriptSession, fechaLarga),
+    body: payloadTrainList(batchId, searchId, scriptSession, fechaLarga),
   });
   const datos = extraerListaTrenes(await respuestaLista.text());
 

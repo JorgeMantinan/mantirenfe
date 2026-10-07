@@ -10,6 +10,16 @@ import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
 import { etiquetaAvisos, etiquetaEstado } from '@/lib/alertas';
 import {
+  contenidoLista,
+  fondoPantalla,
+  meta,
+  nombre,
+  pista,
+  tituloPantalla,
+  vacioContenedor,
+  vacioTitulo,
+} from '@/lib/estilos-comunes';
+import {
   cuentaAtras,
   etiquetaDia,
   proximasSalidas,
@@ -608,10 +618,7 @@ const estilos = (c: Paleta) =>
     cabeceraLista: {
       gap: espaciado.sm,
     },
-    pantalla: {
-      flex: 1,
-      backgroundColor: c.fondoSecundario,
-    },
+    pantalla: fondoPantalla(c),
     encabezado: {
       gap: espaciado.sm,
       paddingHorizontal: espaciado.md,
@@ -640,20 +647,13 @@ const estilos = (c: Paleta) =>
       fontWeight: '600',
       color: c.primario,
     },
-    titulo: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: c.texto,
-    },
+    titulo: tituloPantalla(c),
     botonNueva: {
       minHeight: 40,
       paddingVertical: 8,
       paddingHorizontal: 14,
     },
-    lista: {
-      padding: espaciado.md,
-      gap: espaciado.sm,
-    },
+    lista: contenidoLista(),
     filaAlerta: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -664,24 +664,14 @@ const estilos = (c: Paleta) =>
       alignItems: 'center',
       gap: 4,
     },
-    ruta: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-    },
-    detalle: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
+    ruta: nombre(c),
+    detalle: meta(c),
     filaAvisos: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
     },
-    avisos: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
+    avisos: pista(c),
     acciones: {
       flexDirection: 'row',
       gap: espaciado.sm,
@@ -701,16 +691,8 @@ const estilos = (c: Paleta) =>
       fontWeight: '700',
       color: c.textoSecundario,
     },
-    vacio: {
-      alignItems: 'center',
-      gap: espaciado.sm,
-      paddingVertical: espaciado.xl,
-    },
-    vacioTitulo: {
-      fontSize: 17,
-      fontWeight: '700',
-      color: c.texto,
-    },
+    vacio: vacioContenedor(c),
+    vacioTitulo: vacioTitulo(c),
     vacioTexto: {
       fontSize: 14,
       color: c.textoSecundario,

@@ -18,7 +18,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "prettier --check \"src/**/*.ts\"",
+    "lint": "eslint src && prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
     "clean": "rm -rf dist",
     "db:generate": "prisma generate",

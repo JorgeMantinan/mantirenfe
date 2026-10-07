@@ -13,6 +13,40 @@ export class ErrorApi extends Error {
 /** Timeout por defecto de todas las llamadas de la API. */
 const TIMEOUT_MS = 15_000;
 
+/** Cuánto vale una respuesta GET en memoria (ms): dedupe + frescura corta. */
+const TTL_GET_MS = 5_000;
+
+interface EntradaGet {
+  /**
+   * Promesa compartida: mientras está en vuelo la usan todos los llamantes
+   * concurrentes (un solo fetch para N peticiones) y, una vez resuelta, sirve
+   * de caché durante el TTL. Los fallos jamás se guardan.
+   */
+  promesa: Promise<unknown>;
+  /** `Date.now()` en el que deja de valer; `Infinity` mientras está en vuelo. */
+  expira: number;
+}
+
+/** Caché en memoria de los GET (clave en `claveGet`). */
+const entradasGet = new Map<string, EntradaGet>();
+
+/**
+ * La clave lleva el `Authorization` porque el token puede cambiar (refresh de
+ * sesión): así una respuesta pedida con un token viejo jamás se sirve a uno
+ * nuevo.
+ */
+function claveGet(ruta: string, token: string | null): string {
+  return `${token ?? ''}\u0000${ruta}`;
+}
+
+/** Las entradas caducadas se barren al insertar; las en vuelo no caducan. */
+function barrerEntradasGet(): void {
+  const ahora = Date.now();
+  for (const [clave, entrada] of entradasGet) {
+    if (entrada.expira <= ahora) entradasGet.delete(clave);
+  }
+}
+
 interface SignalPreparada {
   signal: AbortSignal | undefined;
   limpiar: () => void;
@@ -135,6 +169,15 @@ async function obtenerToken(esPublica: boolean): Promise<string | null> {
   return tokenDeSupabase();
 }
 
+/**
+ * Llamada a la API: timeout de 15 s y errores i18n mapeados por status.
+ *
+ * Los GET se deduplican y se cachean en memoria 5 s por clave `ruta +
+ * Authorization` (ver `claveGet`): dos llamadas concurrentes comparten un solo
+ * fetch y, dentro del TTL, la respuesta ya resuelta. Cualquier mutación con
+ * éxito (POST/PATCH/PUT/DELETE) vacía la caché entera. Un GET con `signal` del
+ * llamante no participa en la caché: va directo a `fetch` con su propio aborto.
+ */
 export async function api<T>(
   ruta: string,
   opciones: RequestInit & { json?: unknown } = {},
@@ -163,48 +206,92 @@ export async function api<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const { signal, limpiar } = signalConTimeout(opciones.signal);
+  const ejecutar = async (): Promise<T> => {
+    const { signal, limpiar } = signalConTimeout(opciones.signal);
 
-  try {
-    const respuesta = await fetch(`/api${ruta}`, {
-      ...opciones,
-      signal,
-      headers,
-      body: opciones.json !== undefined ? JSON.stringify(opciones.json) : opciones.body,
-    });
+    try {
+      const respuesta = await fetch(`/api${ruta}`, {
+        ...opciones,
+        signal,
+        headers,
+        body: opciones.json !== undefined ? JSON.stringify(opciones.json) : opciones.body,
+      });
 
-    if (respuesta.status === 204) {
-      return undefined as T;
-    }
-
-    const texto = await respuesta.text();
-    let datos: unknown = null;
-    if (texto) {
-      try {
-        datos = JSON.parse(texto);
-      } catch {
-        datos = { error: texto };
+      if (respuesta.status === 204) {
+        return undefined as T;
       }
-    }
 
-    if (!respuesta.ok) {
-      // El detalle crudo solo a consola: la UI pinta un mensaje i18n del status
-      console.error(`API ${ruta} → ${respuesta.status}`, datos);
-      throw new ErrorApi(
-        respuesta.status,
-        detalleUtil(datos) ?? mensajeParaStatus(respuesta.status),
-      );
-    }
+      const texto = await respuesta.text();
+      let datos: unknown = null;
+      if (texto) {
+        try {
+          datos = JSON.parse(texto);
+        } catch {
+          datos = { error: texto };
+        }
+      }
 
-    return datos as T;
-  } catch (e) {
-    if (esCancelacion(e)) {
-      // Cancelación del llamante (limpieza de la página): se propaga tal cual
-      if (opciones.signal?.aborted) throw e;
-      throw new Error(i18n.t('errores.timeout'));
+      if (!respuesta.ok) {
+        // El detalle crudo solo a consola: la UI pinta un mensaje i18n del status
+        console.error(`API ${ruta} → ${respuesta.status}`, datos);
+        throw new ErrorApi(
+          respuesta.status,
+          detalleUtil(datos) ?? mensajeParaStatus(respuesta.status),
+        );
+      }
+
+      return datos as T;
+    } catch (e) {
+      if (esCancelacion(e)) {
+        // Cancelación del llamante (limpieza de la página): se propaga tal cual
+        if (opciones.signal?.aborted) throw e;
+        throw new Error(i18n.t('errores.timeout'), { cause: e });
+      }
+      throw e;
+    } finally {
+      limpiar();
     }
-    throw e;
-  } finally {
-    limpiar();
+  };
+
+  const metodo = (opciones.method ?? 'GET').toUpperCase();
+
+  if (metodo !== 'GET') {
+    // Una mutación con éxito deja la caché de GET obsoleta: se vacía entera
+    // (un fallo, en cambio, no la toca).
+    const datos = await ejecutar();
+    entradasGet.clear();
+    return datos;
   }
+
+  // Con señal del llamante no se comparte nada: su aborto debe matar SU
+  // fetch, no la promesa que estén usando el resto de llamantes. Además no
+  // se lee ni se escribe la caché, para no envenenarla con su cancelación.
+  if (opciones.signal) return ejecutar();
+
+  const clave = claveGet(ruta, token);
+  const cacheada = entradasGet.get(clave);
+  if (cacheada) {
+    if (cacheada.expira > Date.now()) return cacheada.promesa as Promise<T>;
+    entradasGet.delete(clave);
+  }
+
+  barrerEntradasGet();
+  let entrada!: EntradaGet;
+  // La promesa se comparte y se publica en el Map de forma síncrona: todo
+  // GET concurrente con la misma clave y token que llegue después la reutiliza
+  // en vez de volver a fetchar.
+  const compartida = ejecutar().then(
+    (datos) => {
+      entrada.expira = Date.now() + TTL_GET_MS;
+      return datos;
+    },
+    (error) => {
+      // Los errores (status, timeout, red) no se cachean: se reintenta
+      if (entradasGet.get(clave) === entrada) entradasGet.delete(clave);
+      throw error;
+    },
+  );
+  entrada = { promesa: compartida, expira: Number.POSITIVE_INFINITY };
+  entradasGet.set(clave, entrada);
+  return compartida;
 }

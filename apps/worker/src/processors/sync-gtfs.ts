@@ -251,7 +251,6 @@ async function recorrerZip(
   stopTimes?: ManejadorStopTimes,
 ): Promise<Map<string, Buffer>> {
   const buffers = new Map<string, Buffer>();
-  let descarga: Buffer | null = null;
   try {
     const respuesta = await fetch(url, {
       headers: cabecerasGtfs(url),
@@ -271,7 +270,7 @@ async function recorrerZip(
     // El zip crudo en RAM (27-110MB): unzipper solo descomprime los entries
     // que pedimos. (Pasarlo por streams de red hacia unzipper no mantiene el
     // event loop y el proceso moría en silencio.)
-    descarga = Buffer.from(await respuesta.arrayBuffer());
+    const descarga = Buffer.from(await respuesta.arrayBuffer());
 
     const directorio = await unzipper.Open.buffer(descarga);
     for (const entry of directorio.files) {
@@ -304,8 +303,6 @@ async function recorrerZip(
     }
   } catch (error) {
     logger.warn({ url, err: error }, 'Error recorriendo GTFS zip');
-  } finally {
-    descarga = null;
   }
   return buffers;
 }

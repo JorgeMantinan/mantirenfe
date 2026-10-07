@@ -138,14 +138,25 @@ function construirTrayectos(lang: Idioma): TextosTrayectos {
   };
 }
 
+/**
+ * Los textos ES se construyen una vez al importar (su diccionario es estático
+ * y ya está cargado). Los EN se construyen EN CADA ACCESO: `en.ts` llega bajo
+ * demanda y, mientras no lo hace, `i18n.t(..., { lng: 'en' })` cae al
+ * fallback ES; construirlos al importar fijaría para siempre los textos ES en
+ * `.en`. Cada acceso cuesta un puñado de `t()` (resolución en memoria).
+ */
 export const TEXTOS_TRAYECTO: Record<Idioma, TextosTrayecto> = {
   es: construirTrayecto('es'),
-  en: construirTrayecto('en'),
+  get en() {
+    return construirTrayecto('en');
+  },
 };
 
 export const TEXTOS_TRAYECTOS: Record<Idioma, TextosTrayectos> = {
   es: construirTrayectos('es'),
-  en: construirTrayectos('en'),
+  get en() {
+    return construirTrayectos('en');
+  },
 };
 
 /** Meta tags de la página de detalle de un trayecto, con el hreflang del otro idioma. */

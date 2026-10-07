@@ -23,6 +23,10 @@ function hojas(valor: unknown, prefijo = ''): Array<[string, string]> {
 const clavesEs = hojas(es).map(([clave]) => clave);
 const clavesEn = hojas(en).map(([clave]) => clave);
 
+// En producción el diccionario EN se descarga con `import()`; aquí se registra
+// estáticamente para que `lng: 'en'` resuelva sin esperar a la carga dinámica.
+i18n.addResourceBundle('en', 'translation', en, true, true);
+
 /** Variables `{{...}}` usadas por una cadena de traducción. */
 function variables(texto: string): string[] {
   return [...texto.matchAll(/\{\{(\w+)\}\}/g)].map(([, nombre]) => nombre ?? '').sort();

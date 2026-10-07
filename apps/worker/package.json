@@ -7,7 +7,7 @@
     "dev": "dotenv -e ../../.env -- tsx watch src/main.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "prettier --check \"src/**/*.ts\"",
+    "lint": "eslint src && prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
     "clean": "rm -rf dist",
     "db:backfill-tripids": "tsx scripts/backfill-tripids.ts"

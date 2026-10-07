@@ -16,6 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { api } from '@/lib/api';
+import {
+  contenidoLista,
+  cuerpo,
+  filaTitulo,
+  fondoPantalla,
+  meta,
+  nombreFlex,
+} from '@/lib/estilos-comunes';
 import { formatoPeriodo, type IncidenciaResponse } from '@/lib/incidencias';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
@@ -184,14 +192,8 @@ export default function Incidencias() {
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({
-    pantalla: {
-      flex: 1,
-      backgroundColor: c.fondoSecundario,
-    },
-    lista: {
-      padding: espaciado.md,
-      gap: espaciado.sm,
-    },
+    pantalla: fondoPantalla(c),
+    lista: contenidoLista(),
     intro: {
       marginBottom: espaciado.sm,
       gap: 2,
@@ -201,40 +203,18 @@ const estilos = (c: Paleta) =>
       fontWeight: '800',
       color: c.texto,
     },
-    subtitulo: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
-    filaTitulo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: espaciado.sm,
-    },
-    tituloIncidencia: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-    },
-    periodo: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
+    subtitulo: meta(c),
+    filaTitulo: filaTitulo(c),
+    tituloIncidencia: nombreFlex(c),
+    periodo: meta(c),
     badges: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
       gap: espaciado.sm,
     },
-    meta: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
-    mensaje: {
-      fontSize: 14,
-      color: c.textoSecundario,
-      lineHeight: 20,
-    },
+    meta: meta(c),
+    mensaje: cuerpo(c),
     vacioTitulo: {
       fontSize: 16,
       fontWeight: '700',

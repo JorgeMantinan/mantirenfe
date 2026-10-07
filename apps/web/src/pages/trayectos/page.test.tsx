@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { i18n } from '@/i18n';
+import { en } from '@/i18n/en';
 import { PaginaTrayecto, PaginaTrayectos } from './page';
 import { esRutaTrayecto, metaTrayecto, metaTrayectos, rutaEnIdioma } from '@/lib/trayectos-i18n';
 import { fechaLarga } from '@/lib/trayectos';
+
+// En producción el diccionario EN se descarga con `import()`; aquí se registra
+// estáticamente para poder pintar rutas /en/... sin esperar a esa carga.
+i18n.addResourceBundle('en', 'translation', en, true, true);
 
 function renderDetalle(ruta: string, hijo: ReactElement) {
   return renderToString(

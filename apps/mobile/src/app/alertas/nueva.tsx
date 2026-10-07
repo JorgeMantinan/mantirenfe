@@ -29,6 +29,7 @@ import {
   etiquetaDiasSemana,
   validarAlerta,
 } from '@/lib/alertas';
+import { pista } from '@/lib/estilos-comunes';
 import { fechaCorta } from '@/lib/proximoViaje';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, radio, type Paleta } from '@/lib/tema';
@@ -893,10 +894,7 @@ const estilos = (c: Paleta) =>
       fontWeight: '600',
       color: c.texto,
     },
-    pista: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
+    pista: pista(c),
     resumenTitulo: {
       fontSize: 12,
       fontWeight: '700',

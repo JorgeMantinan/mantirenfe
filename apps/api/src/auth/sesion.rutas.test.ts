@@ -16,6 +16,8 @@ interface Ruta {
   ruta: string;
 }
 
+type CualquierFuncion = (...args: never[]) => unknown;
+
 function prefijoDe(controlador: unknown): string {
   const meta = Reflect.getMetadata(PATH_METADATA, controlador) as string | string[] | undefined;
   if (Array.isArray(meta)) return meta[0] ?? '';
@@ -25,7 +27,7 @@ function prefijoDe(controlador: unknown): string {
 /** Todas las rutas declaradas por un `@Controller(prefijo)`. */
 function rutasDe(controlador: new () => unknown): Ruta[] {
   const base = prefijoDe(controlador);
-  const prototipo = controlador.prototype as Record<string, Function>;
+  const prototipo = controlador.prototype as Record<string, CualquierFuncion>;
   return Object.getOwnPropertyNames(prototipo)
     .filter((nombre) => nombre !== 'constructor')
     .filter((nombre) => typeof prototipo[nombre] === 'function')
@@ -39,8 +41,8 @@ function rutasDe(controlador: new () => unknown): Ruta[] {
     });
 }
 
-function handler(nombre: keyof SesionController): Function {
-  return SesionController.prototype[nombre] as unknown as Function;
+function handler(nombre: keyof SesionController): CualquierFuncion {
+  return SesionController.prototype[nombre] as unknown as CualquierFuncion;
 }
 
 describe('registro del BFF de cookies', () => {

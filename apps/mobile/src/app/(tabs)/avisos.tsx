@@ -8,6 +8,17 @@ import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { locale } from '@/i18n';
 import { api } from '@/lib/api';
+import {
+  contenidoLista,
+  cuerpo,
+  fondoPantalla,
+  meta,
+  nombreFlex,
+  pista,
+  tituloPantalla,
+  vacioContenedor,
+  vacioTitulo,
+} from '@/lib/estilos-comunes';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado, type Paleta } from '@/lib/tema';
 
@@ -152,10 +163,7 @@ export default function Avisos() {
 
 const estilos = (c: Paleta) =>
   StyleSheet.create({
-    pantalla: {
-      flex: 1,
-      backgroundColor: c.fondoSecundario,
-    },
+    pantalla: fondoPantalla(c),
     encabezado: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -166,50 +174,20 @@ const estilos = (c: Paleta) =>
       borderBottomWidth: 1,
       borderBottomColor: c.borde,
     },
-    titulo: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: c.texto,
-    },
-    subtitulo: {
-      fontSize: 13,
-      color: c.textoSecundario,
-    },
-    lista: {
-      padding: espaciado.md,
-      gap: espaciado.sm,
-    },
+    titulo: tituloPantalla(c),
+    subtitulo: meta(c),
+    lista: contenidoLista(),
     fila: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
       gap: espaciado.sm,
     },
-    tituloAviso: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.texto,
-    },
-    cuerpo: {
-      fontSize: 14,
-      color: c.textoSecundario,
-      lineHeight: 20,
-    },
-    fecha: {
-      fontSize: 12,
-      color: c.textoSecundario,
-    },
-    vacio: {
-      alignItems: 'center',
-      gap: espaciado.sm,
-      paddingVertical: espaciado.xl,
-    },
-    vacioTitulo: {
-      fontSize: 17,
-      fontWeight: '700',
-      color: c.texto,
-    },
+    tituloAviso: nombreFlex(c),
+    cuerpo: cuerpo(c),
+    fecha: pista(c),
+    vacio: vacioContenedor(c),
+    vacioTitulo: vacioTitulo(c),
     vacioTexto: {
       fontSize: 14,
       color: c.textoSecundario,

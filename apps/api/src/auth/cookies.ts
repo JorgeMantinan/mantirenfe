@@ -34,6 +34,7 @@ export interface AtributosCookie {
 export function valorCookieSeguro(valor: unknown): valor is string {
   if (typeof valor !== 'string') return false;
   if (valor.length === 0 || valor.length > 4096) return false;
+  // eslint-disable-next-line no-control-regex -- el objetivo es rechazar \x00-\x1f\x7f
   return !/[\s;"\\]/.test(valor) && !/[\x00-\x1f\x7f]/.test(valor);
 }
 
