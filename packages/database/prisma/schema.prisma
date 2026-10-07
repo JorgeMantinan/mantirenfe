@@ -114,6 +114,15 @@ model Alerta {
   bono              String         @default("GENERAL")
   notas             String?
   ultimoEstado      Json?
+  // Última fecha objetivo con la que se guardó `ultimoEstado` (medianoche UTC).
+  // Las recurrentes con `diasSemana` marcado se sondean cualquier día
+  // evaluando el PRÓXIMO día marcado (un martes mira el viernes): al cambiar
+  // la fecha objetivo el estado anterior es de OTROS trenes, así que
+  // `sondearAlerta` lo usa como línea base nueva en vez de compararlo (que
+  // mandaría avisos falsos o perdería la transición real). Se escribe en la
+  // MISMA transacción que `ultimoEstado`, de modo que los dos siempre hablan
+  // de la misma fecha. Ignorado en las no recurrentes y en las flexibles.
+  fechaObjetivoSondeo DateTime?
   ultimoSondeoEn    DateTime?
   recordatorioEnviadoEn DateTime?
   recordatorioTrenesEnviados String[] @default([])

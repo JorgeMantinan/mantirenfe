@@ -22,7 +22,7 @@ import { enviarPushMovil } from '../notificaciones/expo-push';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
 import { pushHabilitado } from '../notificaciones/util';
 import { enviarPush } from '../notificaciones/web-push';
-import { hoyGtfs } from './reloj';
+import { hoyGtfs, proximoDiaAplicable } from './reloj';
 
 // El tipo vive en shared-types (lo consumen la API, la web y el móvil);
 // se re-exporta aquí para no romper a nadie que lo importara de este fichero.
@@ -1207,11 +1207,25 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     return;
   }
 
-  // Trayecto cotidiano: se consulta SIEMPRE el día de hoy (reloj peninsular) en
-  // vez de la fecha de creación, para que los avisos se repitan cada día.
-  const fechaConsulta = alerta.recurrente
-    ? hoyGtfs()
-    : alerta.fechaViaje.toISOString().slice(0, 10);
+  // Fecha objetivo del trayecto cotidiano CON días marcados: se trabaja cualquier
+  // día evaluando el próximo día marcado (un martes mira el viernes), para avisar
+  // en cuanto haya plaza para ese viernes/domingo; sin días marcados se consulta el
+  // día de hoy (reloj peninsular) y lo puntual, su fecha de viaje.
+  const fechaObjetivo = alerta.recurrente
+    ? proximoDiaAplicable(alerta, new Date(`${hoyGtfs()}T00:00:00Z`))
+    : alerta.fechaViaje;
+  const fechaConsulta = fechaObjetivo.toISOString().slice(0, 10);
+
+  // ¿La fecha objetivo cambia desde el último estado guardado? (el viernes
+  // evaluado pasa a ser el siguiente tras completarse, o cambia el día de hoy
+  // en una recurrente sin días). El estado anterior es entonces de OTROS
+  // trenes: compararlo mandaría avisos falsos (todas las filas parecerían
+  // "nuevas" o "baratas") y ocultaría la transición real, así que se trata
+  // como primer sondeo: línea base de la fecha nueva y sin avisos.
+  const objetivoCambio =
+    alerta.recurrente &&
+    (alerta.fechaObjetivoSondeo ? alerta.fechaObjetivoSondeo.toISOString().slice(0, 10) : null) !==
+      fechaConsulta;
 
   const consulta: ConsultaDisponibilidad = {
     origenNombre: alerta.origenNombre,
@@ -1254,7 +1268,13 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     series.set(etiqueta, serializarEstado(estado, etiqueta));
   }
 
-  const primeraVez = !Array.isArray(alerta.ultimoEstado);
+  const primeraVez = !Array.isArray(alerta.ultimoEstado) || objetivoCambio;
+  if (objetivoCambio) {
+    logger.debug(
+      { alertaId, fechaObjetivo: fechaConsulta, previa: alerta.fechaObjetivoSondeo ?? null },
+      'Fecha objetivo nueva: el estado anterior se usa como línea base',
+    );
+  }
   const anteriores = estadoAnteriorPorCriterio(alerta.ultimoEstado, alerta.criterio);
 
   // Conexiones (1 escala): solo con DISPONIBILIDAD vigilado y la casilla
@@ -1310,6 +1330,10 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       data: {
         ultimoEstado: actual as object,
         ultimoSondeoEn: new Date(),
+        // Se guarda con el estado y en la MISMA transacción: los dos hablan de
+        // la misma fecha, que es lo que permite detectar el cambio de fecha
+        // objetivo en el próximo sondeo (nunca se compara estado de otro día)
+        fechaObjetivoSondeo: new Date(`${fechaConsulta}T00:00:00Z`),
       },
     }),
     ...avisos.map((aviso) =>

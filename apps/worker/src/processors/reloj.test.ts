@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { ahoraRelojGtfs, esDiaAplicable, esLaborable, hoyGtfs } from './reloj';
+import { ahoraRelojGtfs, esDiaAplicable, esLaborable, hoyGtfs, proximoDiaAplicable } from './reloj';
 
 // 2026-09-27 es domingo: 28 lun, 02/10 viernes, 03/10 sábado, 04/10 domingo
 const LUNES = new Date('2026-09-28T12:00:00.000Z');
 const VIERNES = new Date('2026-10-02T12:00:00.000Z');
 const SABADO = new Date('2026-10-03T12:00:00.000Z');
 const DOMINGO = new Date('2026-10-04T12:00:00.000Z');
+// 04 es domingo, así que 06 martes y 07 miércoles
+const MARTES = new Date('2026-10-06T12:00:00.000Z');
+const MIERCOLES = new Date('2026-10-07T12:00:00.000Z');
+
+/** YYYY-MM-DD de la fecha devuelta (comparar fechas, no horas). */
+function dia(devuelta: Date): string {
+  return devuelta.toISOString().slice(0, 10);
+}
 
 describe('esLaborable', () => {
   it('lunes a viernes sí, sábado y domingo no', () => {
@@ -98,5 +106,53 @@ describe('esDiaAplicable', () => {
     const hoy = ahoraRelojGtfs().getUTCDay();
     expect(esDiaAplicable({ recurrente: true, diasSemana: [hoy] })).toBe(true);
     expect(esDiaAplicable({ recurrente: true, diasSemana: [(hoy + 1) % 7] })).toBe(false);
+  });
+});
+
+describe('proximoDiaAplicable', () => {
+  const domYVie = { recurrente: true, diasSemana: [0, 5] };
+
+  it('miércoles con dom+vie apunta al viernes de esa semana', () => {
+    expect(dia(proximoDiaAplicable(domYVie, MIERCOLES))).toBe('2026-10-09');
+  });
+
+  it('lunes con solo viernes apunta al viernes', () => {
+    expect(dia(proximoDiaAplicable({ recurrente: true, diasSemana: [5] }, LUNES))).toBe(
+      '2026-10-02',
+    );
+  });
+
+  it('viernes con dom+vie se queda en el propio viernes (hoy ya toca)', () => {
+    expect(dia(proximoDiaAplicable(domYVie, VIERNES))).toBe('2026-10-02');
+  });
+
+  it('domingo con dom+vie se queda en el propio domingo', () => {
+    expect(dia(proximoDiaAplicable(domYVie, DOMINGO))).toBe('2026-10-04');
+  });
+
+  it('sábado con dom+vie salta al domingo siguiente', () => {
+    expect(dia(proximoDiaAplicable(domYVie, SABADO))).toBe('2026-10-04');
+  });
+
+  it('con los días vacíos la fecha objetivo es el propio día', () => {
+    expect(dia(proximoDiaAplicable({ recurrente: true, diasSemana: [] }, MIERCOLES))).toBe(
+      '2026-10-07',
+    );
+    expect(dia(proximoDiaAplicable({ recurrente: true }, MARTES))).toBe('2026-10-06');
+  });
+
+  it('las no recurrentes siempre van a su fecha (aunque tengan días marcados)', () => {
+    expect(dia(proximoDiaAplicable({ recurrente: false, diasSemana: [5] }, MARTES))).toBe(
+      '2026-10-06',
+    );
+    expect(dia(proximoDiaAplicable({ recurrente: null, diasSemana: [0, 5] }, MARTES))).toBe(
+      '2026-10-06',
+    );
+  });
+
+  it('devuelve una copia: la fecha de entrada no se toca', () => {
+    const entrada = new Date('2026-10-07T12:00:00.000Z');
+    proximoDiaAplicable(domYVie, entrada);
+    expect(entrada.toISOString()).toBe('2026-10-07T12:00:00.000Z');
   });
 });

@@ -36,6 +36,12 @@ export function esLaborable(ahoraGtfs: Date): boolean {
  * los días). Las filas creadas antes de esa columna pueden traer
  * `soloLaborables = true` con `diasSemana` vacío: para ellas se mantiene la
  * lectura legada (lunes a viernes).
+ *
+ * OJO: el barrido ya NO filtra con esto las recurrentes CON `diasSemana`
+ * marcado (esas se sondean cualquier día evaluando el próximo día marcado, ver
+ * `proximoDiaAplicable` y `esPendienteDeSondeo`); aquí siguen los avisos de
+ * "el día de viaje" (recordatorios, resumen y digest), que por su naturaleza
+ * solo tienen sentido cuando hoy toca.
  */
 export function esDiaAplicable(
   alerta: {
@@ -50,4 +56,34 @@ export function esDiaAplicable(
   if (dias.length > 0) return dias.includes(ahoraGtfs.getUTCDay());
   if (alerta.soloLaborables) return esLaborable(ahoraGtfs);
   return true;
+}
+
+/**
+ * Fecha objetivo de sondeo de una alerta: la primera fecha `>= hoyGtfs` (reloj
+ * GTFS, medianoche UTC) caiga en uno de sus `diasSemana` — hoy mismo si ya
+ * toca. Así una recurrente con días marcados se sondea CUALQUIER día de la
+ * semana evaluando el PRÓXIMO día marcado (un martes mira el viernes) y avisa
+ * en cuanto haya plaza para ese viernes/domingo.
+ *
+ * Sin días marcados, o si la alerta no es recurrente, la fecha objetivo es el
+ * propio `hoyGtfs`: se sondea el día en curso, como siempre.
+ */
+export function proximoDiaAplicable(
+  alerta: {
+    recurrente?: boolean | null;
+    diasSemana?: number[] | readonly number[] | null;
+  },
+  hoyGtfs: Date,
+): Date {
+  if (!alerta.recurrente) return hoyGtfs;
+  const dias = alerta.diasSemana ?? [];
+  if (dias.length === 0) return hoyGtfs;
+  let candidata = new Date(hoyGtfs.getTime());
+  // Como mucho 7 pasos: la semana siempre vuelve a un día marcado (los valores
+  // fuera de 0-6 no son posibles: `diasSemana` es el día de Date#getUTCDay)
+  for (let i = 0; i < 7; i++) {
+    if (dias.includes(candidata.getUTCDay())) return candidata;
+    candidata = new Date(candidata.getTime() + 86_400_000);
+  }
+  return new Date(hoyGtfs.getTime()); // inalcanzable con días válidos
 }

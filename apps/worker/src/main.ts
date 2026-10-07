@@ -6,12 +6,12 @@ dotenv.config({ path: '../../.env' });
 import type { Server } from 'node:http';
 import pino from 'pino';
 import { Queue, Worker } from 'bullmq';
-import { getPrisma, Prisma } from '@mantirenfe/database';
+import { getPrisma } from '@mantirenfe/database';
 import { COLA_SONDEO, COLA_SONDEO_MASIVO, COLA_SYNC_GTFS } from '@mantirenfe/shared-types';
 import { sondearAlerta } from './processors/sondeo';
+import { esPendienteDeSondeo, resetearRecurrentes } from './processors/barrido';
 import {
   ahoraRelojGtfs,
-  esDiaAplicable,
   hoyGtfs,
   procesarRecordatorios,
   procesarResumenes,
@@ -250,33 +250,16 @@ async function main() {
       const hoy00 = new Date(`${hoyIso}T00:00:00Z`);
 
       // Reset diario de los trayectos recurrentes: al cruzar la medianoche
-      // peninsular se limpia el estado y los avisos del día para que cada día
-      // haya baseline nuevo y se re-avisen recordatorios y resúmenes.
+      // peninsular se limpia la marca de los avisos del día para que cada día
+      // vuelvan a poder enviarse recordatorios y resúmenes.
       // (Reset y auto-completado solo cada15 min: son idempotentes y corrían en
       // cada barrido — dos UPDATE por minuto contra el motor de Prisma.)
+      // El `ultimoEstado` del sondeo ya NO se borra aquí: con fecha objetivo
+      // estable (vie → vie) el estado es continuo y borrarlo a diario
+      // re-avisaría de más; el baseline de una fecha nueva lo decide
+      // `sondearAlerta` con `fechaObjetivoSondeo`. Ver `resetearRecurrentes`.
       if (minutosDesdeSnapshot % 15 === 0) {
-        try {
-          const reseteadas = await prisma.alerta.updateMany({
-            where: {
-              recurrente: true,
-              estado: 'ACTIVA',
-              ultimoSondeoEn: { lt: hoy00 },
-              NOT: { ultimoSondeoEn: null },
-            },
-            data: {
-              ultimoEstado: Prisma.JsonNull,
-              ultimoSondeoEn: null,
-              recordatorioTrenesEnviados: [],
-              recordatorioEnviadoEn: null,
-              resumenEnviadoEn: null,
-            },
-          });
-          if (reseteadas.count > 0) {
-            logger.info({ reseteadas: reseteadas.count }, 'Alertas recurrentes reiniciadas hoy');
-          }
-        } catch (error) {
-          logger.error({ err: error }, 'Fallo reiniciando alertas recurrentes');
-        }
+        await resetearRecurrentes(prisma, hoy00, logger);
       }
 
       // Snapshot de posiciones cada ~5 min: aunque nadie abra el mapa, la traza
@@ -311,9 +294,10 @@ async function main() {
         }
       }
 
-      // El filtro por intervaloSondeoMin se aplica en memoria más abajo: en SQL
-      // solo se descartan las de otros días (salvo las recurrentes y las de
-      // fecha flexible, que trabajan siempre) y se limita a las más urgentes
+      // El filtro por intervaloSondeoMin se aplica en memoria más abajo
+      // (`esPendienteDeSondeo`): en SQL solo se descartan las de otros días
+      // (salvo las recurrentes y las de fecha flexible, que trabajan siempre) y
+      // se limita a las más urgentes
       const alertas = await prisma.alerta.findMany({
         where: {
           estado: 'ACTIVA',
@@ -332,12 +316,11 @@ async function main() {
         take: 500,
       });
 
+      // Las recurrentes con días marcados entran también en días que no les
+      // tocan: evalúan el próximo día marcado (su fecha objetivo), y la
+      // frecuencia ya la limita intervaloSondeoMin
       const ahoraGtfs = ahoraRelojGtfs();
-      const pendientes = alertas.filter((a) => {
-        if (!esDiaAplicable(a, ahoraGtfs)) return false;
-        if (!a.ultimoSondeoEn) return true;
-        return Date.now() - a.ultimoSondeoEn.getTime() >= a.intervaloSondeoMin * 60_000;
-      });
+      const pendientes = alertas.filter((a) => esPendienteDeSondeo(a, ahoraGtfs));
 
       for (const alerta of pendientes) {
         try {

@@ -226,6 +226,14 @@ function diasActivos(
 }
 
 interface ManejadorStopTimes {
+  /**
+   * Entries pequeños (trips.txt, calendar…) ya cargados ANTES de streamar
+   * stop_times.txt. Sin este gancho el llamante solo vería trips.txt al acabar
+   * el streaming, cuando los lotes de10k paradas ya se han volcado a la BD: hay
+   * que decidir EN el stream qué paradas merecen insertarse, sin acumular las
+   *2,5M de filas en memoria.
+   */
+  preparar?: (buffers: ReadonlyMap<string, Buffer>) => void;
   cabecera: (celdas: string[]) => void;
   /**
    * `linea` puede ser asíncrona: así el volcado de ParadaHorario a la BD (en
@@ -273,17 +281,29 @@ async function recorrerZip(
     const descarga = Buffer.from(await respuesta.arrayBuffer());
 
     const directorio = await unzipper.Open.buffer(descarga);
+    // 1ª pasada: los entries pequeños (trips.txt, calendar…) se leen ANTES que
+    // stop_times.txt: el orden de los entries en el zip no está garantizado y
+    // sin trips.txt el stream no puede filtrar. El resto (shapes, etc.) ni se
+    // extrae: no consume memoria.
     for (const entry of directorio.files) {
       const nombre = entry.path.split('/').pop() ?? '';
-      if (nombre === 'stop_times.txt' && stopTimes) {
+      if (ENTRADAS_PEQUENAS.includes(nombre)) buffers.set(nombre, await entry.buffer());
+    }
+    stopTimes?.preparar?.(buffers);
+    // 2ª pasada: stop_times.txt en streaming. El `await` dentro del bucle
+    // aplica backpressure natural (el stream se frena mientras se escribe).
+    const streaming = stopTimes;
+    if (streaming) {
+      for (const entry of directorio.files) {
+        if ((entry.path.split('/').pop() ?? '') !== 'stop_times.txt') continue;
         let pendiente = Buffer.alloc(0);
         let cabeceraHecha = false;
         const procesarLinea = async (linea: string) => {
           if (!cabeceraHecha) {
-            stopTimes.cabecera(parsearLinea(linea));
+            streaming.cabecera(parsearLinea(linea));
             cabeceraHecha = true;
           } else if (linea.trim()) {
-            await stopTimes.linea(parsearLinea(linea));
+            await streaming.linea(parsearLinea(linea));
           }
         };
         for await (const trozo of entry.stream()) {
@@ -296,10 +316,7 @@ async function recorrerZip(
           }
         }
         if (pendiente.length > 0) await procesarLinea(pendiente.toString('utf8'));
-      } else if (ENTRADAS_PEQUENAS.includes(nombre)) {
-        buffers.set(nombre, await entry.buffer());
       }
-      // el resto (shapes, etc.) ni se extrae: no consume memoria
     }
   } catch (error) {
     logger.warn({ url, err: error }, 'Error recorriendo GTFS zip');
@@ -789,9 +806,25 @@ export async function filasDeFeed(
 }
 
 /**
- * Retira de ParadaHorario los trips que ya no aparecen en los feeds
- * sincronizados (servicio retirado, feed fuera de configuración...): sin esto
- * la tabla crecería sin límite y nos comería la cuota free de Supabase.
+ * Retira de ParadaHorario lo que ya no sirve para ningún cruce, en dos
+ * barridas sobre los tripId distintos de la tabla:
+ *
+ * 1. **Obsoletos**: trips que ya no aparecen en los feeds sincronizados
+ *    (servicio retirado, feed fuera de configuración...). Sin esto la tabla
+ *    crecería sin límite y nos comería la cuota free de Supabase.
+ * 2. **Huérfanos**: trips sin NINGUNA fila en HorarioTren. Las paradas solo
+ *    se usan cruzándolas con HorarioTren por tripId (salidas, itinerarios,
+ *    recordatorios), así que una parada cuyo trip ya no tiene horario es inútil
+ *    por mucho que siga en el feed: son los trips pasados cuya programación se
+ *    poda a diario (`podaEspacio` borra HorarioTren con `fecha < hoy`) y los
+ *    que ni siquiera están en trips.txt. Medido en producción:851.198 filas
+ *    (34% de ParadaHorario) en esta situación.
+ *
+ * El criterio es el del medidor (NOT EXISTS de ParadaHorario contra
+ * HorarioTren), pero la comprobación se hace en memoria sobre un
+ * `SELECT DISTINCT "tripId"`: es la misma aproximación que ya usa
+ * `scripts/backfill-tripids.ts`, porque un NOT EXISTS correlacionado sobre
+ * 2,5M filas se pasa del statement timeout del pooler.
  *
  * Solo se llama cuando TODOS los feeds se han procesado: si un feed falla, sus
  * trips no están en `conocidos` y le borraríamos todas las paradas.
@@ -805,12 +838,40 @@ async function limpiarParadasObsoletas(
     distinct: ['tripId'],
     select: { tripId: true },
   });
-  const obsoletos = enBd.map((p) => p.tripId).filter((tripId) => !conocidos.has(tripId));
-  if (obsoletos.length === 0) return;
-  const borrados = await borrarPorChunks(obsoletos, (chunk) =>
+  const tripIds = enBd.map((p) => p.tripId);
+  const obsoletos = tripIds.filter((tripId) => !conocidos.has(tripId));
+
+  // Barrido de huérfanos aislado: si esta consulta falla, que no se pierda la
+  // limpieza de obsoletas de siempre (se reintenta en el próximo run).
+  let huerfanos: string[] = [];
+  try {
+    const conHorario = new Set(
+      (
+        await cliente.$queryRawUnsafe<Array<{ tripId: string }>>(
+          'SELECT DISTINCT "tripId" FROM "HorarioTren" WHERE "tripId" IS NOT NULL',
+        )
+      ).map((h) => h.tripId),
+    );
+    huerfanos = tripIds.filter((tripId) => !conHorario.has(tripId));
+  } catch (error) {
+    logger.warn({ err: error }, 'No se pudieron identificar las paradas GTFS huérfanas');
+  }
+
+  // Un trip puede ser obsoleto Y huérfano: se borra una sola vez.
+  const aBorrar = [...new Set([...obsoletos, ...huerfanos])];
+  if (aBorrar.length === 0) return;
+  const borrados = await borrarPorChunks(aBorrar, (chunk) =>
     cliente.paradaHorario.deleteMany({ where: { tripId: { in: chunk } } }),
   );
-  logger.info({ obsoletos: obsoletos.length, borrados }, 'Paradas GTFS obsoletas retiradas');
+  logger.info(
+    {
+      obsoletos: obsoletos.length,
+      huerfanos: huerfanos.length,
+      tripIds: tripIds.length,
+      borrados,
+    },
+    'Paradas GTFS obsoletas y huérfanas retiradas',
+  );
 }
 
 export async function sincronizarHorarios(logger: Logger): Promise<number> {
@@ -859,12 +920,27 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     const inicioFeed = Date.now();
     // stop_times se acumula solo en sus extremos (primera/ultima parada por trip)
     const extremos = new Map<string, ExtremosViaje>();
-    // Trips vistos en stop_times: van a ParadaHorario aunque no estén en trips.txt
+    // Trips vistos en stop_times: protegen sus paradas de la limpieza de
+    // obsoletas y evitan que la reparación de tripIds reescriba viajes gemelos
+    // que el feed sigue publicando. A ParadaHorario solo llegan los que además
+    // están en trips.txt (ver `tripsEnTripsTxt`).
     const tripsStopTimes = new Set<string>();
+    /**
+     * Regla de alta en ParadaHorario: SOLO paradas de tripId con representación
+     * en trips.txt. Un trip ausente de trips.txt no puede tener NINGUNA fila en
+     * HorarioTren (el horario se construye a partir de trips.txt + calendar),
+     * de modo que sus paradas no sirven para ningún cruce: ni salidas por
+     * estación, ni itinerarios, ni recordatorios las consultan. Meterlas solo
+     * rellenaba la tabla de basura que después hay que podar. Medido en
+     * producción:851.198 filas (34% de ParadaHorario) eran de este tipo.
+     */
+    const tripsEnTripsTxt = new Set<string>();
     let loteParadas: ParadaHorarioCruda[] = [];
     let errorParadas: unknown = null;
     let msParadas = 0;
     let filasParadas = 0;
+    /** Paradas descartadas por no tener su trip en trips.txt (ver arriba). */
+    let sinTripsTxt = 0;
     let iTrip = -1;
     let iStop = -1;
     let iSeq = -1;
@@ -897,6 +973,13 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     };
 
     const buffers = await recorrerZip(url, logger, {
+      // trips.txt ya está cargado ANTES de streamar stop_times: es lo que
+      // permite filtrar cada parada en el momento de leerla.
+      preparar: (leidos) => {
+        const tripsBuf = leidos.get('trips.txt');
+        if (!tripsBuf) return;
+        for (const trip of tripsLigeros(tripsBuf)) tripsEnTripsTxt.add(trip.tripId);
+      },
       cabecera: (cabecera) => {
         iTrip = cabecera.indexOf('trip_id');
         iStop = cabecera.indexOf('stop_id');
@@ -919,25 +1002,32 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         if (!Number.isFinite(orden) || llegada === null || salida === null) return;
 
         // ParadaHorario: TODA la parada del trip (no solo extremos), sin fecha.
-        // Se descartan las paradas cuya estación no exista en Estacion (FK).
+        // Se descartan las paradas cuya estación no exista en Estacion (FK) y
+        // las de trips sin representación en trips.txt (regla en la cabecera
+        // del bucle: sin trips.txt no puede haber HorarioTren que cruce).
         const estacionId = estacionesPorCodigo.get(stopId);
         if (estacionId && !errorParadas) {
-          loteParadas.push({ tripId, orden, estacionId, llegadaMin: llegada, salidaMin: salida });
-          filasParadas++;
-          if (loteParadas.length >= TAM_LOTE_PARADAS) await vaciarLoteParadas();
-          if (filasParadas % 200_000 === 0) {
-            logger.info(
-              {
-                fase: 'paradas',
-                url,
-                leidas: filasParadas,
-                insertadas: insertadasParadas,
-                msParadas,
-                ms: Date.now() - inicioFeed,
-                mb: memoriaMb(),
-              },
-              'progreso ParadaHorario',
-            );
+          if (!tripsEnTripsTxt.has(tripId)) {
+            sinTripsTxt++;
+          } else {
+            loteParadas.push({ tripId, orden, estacionId, llegadaMin: llegada, salidaMin: salida });
+            filasParadas++;
+            if (loteParadas.length >= TAM_LOTE_PARADAS) await vaciarLoteParadas();
+            if (filasParadas % 200_000 === 0) {
+              logger.info(
+                {
+                  fase: 'paradas',
+                  url,
+                  leidas: filasParadas,
+                  descartadas: sinTripsTxt,
+                  insertadas: insertadasParadas,
+                  msParadas,
+                  ms: Date.now() - inicioFeed,
+                  mb: memoriaMb(),
+                },
+                'progreso ParadaHorario',
+              );
+            }
           }
         }
 
@@ -955,6 +1045,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         mb: memoriaMb(),
         trips: extremos.size,
         filasParadas,
+        sinTripsTxt,
         insertadas: insertadasParadas,
         msParadas,
         msStream: msFeed - msParadas,
@@ -1139,7 +1230,9 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
     );
   }
 
-  // Limpieza final de ParadaHorario: solo con todos los feeds correctos.
+  // Limpieza final de ParadaHorario (obsoletas + huérfanas), DESPUÉS de todos
+  // los createMany del run: solo con todos los feeds correctos, para no borrar
+  // paradas de un feed cuyo volcado no se ha completado.
   if (feeds.length > 0 && feedsOk === feeds.length) {
     try {
       await limpiarParadasObsoletas(prisma, tripsConocidos, logger);

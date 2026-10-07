@@ -61,6 +61,10 @@ const { prismaMock, store } = vi.hoisted(() => {
     consultasReparacion: [] as number[],
     /** Updates aplicados por `repararTripIdsDesactualizados`. */
     reparaciones: [] as Array<{ id: string; tripId: string }>,
+    /** tripIds enviados a `paradaHorario.createMany`, lote a lote. */
+    paradasCreateMany: [] as string[][],
+    /** tripIds de cada `paradaHorario.deleteMany` (limpieza obsoletas/huérfanas). */
+    paradasBorradas: [] as string[][],
   };
 
   const prismaMock = {
@@ -163,6 +167,7 @@ const { prismaMock, store } = vi.hoisted(() => {
     paradaHorario: {
       createMany: async (args: { data: ParadaGuardada[] }) => {
         let count = 0;
+        store.paradasCreateMany.push([...new Set(args.data.map((f) => f.tripId))]);
         for (const fila of args.data) {
           const clave = `${fila.tripId}|${fila.orden}`;
           if (store.paradas.some((p) => `${p.tripId}|${p.orden}` === clave)) continue;
@@ -183,10 +188,24 @@ const { prismaMock, store } = vi.hoisted(() => {
         return distintos;
       },
       deleteMany: async (args: { where: { tripId: { in: string[] } } }) => {
+        store.paradasBorradas.push([...args.where.tripId.in]);
         const antes = store.paradas.length;
         store.paradas = store.paradas.filter((p) => !args.where.tripId.in.includes(p.tripId));
         return { count: antes - store.paradas.length };
       },
+    },
+    // Solo lo usa la limpieza de ParadaHorario (obsoletas + huérfanas)
+    $queryRawUnsafe: async (sql: string) => {
+      if (!/SELECT DISTINCT "tripId" FROM "HorarioTren"/.test(sql)) {
+        throw new Error(`SQL inesperada en el doble de Prisma: ${sql}`);
+      }
+      return [
+        ...new Set(
+          store.horarios
+            .map((h) => h.tripId)
+            .filter((tripId): tripId is string => typeof tripId === 'string'),
+        ),
+      ].map((tripId) => ({ tripId }));
     },
   };
 
@@ -253,6 +272,34 @@ const ZIP_OUIGO = zipGtfs({
     'OT1,11:00:00,11:00:00,66000,2\n',
 });
 
+// Feed de pruebas para el filtro y la limpieza de ParadaHorario:
+// - T1-2026-09-29: en trips.txt Y con servicio activo → paradas + HorarioTren.
+// - T2-VENCIDO: en trips.txt pero su service_id no está en calendar → sus
+//   paradas se insertan y después la limpieza las retira como huérfanas.
+// - T3-SOLO-STOP-TIMES: solo aparece en stop_times → NI SE INSERTA.
+const ZIP_HUERFANOS = zipGtfs({
+  'agency.txt':
+    'agency_id,agency_name,agency_url,agency_timezone\n1,Renfe,https://renfe.com,Europe/Madrid\n',
+  'stops.txt':
+    'stop_id,stop_name,stop_lat,stop_lon\n' +
+    '17000,Madrid-Chamartín-Clara Campoamor,40.47,-3.68\n' +
+    '28000,Barcelona-Sants,41.38,2.14\n',
+  'routes.txt': 'route_id,agency_id,route_short_name,route_long_name,route_type\nR1,1,AVE,,2\n',
+  'calendar.txt': CALENDAR,
+  'trips.txt':
+    'route_id,service_id,trip_id,trip_short_name\n' +
+    'R1,S1,T1-2026-09-29,01234\n' +
+    'R1,S-VENCIDO,T2-VENCIDO,09999\n',
+  'stop_times.txt':
+    'trip_id,arrival_time,departure_time,stop_id,stop_sequence\n' +
+    'T1-2026-09-29,08:00:00,08:00:00,17000,1\n' +
+    'T1-2026-09-29,10:30:00,10:30:00,28000,2\n' +
+    'T2-VENCIDO,09:00:00,09:00:00,17000,1\n' +
+    'T2-VENCIDO,11:00:00,11:00:00,28000,2\n' +
+    'T3-SOLO-STOP-TIMES,12:00:00,12:00:00,17000,1\n' +
+    'T3-SOLO-STOP-TIMES,14:00:00,14:00:00,28000,2\n',
+});
+
 let servidor: Server;
 let base = '';
 const peticiones: Array<{ url?: string; apikey?: string }> = [];
@@ -261,7 +308,9 @@ beforeAll(async () => {
   servidor = createServer((req, res) => {
     peticiones.push({ url: req.url, apikey: req.headers.apikey as string | undefined });
     res.writeHead(200, { 'content-type': 'application/zip' });
-    res.end(req.url?.includes('ouigo') ? ZIP_OUIGO : ZIP_PRINCIPAL);
+    if (req.url?.includes('ouigo')) res.end(ZIP_OUIGO);
+    else if (req.url?.includes('huerfanos')) res.end(ZIP_HUERFANOS);
+    else res.end(ZIP_PRINCIPAL);
   });
   await new Promise<void>((resolve) => servidor.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(servidor.address() as AddressInfo).port}`;
@@ -280,6 +329,8 @@ beforeEach(() => {
   store.estacionesCreateMany.length = 0;
   store.consultasReparacion.length = 0;
   store.reparaciones.length = 0;
+  store.paradasCreateMany.length = 0;
+  store.paradasBorradas.length = 0;
   peticiones.length = 0;
 });
 
@@ -432,6 +483,82 @@ describe('sincronizarEstaciones + sincronizarHorarios (multioperador)', () => {
     expect(store.reparaciones).toEqual([{ id: 'h-legacy', tripId: 'T1-2026-09-29' }]);
     expect(store.horarios.find((h) => h.id === 'h-legacy')?.tripId).toBe('T1-2026-09-29');
     expect(store.consultasReparacion.length).toBeGreaterThan(0);
+  });
+});
+
+describe('sincronizarHorarios: filtro y limpieza de ParadaHorario', () => {
+  async function sincronizarFeedHuerfanos(): Promise<void> {
+    process.env.GTFS_ZIP_URLS = `${base}/huerfanos.zip`;
+    process.env.GTFS_ZIP_URLS_OUIGO = '';
+    await sincronizarEstaciones(logger);
+    await sincronizarHorarios(logger);
+  }
+
+  it('solo inserta paradas de trips presentes en trips.txt', async () => {
+    await sincronizarFeedHuerfanos();
+
+    // T2 está en trips.txt (aunque su service no tenga días activos) y T3 solo
+    // aparece en stop_times: este NO puede tener HorarioTren, así que no se
+    // inserta ni una parada suya
+    const insertados = new Set(store.paradasCreateMany.flat());
+    expect(insertados).toEqual(new Set(['T1-2026-09-29', 'T2-VENCIDO']));
+    expect(insertados.has('T3-SOLO-STOP-TIMES')).toBe(false);
+  });
+
+  it('retira como huérfanas las paradas de un trip sin ninguna fila en HorarioTren', async () => {
+    await sincronizarFeedHuerfanos();
+
+    // T2 VENCIÓ: sigue en trips.txt (el barrido de obsoletas no lo tocaría),
+    // pero su service_id no está en calendar → no se le insertó ninguna fila de
+    // HorarioTren → sus paradas no sirven para ningún cruce → deleteMany
+    expect(store.paradasBorradas).toEqual([['T2-VENCIDO']]);
+    expect(store.paradas.map((p) => p.tripId)).not.toContain('T2-VENCIDO');
+    // T1 sí tiene horario: sus paradas se conservan
+    expect(store.paradas.map((p) => p.tripId)).toContain('T1-2026-09-29');
+    expect(store.paradasBorradas.flat()).not.toContain('T1-2026-09-29');
+  });
+
+  it('retira también un tripId desaparecido del feed (barrido de obsoletas)', async () => {
+    process.env.GTFS_ZIP_URLS = `${base}/renfe.zip`;
+    process.env.GTFS_ZIP_URLS_OUIGO = '';
+    // Parada heredada de una publicación anterior que el feed ya no trae
+    store.paradas.push({
+      tripId: 'TRIP-DEL-PASADO',
+      orden: 1,
+      estacionId: '17000',
+      llegadaMin: 480,
+      salidaMin: 480,
+    });
+
+    await sincronizarEstaciones(logger);
+    await sincronizarHorarios(logger);
+
+    expect(store.paradasBorradas.flat()).toContain('TRIP-DEL-PASADO');
+    expect(store.paradas.map((p) => p.tripId)).not.toContain('TRIP-DEL-PASADO');
+    expect(store.paradas.map((p) => p.tripId)).toContain('T1-2026-09-29');
+  });
+
+  it('si falla la consulta de huérfanas sigue limpiando las obsoletas', async () => {
+    process.env.GTFS_ZIP_URLS = `${base}/renfe.zip`;
+    process.env.GTFS_ZIP_URLS_OUIGO = '';
+    store.paradas.push({
+      tripId: 'TRIP-DEL-PASADO',
+      orden: 1,
+      estacionId: '17000',
+      llegadaMin: 480,
+      salidaMin: 480,
+    });
+    const consulta = vi
+      .spyOn(prismaMock, '$queryRawUnsafe')
+      .mockRejectedValueOnce(new Error('statement timeout'));
+
+    await sincronizarEstaciones(logger);
+    await sincronizarHorarios(logger);
+
+    expect(consulta).toHaveBeenCalledTimes(1);
+    consulta.mockRestore();
+    expect(store.paradasBorradas.flat()).toContain('TRIP-DEL-PASADO');
+    expect(store.paradas.map((p) => p.tripId)).toContain('T1-2026-09-29');
   });
 });
 
