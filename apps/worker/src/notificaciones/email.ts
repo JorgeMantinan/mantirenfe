@@ -5,6 +5,7 @@ const TIMEOUT_MS = 10_000;
 const PUERTO_SMTPS = 465;
 const PUERTO_POR_DEFECTO = 587;
 const DESDE_POR_DEFECTO = 'no-reply@mantirenfe.vercel.app';
+const URL_RESEND = 'https://api.resend.com/emails';
 
 let avisoFaltaConfigurado = false;
 
@@ -19,10 +20,48 @@ function puertoSmtp(): number {
 }
 
 /**
- * Envía un email de aviso por SMTP (configurable por variables de entorno).
+ * ¿El proveedor es Resend? Es HTTP-first: su SMTP desde PaaS sufre timeouts de
+ * conexión (el fallo exacto que daba `CONN timeout` en Render) y su API HTTPS
+ * es la vía nativa. Se detecta por el host o porque la "contraseña" SMTP es la
+ * API key de Resend (formato `re_…`, que es lo que Resend pide como password).
+ */
+function esResend(): boolean {
+  const host = (process.env.SMTP_HOST ?? '').toLowerCase();
+  const clave = process.env.SMTP_PASS ?? '';
+  return host.includes('resend') || clave.startsWith('re_');
+}
+
+/** Envío por la API REST de Resend (HTTPS, sin tocar puertos SMTP). */
+async function enviarPorResend(
+  destinatario: string,
+  asunto: string,
+  cuerpo: string,
+): Promise<void> {
+  const respuesta = await fetch(URL_RESEND, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${process.env.SMTP_PASS}`,
+    },
+    body: JSON.stringify({
+      from: process.env.EMAIL_DESDE || DESDE_POR_DEFECTO,
+      to: [destinatario],
+      subject: asunto,
+      text: cuerpo,
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!respuesta.ok) {
+    const texto = (await respuesta.text().catch(() => '')).substring(0, 200);
+    throw new Error(`Resend ${respuesta.status}: ${texto}`);
+  }
+}
+
+/**
+ * Envía un email de aviso (Resend por HTTPS o SMTP según la configuración).
  * Nunca lanza: sin configuración se omite con un debug (una sola vez por
- * proceso) y cualquier fallo de conexión o de envío baja a warn, para que el
- * aviso que ya ha salido por push no se vea afectado.
+ * proceso) y cualquier fallo baja a warn, para que el aviso que ya ha salido
+ * por push no se vea afectado.
  */
 export async function enviarEmail(
   destinatario: string,
@@ -36,6 +75,16 @@ export async function enviarEmail(
     if (!avisoFaltaConfigurado) {
       avisoFaltaConfigurado = true;
       logger.debug('Email omitido: faltan SMTP_HOST y/o SMTP_PASS en el entorno');
+    }
+    return;
+  }
+
+  if (esResend()) {
+    try {
+      await enviarPorResend(destinatario, asunto, cuerpo);
+      logger.debug({ destinatario, asunto }, 'Email enviado (Resend)');
+    } catch (error) {
+      logger.warn({ destinatario, asunto, err: error }, 'No se pudo enviar el email (Resend)');
     }
     return;
   }

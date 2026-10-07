@@ -31,6 +31,21 @@ enum CriterioAlerta {
   PRECIO
 }
 
+// Miembros EXACTOS de `BONOS` (packages/shared-types/src/constantes.ts): el
+// zod `z.enum(BONOS)` que valida la API y este enum de Prisma deben ser la
+// MISMA tupla, o el create/update dejaría de compilar.
+enum BonoAlerta {
+  GENERAL
+  BONO_10
+  BONO_20
+  JUVENIL
+  ESTUDIANTE
+  DISCAPACIDAD
+  FAMILIA_NUMEROSA
+  MAYOR_60
+  OTRO
+}
+
 enum PlataformaPush {
   WEB
   ANDROID
@@ -92,8 +107,12 @@ model Alerta {
   // LEGACY: se conserva por compatibilidad con datos/clients antiguos y se
   // re-espeja al guardar (= diasSemana es [1,2,3,4,5]); ya no se lee.
   soloLaborables    Boolean        @default(false)
-  horaDesde         String?
-  horaHasta         String?
+  // Franja horaria peninsular. @db.Time: Postgres TIME sin zona, que Prisma
+  // mapea a Date (1970-01-01 + hora codificada en UTC). La API y el worker
+  // convierten en el borde con `horaComoTexto`/`horaATime` (shared-types):
+  // los DTO siguen siendo texto 'HH:MM'.
+  horaDesde         DateTime?      @db.Time
+  horaHasta         DateTime?      @db.Time
   numeroTren        String?
   criterio          CriterioAlerta @default(DISPONIBILIDAD)
   // Lista de criterios vigilados (varios avisos por alerta). Vacío = legado:
@@ -111,7 +130,7 @@ model Alerta {
   // extiende a la vuelta.
   grupoId           String?
   intervaloSondeoMin Int           @default(10)
-  bono              String         @default("GENERAL")
+  bono              BonoAlerta     @default(GENERAL)
   notas             String?
   ultimoEstado      Json?
   // Última fecha objetivo con la que se guardó `ultimoEstado` (medianoche UTC).
@@ -156,7 +175,11 @@ model PrecioTren {
   id           String   @id @default(cuid())
   alertaId     String
   numeroTren   String
-  salida       String
+  // Hora peninsular de salida del tren. @db.Time (Prisma la entrega como Date,
+  // 1970-01-01 + hora en UTC): el worker escribe con `horaATimeNoNula` y la API
+  // formatea a 'HH:MM' en `formatearPuntosPrecio` — el DTO `PuntoPrecio.salida`
+  // sigue siendo string, sin cambios para la web ni el móvil.
+  salida       DateTime @db.Time
   precioMin    Float?
   disponible   Boolean
   registradoEn DateTime @default(now())

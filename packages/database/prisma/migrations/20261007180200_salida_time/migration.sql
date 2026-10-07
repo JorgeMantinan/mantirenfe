@@ -1,0 +1,25 @@
+-- Cambio 3: PrecioTren.salida TEXT -> TIME.
+--
+-- Diagnostico previo (2026-10-07):
+--   4704 filas, 4704 con formato 'HH:MM' exacto, 0 vacias, 0 con fecha
+--   ('YYYY-MM-DD HH:MM'), 0 con otro formato. Rango '05:14' … '21:40'.
+--   => @db.Time (NO @db.DateTime).
+--
+-- Mismo nombre de tipo que imprime Prisma:
+--   prisma migrate diff --from-schema-datasource prisma/schema.prisma
+--                       --to-schema-datamodel prisma/schema.prisma --script
+--   -> ALTER TABLE "PrecioTren" ALTER COLUMN "salida" TYPE TIME ...
+--
+-- Nota de aplicacion: `prisma db push` propone DROP COLUMN + ADD COLUMN
+-- "salida" TIME NOT NULL sin DEFAULT, lo que FALLARIA con las 4704 filas
+-- existentes (no puede rellenar una columna NOT NULL). Se aplica aqui el cast
+-- explicito USING, que conserva las filas y deja EXACTAMENTE el mismo estado
+-- final que pide el schema.
+--
+-- Sin NULLIF: la columna es NOT NULL, asi que un '' se convertiria en NULL y
+-- el ALTER fallaria igual pero con un mensaje peor. El diagnostico garantiza
+-- que no hay ''; si lo hubiera, esta sentencia aborta en seco (mejor que
+-- silenciarlo convirtiendolo a 00:00).
+
+-- AlterTable
+ALTER TABLE "PrecioTren" ALTER COLUMN "salida" TYPE TIME USING "salida"::TIME;

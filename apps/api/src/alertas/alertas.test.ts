@@ -335,3 +335,22 @@ describe('formatearAlerta (conexiones / 1 escala)', () => {
     expect(formatearAlerta(filaAlerta()).conexiones).toBe(false);
   });
 });
+
+describe('formatearAlerta (franja @db.Time → HH:MM)', () => {
+  it('convierte el Date que devuelve Prisma a texto HH:MM', () => {
+    const respuesta = formatearAlerta(
+      filaAlerta({
+        horaDesde: new Date('1970-01-01T17:30:00.000Z'),
+        horaHasta: new Date('1970-01-01T21:00:00.000Z'),
+      }),
+    );
+    expect(respuesta.horaDesde).toBe('17:30');
+    expect(respuesta.horaHasta).toBe('21:00');
+  });
+
+  it('sigue aceptando texto (mocks) y devuelve null si no hay franja', () => {
+    expect(formatearAlerta(filaAlerta({ horaDesde: '07:05' })).horaDesde).toBe('07:05');
+    expect(formatearAlerta(filaAlerta()).horaDesde).toBeNull();
+    expect(formatearAlerta(filaAlerta()).horaHasta).toBeNull();
+  });
+});

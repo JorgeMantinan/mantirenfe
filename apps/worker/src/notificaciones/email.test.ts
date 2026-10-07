@@ -154,6 +154,68 @@ describe('enviarEmail — conexión', () => {
   });
 });
 
+describe('enviarEmail — Resend (API HTTPS)', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('host smtp.resend.com usa la API HTTPS y no nodemailer', async () => {
+    const { enviarEmail } = await moduloEmail();
+    entorno({ SMTP_HOST: 'smtp.resend.com', SMTP_PASS: 're_clave' });
+
+    await enviarEmail('u@test.es', 'Asunto', 'Cuerpo', logger);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, opciones] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.resend.com/emails');
+    expect((opciones.headers as Record<string, string>).authorization).toBe('Bearer re_clave');
+    expect(JSON.parse(String(opciones.body))).toEqual({
+      from: 'no-reply@mantirenfe.vercel.app',
+      to: ['u@test.es'],
+      subject: 'Asunto',
+      text: 'Cuerpo',
+    });
+    expect(createTransport).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('una API key re_* activa Resend aunque el host no lo diga', async () => {
+    const { enviarEmail } = await moduloEmail();
+    entorno({ SMTP_HOST: 'smtp.test.es', SMTP_PASS: 're_otraclave' });
+
+    await enviarEmail('u@test.es', 'Asunto', 'Cuerpo', logger);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  it('respuesta400 de Resend baja a warn y no lanza', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 422, text: async () => 'from invalido' });
+    const { enviarEmail } = await moduloEmail();
+    entorno({ SMTP_HOST: 'smtp.resend.com', SMTP_PASS: 're_clave' });
+
+    await expect(enviarEmail('u@test.es', 'Asunto', 'Cuerpo', logger)).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const contexto = logger.warn.mock.calls[0]?.[0] as { err?: { message?: string } };
+    expect(contexto.err?.message).toContain('Resend 422');
+  });
+
+  it('con config que no es Resend sigue usando nodemailer', async () => {
+    const { enviarEmail } = await moduloEmail();
+    entorno({ SMTP_HOST: 'smtp.test.es', SMTP_PASS: 'secreto' });
+
+    await enviarEmail('u@test.es', 'Asunto', 'Cuerpo', logger);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(createTransport).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('emailConfigurado', () => {
   it('exige host y contraseña', async () => {
     const { emailConfigurado } = await moduloEmail();

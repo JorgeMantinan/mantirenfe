@@ -2,6 +2,7 @@ export * from './constantes';
 export * from './conexiones';
 export * from './errores-auth';
 export * from './gtfs-rt';
+export * from './horas';
 export * from './indemnizacion';
 export * from './incidencias';
 export * from './dto/auth';

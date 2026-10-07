@@ -17,6 +17,8 @@ import {
   HORIZONTE_FLEXIBLE_DIAS,
   fechaGtfs,
   fechaIso,
+  horaATime,
+  horaComoTexto,
   normalizarDiasSemana,
   type AvisoAlertaResponse,
   type CriterioAlerta,
@@ -165,8 +167,10 @@ export function formatearAlerta(alerta: {
   origenNombre: string;
   destinoNombre: string;
   fechaViaje: Date;
-  horaDesde: string | null;
-  horaHasta: string | null;
+  // Columnas @db.Time: Prisma devuelve Date (1970-01-01 + hora en UTC). El DTO
+  // sigue siendo texto HH:MM, así que aquí se convierte.
+  horaDesde: Date | string | null;
+  horaHasta: Date | string | null;
   numeroTren: string | null;
   criterio: string;
   // Lista multi-criterio (opcional para tolerar lecturas sin la columna)
@@ -198,8 +202,8 @@ export function formatearAlerta(alerta: {
     origenNombre: alerta.origenNombre,
     destinoNombre: alerta.destinoNombre,
     fechaViaje: alerta.fechaViaje.toISOString().slice(0, 10),
-    horaDesde: alerta.horaDesde,
-    horaHasta: alerta.horaHasta,
+    horaDesde: horaComoTexto(alerta.horaDesde),
+    horaHasta: horaComoTexto(alerta.horaHasta),
     numeroTren: alerta.numeroTren,
     criterio: (criterios[0] ?? alerta.criterio) as AlertaResponse['criterio'],
     criterios,
@@ -428,8 +432,9 @@ export class AlertasService {
         fechaFlexible: datos.fechaFlexible,
         fechaDesde: rango ? new Date(`${rango.desde}T00:00:00Z`) : null,
         fechaHasta: rango ? new Date(`${rango.hasta}T00:00:00Z`) : null,
-        horaDesde: datos.horaDesde ?? null,
-        horaHasta: datos.horaHasta ?? null,
+        // Franja: el zod entrega 'HH:MM' y la columna es @db.Time (Date en JS)
+        horaDesde: horaATime(datos.horaDesde),
+        horaHasta: horaATime(datos.horaHasta),
         numeroTren: datos.numeroTren ?? null,
         criterio: criterios[0] ?? datos.criterio,
         criterios,
@@ -491,11 +496,11 @@ export class AlertasService {
       nuevaRuta.recordatorioTrenesEnviados = [];
     }
     if (datos.horaDesde !== undefined) {
-      nuevaRuta.horaDesde = datos.horaDesde;
+      nuevaRuta.horaDesde = horaATime(datos.horaDesde);
       cambioRuta = true;
     }
     if (datos.horaHasta !== undefined) {
-      nuevaRuta.horaHasta = datos.horaHasta;
+      nuevaRuta.horaHasta = horaATime(datos.horaHasta);
       cambioRuta = true;
     }
     if (datos.numeroTren !== undefined) {

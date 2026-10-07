@@ -1,5 +1,6 @@
 import type { Logger } from 'pino';
 import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
+import { horaComoTexto } from '@mantirenfe/shared-types';
 import { crearFuenteDatos } from '../fuentes';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
 import { ahoraRelojGtfs, esDiaAplicable } from './reloj';
@@ -158,8 +159,9 @@ export async function procesarResumenes(logger: Logger): Promise<number> {
         select: { numeroTren: true, salida: true },
       });
       const salida = elegirSalidaDelDia(horarios, ahora, {
-        horaDesde: alerta.horaDesde,
-        horaHasta: alerta.horaHasta,
+        // Columnas @db.Time: se pasan a texto HH:MM (el filtro compara strings)
+        horaDesde: horaComoTexto(alerta.horaDesde),
+        horaHasta: horaComoTexto(alerta.horaHasta),
       });
       if (!salida) continue;
 
@@ -288,8 +290,9 @@ export async function procesarRecordatorios(logger: Logger): Promise<number> {
       if (horarios.length === 0) continue;
 
       const candidatos = elegirTrenesRecordatorio(horarios, ahora, ventanaMin, {
-        horaDesde: alerta.horaDesde,
-        horaHasta: alerta.horaHasta,
+        // Columnas @db.Time: se pasan a texto HH:MM (el filtro compara strings)
+        horaDesde: horaComoTexto(alerta.horaDesde),
+        horaHasta: horaComoTexto(alerta.horaHasta),
       }).filter(
         (c) => !alerta.recordatorioTrenesEnviados.includes(claveServicioRecordatorio(c.tren)),
       );

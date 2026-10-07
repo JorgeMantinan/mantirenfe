@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import { getPrisma } from '@mantirenfe/database';
-import { horaGtfs, type EstadoSerializado } from '@mantirenfe/shared-types';
+import { horaGtfs, horaComoTexto, type EstadoSerializado } from '@mantirenfe/shared-types';
 import { enviarEmail } from '../notificaciones/email';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
 import { leerTexto } from '../notificaciones/util';
@@ -213,7 +213,20 @@ export async function enviarDigestDiario(
       grupo = { email: alerta.usuario.email, alertas: [] };
       candidatos.set(alerta.usuarioId, grupo);
     }
-    grupo.alertas.push(alerta);
+    // `horaDesde`/`horaHasta` son columnas @db.Time (Date en JS al salir de
+    // Prisma) y el digest compara texto HH:MM: se normaliza justo aquí, en el
+    // borde de la BD.
+    grupo.alertas.push({
+      id: alerta.id,
+      origenNombre: alerta.origenNombre,
+      destinoNombre: alerta.destinoNombre,
+      recurrente: alerta.recurrente,
+      diasSemana: alerta.diasSemana,
+      soloLaborables: alerta.soloLaborables,
+      horaDesde: horaComoTexto(alerta.horaDesde),
+      horaHasta: horaComoTexto(alerta.horaHasta),
+      ultimoEstado: alerta.ultimoEstado,
+    });
   }
   if (candidatos.size === 0) return 0;
 

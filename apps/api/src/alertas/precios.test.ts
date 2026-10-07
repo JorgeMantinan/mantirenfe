@@ -4,7 +4,8 @@ import { formatearPuntosPrecio, type FilaPrecio } from './precios';
 function fila(minutos: number, extra: Partial<FilaPrecio> = {}): FilaPrecio {
   return {
     numeroTren: '03311',
-    salida: '08:00',
+    // Columna @db.Time: es lo que devuelve Prisma (1970-01-01 + hora en UTC)
+    salida: new Date('1970-01-01T08:00:00.000Z'),
     precioMin: 45,
     disponible: true,
     registradoEn: new Date(Date.UTC(2026, 8, 1, 10, minutos)),
@@ -20,6 +21,15 @@ describe('formatearPuntosPrecio', () => {
       '2026-09-01T10:20:00.000Z',
       '2026-09-01T10:30:00.000Z',
     ]);
+  });
+
+  it('formatea la columna @db.Time a texto HH:MM (el DTO no cambia)', () => {
+    const puntos = formatearPuntosPrecio([
+      fila(10),
+      fila(20, { salida: new Date('1970-01-01T21:05:00.000Z') }),
+      fila(30, { salida: new Date('1970-01-01T00:00:00.000Z') }),
+    ]);
+    expect(puntos.map((p) => p.salida)).toEqual(['00:00', '21:05', '08:00']);
   });
 
   it('no muta las filas originales y conserva precio/disponibilidad', () => {

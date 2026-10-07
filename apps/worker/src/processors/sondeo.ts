@@ -3,6 +3,8 @@ import { getPrisma } from '@mantirenfe/database';
 import {
   funcionIndemnizacion,
   horaGtfs,
+  horaATimeNoNula,
+  horaComoTexto,
   HORIZONTE_FLEXIBLE_DIAS,
   type ConsultaDisponibilidad,
   type EstadoDisponibilidad,
@@ -276,7 +278,8 @@ export async function registrarHistorialPrecios(
       data: cambios.map((t) => ({
         alertaId,
         numeroTren: t.numeroTren,
-        salida: t.salida,
+        // Columna @db.Time: 'HH:MM' (o un ISO de los estados antiguos) → Date
+        salida: horaATimeNoNula(t.salida),
         precioMin: t.precioMin,
         disponible: t.disponible,
       })),
@@ -883,8 +886,9 @@ async function evaluarConexiones(
     destinoNombre: string;
     origenEstacionId: string | null;
     destinoEstacionId: string | null;
-    horaDesde: string | null;
-    horaHasta: string | null;
+    // Columna @db.Time: Date en las filas reales, string en los mocks de test
+    horaDesde: Date | string | null;
+    horaHasta: Date | string | null;
   },
   etiqueta: string,
   serieDirecta: EstadoSerializado[],
@@ -920,8 +924,8 @@ async function evaluarConexiones(
       enlaceMin: ENLACE_MIN_DEFECTO,
       // La franja de la alerta: desde sobre la SALIDA del primer tramo y hasta
       // sobre la LLEGADA total (como define `componerItinerarios`).
-      franjaDesdeMin: minutosDeHora(alerta.horaDesde),
-      franjaHastaMin: minutosDeHora(alerta.horaHasta),
+      franjaDesdeMin: minutosDeHora(horaComoTexto(alerta.horaDesde)),
+      franjaHastaMin: minutosDeHora(horaComoTexto(alerta.horaHasta)),
       maxResultados: MAX_ITINERARIOS_ESCALA,
     }).filter((it) => it.tipo === 'escala');
     if (candidatos.length === 0) {
@@ -1025,8 +1029,9 @@ async function evaluarConexiones(
 
 /** Campos de una alerta flexible: lo que lee `sondearFlexible`. */
 type AlertaFlexible = Parameters<typeof notificar>[0] & {
-  horaDesde: string | null;
-  horaHasta: string | null;
+  // Columna @db.Time: Date en las filas reales, string en los mocks de test
+  horaDesde: Date | string | null;
+  horaHasta: Date | string | null;
   numeroTren: string | null;
   fechaDesde: Date | null;
   fechaHasta: Date | null;
@@ -1063,6 +1068,10 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
   // escoge la fuente y el que etiqueta el estado que se guarda para el detalle.
   const criterios = criteriosDeAlerta(alerta);
   const fuente = crearFuenteDatos(criterios[0] ?? alerta.criterio);
+  // Franja horaria: columnas @db.Time (Date) normalizadas a texto HH:MM una
+  // sola vez para todas las fechas del rango.
+  const franjaDesde = horaComoTexto(alerta.horaDesde);
+  const franjaHasta = horaComoTexto(alerta.horaHasta);
 
   const abiertas: Array<{ fecha: string; trenes: EstadoSerializado[] }> = [];
   let ultimaSerie: EstadoSerializado[] | null = null;
@@ -1075,8 +1084,8 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
         origenNombre: alerta.origenNombre,
         destinoNombre: alerta.destinoNombre,
         fecha,
-        horaDesde: alerta.horaDesde,
-        horaHasta: alerta.horaHasta,
+        horaDesde: franjaDesde,
+        horaHasta: franjaHasta,
         numeroTren: alerta.numeroTren,
       });
       serie = serializarEstado(consultada, criterios[0] ?? alerta.criterio);
@@ -1084,10 +1093,8 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
       logger.warn({ alertaId: alerta.id, fecha, err: error }, 'Fecha del rango sin sondear');
       continue;
     }
-    if (alerta.horaDesde || alerta.horaHasta) {
-      serie = serie.filter((t) =>
-        enFranjaHoraria(t.salida, alerta.horaDesde ?? null, alerta.horaHasta ?? null),
-      );
+    if (franjaDesde || franjaHasta) {
+      serie = serie.filter((t) => enFranjaHoraria(t.salida, franjaDesde, franjaHasta));
     }
     const conPlazas = serie.filter((t) => t.disponible && t.cancelado !== true);
     // `previo === undefined` es la primera vez que se mira esta fecha: baseline
@@ -1231,8 +1238,9 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     origenNombre: alerta.origenNombre,
     destinoNombre: alerta.destinoNombre,
     fecha: fechaConsulta,
-    horaDesde: alerta.horaDesde,
-    horaHasta: alerta.horaHasta,
+    // Columnas @db.Time: el resto del worker (y las fuentes) comparan HH:MM
+    horaDesde: horaComoTexto(alerta.horaDesde),
+    horaHasta: horaComoTexto(alerta.horaHasta),
     numeroTren: alerta.numeroTren,
   };
 
