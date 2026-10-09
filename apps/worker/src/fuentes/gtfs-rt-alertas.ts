@@ -13,7 +13,7 @@
  */
 
 // Caché corta del feed (se renueva cada 20 s) con single-flight compartido
-import { conCache, type EntradaCache } from './cache';
+import { conCache, type EntradaCache } from '@mantirenfe/venta';
 
 const TTL_ALERTAS_MS = 20_000;
 const CACHE_ALERTAS = new Map<string, EntradaCache<Buffer>>();

@@ -18,7 +18,7 @@ import {
   type Itinerario,
   type TramoItinerario,
 } from '../fuentes/itinerarios';
-import { coincideNumeroTren, deduplicarTrenes } from '../fuentes/renfe-dwr';
+import { coincideNumeroTren, deduplicarTrenes } from '@mantirenfe/venta';
 import { enviarEmail } from '../notificaciones/email';
 import { enviarPushMovil } from '../notificaciones/expo-push';
 import { preferenciaBooleana } from '../notificaciones/preferencias';
@@ -361,7 +361,7 @@ export function textoPrecioBajo(tren: EstadoSerializado, precioObjetivo: number)
  * a 10 min) ha recorrido todo el rango.
  *
  * Cada consulta pasa por la caché DWR compartida por ruta+fecha
- * (`renfe-dwr.ts`), así que re-sondear una fecha recién vista no vuelve a
+ * (`@mantirenfe/venta`), así que re-sondear una fecha recién vista no vuelve a
  * tocar venta.renfe.com.
  */
 export const SONDEOS_FLEXIBLE_POR_ALERTA = 4;

@@ -54,6 +54,22 @@ export class TrenesController {
     return this.trenesService.salidasEstacion(estacion, fecha);
   }
 
+  /**
+   * Plazas y precio de una ruta+fecha (venta.renfe.com vía DWR). Cada consulta
+   * puede costar varios segundos contra la venta, así que el límite es más
+   * estrecho que el del resto de endpoints públicos de trenes.
+   */
+  @Get('disponibilidad')
+  @EsPublico()
+  @Throttle({ default: { ttl: 60_000, limit: 12 } })
+  disponibilidad(
+    @Query('origen') origen?: string,
+    @Query('destino') destino?: string,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.trenesService.disponibilidad({ origen, destino, fecha });
+  }
+
   @Get('puntualidad')
   @EsPublico()
   @Throttle({ default: { ttl: 10_000, limit: 10 } })

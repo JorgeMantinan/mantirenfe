@@ -616,6 +616,17 @@ export const es = {
     actualizar: 'Actualizar',
     actualizarSalidas: 'Actualizar salidas',
     sinSalidas: 'Sin salidas hoy',
+    plazasPrecioFila: 'Plazas y precio hacia {{destino}}',
+    cargandoPlazas: 'Consultando plazas y precios en la venta de Renfe...',
+    errorPlazas:
+      'No se pudieron consultar las plazas y precios. Inténtalo de nuevo en unos minutos.',
+    sinDatosPrecio: 'Sin datos de plazas y precios para esa ruta y fecha',
+    colPlazas: 'Plazas',
+    colPrecio: 'Precio',
+    colTarifa: 'Tarifa',
+    plazasSi: 'Sí',
+    plazasNo: 'No',
+    crearAlertaDestino: 'Crear alerta a {{destino}}',
   },
 
   // ──────────────────────────────── página del mapa

@@ -1,6 +1,6 @@
 import type { FuenteDatosTren } from './tipos';
 import { FuenteMock } from './mock';
-import { FuenteRenfeDwr } from './renfe-dwr';
+import { FuenteRenfeDwr } from '@mantirenfe/venta';
 import { FuenteGtfsRt } from './gtfs-rt';
 import { FuenteHorarioBd } from './horario-bd';
 

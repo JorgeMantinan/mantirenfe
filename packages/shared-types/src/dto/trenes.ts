@@ -179,6 +179,28 @@ export interface EstadoDisponibilidad {
 }
 
 /**
+ * Fila de `GET /trenes/disponibilidad`: plazas y precio de un tren en una
+ * ruta+fecha concretas, para decidir antes de crear una alerta. Es el DTO
+ * público de `EstadoTrenDisponible` (sin `trenId`, `moneda`, `tramo` ni el
+ * resto de campos internos de la venta).
+ */
+export interface TrenDisponibilidadResponse {
+  numeroTren: string;
+  /** Hora peninsular de salida (HH:MM) */
+  salida: string;
+  /** Hora peninsular de llegada (HH:MM), si la venta la trae */
+  llegada: string | null;
+  /** Tipo de servicio (AVE, AVLO, AVANT, MD...) si lo conoce la venta */
+  tipoTren: string | null;
+  /** Tipo de billete de la tarifa más barata (Básico, Elige...) */
+  tarifa: string | null;
+  disponible: boolean;
+  /** Precio mínimo en EUR; null si la venta no publica tarifa */
+  precioMin: number | null;
+  cancelado: boolean;
+}
+
+/**
  * Estado de disponibilidad ya serializado: es lo que el worker guarda en
  * `alerta.ultimoEstado` y lo que la API devuelve en `AlertaResponse.ultimoEstado`
  * para pintar las plazas de cada tren en web y móvil.

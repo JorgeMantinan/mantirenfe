@@ -8,7 +8,7 @@ import {
   type EstadoDisponibilidad,
   type EstadoTrenDisponible,
 } from '@mantirenfe/shared-types';
-import { conCache, type EntradaCache } from './cache';
+import { conCache, type EntradaCache } from '@mantirenfe/venta';
 import type { FuenteDatosTren } from './tipos';
 
 const URL_TRIP_UPDATES_DEFECTO =

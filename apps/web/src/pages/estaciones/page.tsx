@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BellPlus, Map, MapPin, RefreshCw, Search, TrainFront } from 'lucide-react';
+import {
+  BellPlus,
+  CircleDollarSign,
+  Map,
+  MapPin,
+  RefreshCw,
+  Search,
+  TrainFront,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
@@ -15,6 +23,7 @@ import { FILAS_INICIALES_TABLA } from '@/lib/ui-constants';
 import { incidenciaAfectaA, type IncidenciaResponse } from '@/lib/incidencias';
 import { ListaIncidencias } from '@/components/ListaIncidencias';
 import { locale } from '@/i18n';
+import { PanelPlazasPrecio } from './plazas-precio';
 import {
   horaGtfs,
   type EstacionDetalleResponse,
@@ -82,6 +91,9 @@ export function PaginaEstaciones() {
   const [mostrarMas, setMostrarMas] = useState(FILAS_INICIALES_TABLA);
   const [error, setError] = useState<string | null>(null);
   const [incidencias, setIncidencias] = useState<IncidenciaResponse[]>([]);
+  // Fila con «Plazas y precio» desplegado (clave única de la salidas);
+  // los datos viven en la caché del panel, aquí solo qué fila está abierta
+  const [plazasFila, setPlazasFila] = useState<string | null>(null);
   const peticionSalidas = useRef(0);
   const peticionDetalle = useRef(0);
 
@@ -163,6 +175,7 @@ export function PaginaEstaciones() {
       setDetalleListo(false);
       setSalidas(null);
       setError(null);
+      setPlazasFila(null);
     }
     buscarEstaciones(valor);
   };
@@ -181,6 +194,7 @@ export function PaginaEstaciones() {
     setCargando(true);
     setMostrarMas(FILAS_INICIALES_TABLA);
     setError(null);
+    setPlazasFila(null);
     api<HorarioTrenResponse[]>(
       `/trenes/estacion?estacion=${encodeURIComponent(sel.nombre)}&fecha=${hoy()}`,
     )
@@ -491,50 +505,78 @@ export function PaginaEstaciones() {
                         </tr>
                       </thead>
                       <tbody>
-                        {salidas.slice(0, mostrarMas).map((salida) => (
-                          <tr
-                            key={`${salida.numeroTren}-${salida.salida}`}
-                            className="border-b last:border-b-0"
-                          >
-                            <td className="py-2 pr-3 font-medium whitespace-nowrap">
-                              {horaGtfs(salida.salida)}
-                            </td>
-                            <td className="py-2 pr-3">{salida.destinoNombre}</td>
-                            <td className="py-2 pr-3">
-                              <Badge variant="outline">{salida.numeroTren}</Badge>
-                            </td>
-                            <td className="py-2 pr-3">
-                              {salida.operador ?? <span className="text-muted-foreground">—</span>}
-                            </td>
-                            <td className="py-2 pr-3 text-right whitespace-nowrap">
-                              {salida.duracionMin} min
-                            </td>
-                            <td className="py-2 text-right">
-                              {sel && salida.destinoNombre !== sel.nombre ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  asChild
-                                  className="text-muted-foreground"
-                                >
-                                  <Link
-                                    aria-label={t('estaciones.crearAlertaFila')}
-                                    to={
-                                      `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
-                                      `&destino=${encodeURIComponent(salida.destinoNombre)}` +
-                                      `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
-                                    }
-                                  >
-                                    <BellPlus className="h-4 w-4" aria-hidden="true" />
-                                    <span className="sr-only">
-                                      {t('estaciones.crearAlertaFila')}
-                                    </span>
-                                  </Link>
-                                </Button>
+                        {salidas.slice(0, mostrarMas).map((salida) => {
+                          const claveFila = `${salida.numeroTren}-${salida.salida}`;
+                          const esConsultada = Boolean(sel && salida.destinoNombre !== sel.nombre);
+                          const plazasAbiertas = plazasFila === claveFila;
+                          return (
+                            <Fragment key={claveFila}>
+                              <tr className="border-b">
+                                <td className="py-2 pr-3 font-medium whitespace-nowrap">
+                                  {horaGtfs(salida.salida)}
+                                </td>
+                                <td className="py-2 pr-3">{salida.destinoNombre}</td>
+                                <td className="py-2 pr-3">
+                                  <Badge variant="outline">{salida.numeroTren}</Badge>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  {salida.operador ?? (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                                <td className="py-2 pr-3 text-right whitespace-nowrap">
+                                  {salida.duracionMin} min
+                                </td>
+                                <td className="py-2 text-right">
+                                  {sel && esConsultada ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-muted-foreground"
+                                        aria-expanded={plazasAbiertas}
+                                        aria-label={t('estaciones.plazasPrecioFila', {
+                                          destino: salida.destinoNombre,
+                                        })}
+                                        onClick={() =>
+                                          setPlazasFila(plazasAbiertas ? null : claveFila)
+                                        }
+                                      >
+                                        <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" asChild>
+                                        <Link
+                                          aria-label={t('estaciones.crearAlertaFila')}
+                                          to={
+                                            `/alertas/nueva?origen=${encodeURIComponent(sel.nombre)}` +
+                                            `&destino=${encodeURIComponent(salida.destinoNombre)}` +
+                                            `&fecha=${hoy()}&numeroTren=${encodeURIComponent(salida.numeroTren)}`
+                                          }
+                                        >
+                                          <BellPlus className="h-4 w-4" aria-hidden="true" />
+                                          <span className="sr-only">
+                                            {t('estaciones.crearAlertaFila')}
+                                          </span>
+                                        </Link>
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                </td>
+                              </tr>
+                              {plazasAbiertas && sel ? (
+                                <tr className="border-b last:border-b-0 bg-muted/30">
+                                  <td colSpan={6}>
+                                    <PanelPlazasPrecio
+                                      origen={sel.nombre}
+                                      destino={salida.destinoNombre}
+                                      fecha={hoy()}
+                                    />
+                                  </td>
+                                </tr>
                               ) : null}
-                            </td>
-                          </tr>
-                        ))}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

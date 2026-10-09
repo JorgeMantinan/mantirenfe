@@ -188,6 +188,7 @@ export async function api<T>(
     '/suprimidos',
     '/trenes/horarios',
     '/trenes/estacion',
+    '/trenes/disponibilidad',
     '/trenes/posiciones',
     '/health',
   ];

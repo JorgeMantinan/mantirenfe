@@ -615,6 +615,16 @@ export const en: MismoArbol<Claves> = {
     actualizar: 'Refresh',
     actualizarSalidas: 'Refresh departures',
     sinSalidas: 'No departures today',
+    plazasPrecioFila: 'Seats and price to {{destino}}',
+    cargandoPlazas: 'Checking seats and prices at the Renfe ticket shop...',
+    errorPlazas: 'Could not fetch seats and prices. Please try again in a few minutes.',
+    sinDatosPrecio: 'No seat or price data for that route and date',
+    colPlazas: 'Seats',
+    colPrecio: 'Price',
+    colTarifa: 'Fare',
+    plazasSi: 'Yes',
+    plazasNo: 'No',
+    crearAlertaDestino: 'Create alert to {{destino}}',
   },
 
   // ──────────────────────────────── página del mapa

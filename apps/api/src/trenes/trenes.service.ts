@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { buscarEstaciones, getPrisma, type Prisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
   cruzarConexiones,
+  EstadoDisponibilidad,
   fechaGtfs,
   horaGtfs,
   HorarioTrenResponse,
@@ -13,7 +14,9 @@ import {
   prefijoTripId,
   PuntualidadTrenResponse,
   PuntoTraza,
+  TrenDisponibilidadResponse,
 } from '@mantirenfe/shared-types';
+import { FuenteRenfeDwr } from '@mantirenfe/venta';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { enriquecerPosiciones } from './enriquecer';
 import { trayectosPorParadas } from './paradas';
@@ -74,6 +77,8 @@ interface TrayectoFrecuente {
 @Injectable()
 export class TrenesService {
   private readonly logger = new Logger(TrenesService.name);
+  /** Cliente DWR de la venta: su caché por ruta+fecha es por proceso (módulo). */
+  private readonly fuenteVenta = new FuenteRenfeDwr();
   private cachePosiciones: CachePosiciones | null = null;
   private enCurso = false;
   private ultimaPersistenciaPosiciones = 0;
@@ -688,6 +693,61 @@ export class TrenesService {
     }
     salidas.sort((a, b) => a.salida.localeCompare(b.salida));
     return salidas.slice(0, 100);
+  }
+
+  /**
+   * `GET /trenes/disponibilidad`: plazas y precio de una ruta+fecha para
+   * decidir antes de crear una alerta. Resuelve las estaciones (mismo criterio
+   * que `salidasEstacion`: la mejor coincidencia) y consulta la venta DWR, que
+   * trae su propia caché por ruta+fecha con single-flight y TTL
+   * `DWR_CACHE_SEG` (120 s por defecto): la API no necesita caché extra.
+   *
+   * La fuente es la de producción (venta.renfe.com): si falla o suspende por
+   * rate-limit se responde 502 con mensaje saneado (el detalle viaja solo a
+   * log/Sentry), nunca con el texto crudo del cliente DWR.
+   */
+  async disponibilidad(query: unknown): Promise<TrenDisponibilidadResponse[]> {
+    const parsed = busquedaHorariosQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    }
+    const { origen, destino, fecha } = parsed.data;
+    const prisma = getPrisma();
+    const [estacionesOrigen, estacionesDestino] = await Promise.all([
+      buscarEstaciones(prisma, origen, 3),
+      buscarEstaciones(prisma, destino, 3),
+    ]);
+    const origenResuelto = estacionesOrigen[0];
+    const destinoResuelto = estacionesDestino[0];
+    // Sin estación no hay ruta que consultar a la venta: vacío, como en salidas
+    if (!origenResuelto || !destinoResuelto) return [];
+
+    let estado: EstadoDisponibilidad;
+    try {
+      estado = await this.fuenteVenta.getDisponibilidad({
+        origenNombre: origenResuelto.nombre,
+        destinoNombre: destinoResuelto.nombre,
+        fecha,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Disponibilidad no disponible para ${origenResuelto.nombre} → ${destinoResuelto.nombre} (${fecha}): ${String(error)}`,
+      );
+      throw new BadGatewayException('La venta de Renfe no está disponible en este momento');
+    }
+
+    return estado.trenes
+      .map((t) => ({
+        numeroTren: t.numeroTren,
+        salida: t.salida,
+        llegada: t.horaLlegada ?? null,
+        tipoTren: t.tipoTren ?? null,
+        tarifa: t.tarifa ?? null,
+        disponible: t.disponible,
+        precioMin: t.precioMin,
+        cancelado: t.cancelado ?? false,
+      }))
+      .sort((a, b) => a.salida.localeCompare(b.salida));
   }
 
   async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
