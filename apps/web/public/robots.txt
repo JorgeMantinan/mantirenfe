@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Aviso de reclamación de AdSense y localización del sitemap
+Sitemap: https://mantirenfe.vercel.app/sitemap.xml
