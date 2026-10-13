@@ -184,12 +184,20 @@ export function calcularSalidasWidget(
     for (const alerta of alertas) {
       if (alerta.estado !== 'ACTIVA' || !alertaAplicaHoy(alerta, delDia)) continue;
 
+      // Fecha cuyo estado guarda `ultimoEstado`: la que evaluó el sondeo (no
+      // cualquier día). Las filas ISO la traen en la propia salida; las filas
+      // 'HH:MM' (formato real de `salida`) se comparan contra esta.
+      const fechaEstado = alerta.fechaObjetivoSondeo ?? alerta.fechaViaje;
       const salidas = (alerta.ultimoEstado ?? [])
         .filter((tren) => {
           if (tren.cancelado) return false;
           const salida = tren.salida ?? '';
-          if (salida.slice(0, 10) !== delDia) return false;
-          const hhmm = salida.slice(11, 16);
+          if (salida.includes('T')) {
+            if (salida.slice(0, 10) !== delDia) return false;
+          } else if (fechaEstado !== delDia) {
+            return false;
+          }
+          const hhmm = salida.includes('T') ? salida.slice(11, 16) : salida.slice(0, 5);
           // Hoy solo interesan las salidas que aún no han salido
           if (dia === 0 && hhmm < hora) return false;
           if (alerta.horaDesde && hhmm < alerta.horaDesde) return false;
@@ -204,7 +212,10 @@ export function calcularSalidasWidget(
           numeroTren: tren.numeroTren,
           origen: alerta.origenNombre,
           destino: alerta.destinoNombre,
-          salida: horaGtfs(tren.salida),
+          // horaGtfs solo entiende ISO; las filas 'HH:MM' ya son la hora
+          salida: (tren.salida ?? '').includes('T')
+            ? horaGtfs(tren.salida)
+            : (tren.salida ?? '').slice(0, 5),
           salidaIso: tren.salida,
           fecha: delDia,
           disponible: tren.disponible,

@@ -502,3 +502,40 @@ describe('retrasoWidget', () => {
     expect(retrasoWidget({ retrasoSeg: 420 })).toBe(7);
   });
 });
+
+describe('calcularSalidasWidget — filas HH:MM (formato real de ultimoEstado)', () => {
+  const FILA_HHMM = [
+    {
+      trenId: '09183-2026-09-28',
+      numeroTren: '09183',
+      salida: '21:40',
+      disponible: true,
+      precioMin: 18.7,
+    },
+  ];
+
+  it('una fila sin fecha ISO pertenece a la fecha objetivo del sondeo', () => {
+    const a = alerta({ fechaObjetivoSondeo: HOY, ultimoEstado: FILA_HHMM as never });
+    const datos = calcularSalidasWidget([a], AHORA);
+    expect(datos.salidas).toHaveLength(1);
+    expect(datos.salidas[0].salida).toBe('21:40');
+    expect(datos.salidas[0].fecha).toBe(HOY);
+  });
+
+  it('si la fecha objetivo es otro día, hoy no se pinta nada', () => {
+    const a = alerta({ fechaObjetivoSondeo: '2026-10-02', ultimoEstado: FILA_HHMM as never });
+    expect(calcularSalidasWidget([a], AHORA).salidas).toHaveLength(0);
+  });
+
+  it('sin fechaObjetivoSondeo (API antigua) cae a la fecha de viaje', () => {
+    const a = alerta({ fechaViaje: '2026-10-02', ultimoEstado: FILA_HHMM as never });
+    const datos = calcularSalidasWidget([a], AHORA);
+    // No aparece hoy: la fila pertenece a su fecha de viaje…
+    expect(datos.salidas.some((s) => s.fecha === HOY)).toBe(false);
+    // …pero sí dentro del horizonte del widget, en ese día
+    expect(datos.salidas).toHaveLength(1);
+    expect(datos.salidas[0].fecha).toBe('2026-10-02');
+    const hoy = alerta({ fechaViaje: HOY, ultimoEstado: FILA_HHMM as never });
+    expect(calcularSalidasWidget([hoy], AHORA).salidas).toHaveLength(1);
+  });
+});

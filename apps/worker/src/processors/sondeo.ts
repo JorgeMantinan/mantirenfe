@@ -572,6 +572,36 @@ interface AvisoSondeo {
  * `Notificacion.datos` para poder distinguirlos en el buzón de una alerta
  * multi-criterio.
  */
+/** Cooldown de los avisos de plaza: la fuente de Renfe oscila (trenes que
+ * entran y salen de la búsqueda) y sin tope se reavisaba cada pocos minutos. */
+export const COOLDOWN_AVISO_PLAZA_MS = 60 * 60_000;
+
+function esAvisoPlaza(aviso: { titulo: string; datos?: unknown }): boolean {
+  const criterio = (aviso.datos as { criterio?: string } | null | undefined)?.criterio;
+  if (criterio !== undefined) return criterio === 'DISPONIBILIDAD';
+  // Filas antiguas sin `criterio`: el aviso de plaza era el de "Plaza"
+  return aviso.titulo.includes('Plaza');
+}
+
+/**
+ * Quita los avisos de plaza si el último aviso de la alerta (dentro de la
+ * ventana de1 h) también era de plaza: como máximo1/hora por alerta. El
+ * estado se guarda igual, así que el diff no se pierde: solo se limita la
+ * frecuencia. Exportado puro para testear sin BD.
+ */
+export function filtrarCooldownPlazas<T extends { titulo: string; datos?: unknown }>(
+  avisos: T[],
+  ultima: { creadaEn: Date; titulo: string; datos: unknown } | null,
+  ahoraMs: number = Date.now(),
+  ventanaMs: number = COOLDOWN_AVISO_PLAZA_MS,
+): T[] {
+  if (avisos.length === 0 || !ultima) return avisos;
+  if (ahoraMs - ultima.creadaEn.getTime() > ventanaMs) return avisos;
+  if (!esAvisoPlaza({ titulo: ultima.titulo, datos: ultima.datos })) return avisos;
+  const quitar = new Set(avisos.filter(esAvisoPlaza));
+  return avisos.filter((a) => !quitar.has(a));
+}
+
 function calcularAvisosDeCriterio(
   alerta: AvisoAlerta & { precioObjetivo: number | null },
   criterio: string,
@@ -1315,7 +1345,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
 
   // Un aviso por criterio que haya cambiado: los que salgan de aquí se
   // persisten TODOS en la misma transacción de abajo.
-  const avisos = primeraVez
+  let avisos = primeraVez
     ? []
     : criterios.flatMap((criterio) =>
         calcularAvisosDeCriterio(
@@ -1328,6 +1358,18 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
         ),
       );
   if (avisoEscala) avisos.push(avisoEscala);
+
+  // Cooldown: máximo1 aviso de plaza por hora y alerta (la fuente de Renfe
+  // oscila y se reavisaba casi en cada sondeo). El estado de igual se guarda,
+  // así que el diff no se pierde: solo se limita la frecuencia.
+  if (avisos.length > 0) {
+    const ultima = await prisma.notificacion.findFirst({
+      where: { alertaId: alerta.id },
+      orderBy: { creadaEn: 'desc' },
+      select: { creadaEn: true, titulo: true, datos: true },
+    });
+    avisos = filtrarCooldownPlazas(avisos, ultima);
+  }
 
   // Estado y avisos se guardan juntos en una única transacción: o se persisten
   // los dos o no se persiste nada (una Notificacion sin estado, o estado sin

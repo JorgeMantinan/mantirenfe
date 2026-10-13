@@ -276,6 +276,12 @@ export interface AlertaResponse {
   fechaDesde: string | null;
   /** Fin del rango flexible (YYYY-MM-DD); null si no es flexible. */
   fechaHasta: string | null;
+  /**
+   * Fecha cuyo estado guarda `ultimoEstado` (la que evalúa el sondeo: el
+   * próximo día marcado en recurrentes, la de viaje en puntuales). La envía la
+   * API desde que existe el campo; los clientes deben tolerar su ausencia.
+   */
+  fechaObjetivoSondeo?: string | null;
   intervaloSondeoMin: number;
   bono: string;
   notas: string | null;

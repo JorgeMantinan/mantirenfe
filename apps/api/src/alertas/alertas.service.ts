@@ -191,6 +191,7 @@ export function formatearAlerta(alerta: {
   ultimoEstado?: unknown;
   creadaEn: Date;
   grupoId: string | null;
+  fechaObjetivoSondeo: Date | null;
 }): AlertaResponse {
   // Multi-criterio: la lista manda; en las alertas legadas (lista vacía) el
   // criterio único es el único vigilado. `criterio` sigue siendo el primero.
@@ -223,6 +224,9 @@ export function formatearAlerta(alerta: {
     ultimoEstado: formatearUltimoEstado(alerta.ultimoEstado),
     creadaEn: alerta.creadaEn.toISOString(),
     grupoId: alerta.grupoId ?? null,
+    fechaObjetivoSondeo: alerta.fechaObjetivoSondeo
+      ? alerta.fechaObjetivoSondeo.toISOString().slice(0, 10)
+      : null,
   };
 }
 

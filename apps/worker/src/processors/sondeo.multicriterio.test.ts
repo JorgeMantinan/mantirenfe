@@ -61,6 +61,7 @@ vi.mock('@mantirenfe/database', () => ({
       updateMany: async () => ({ count: 1 }),
     },
     notificacion: {
+      findFirst: vi.fn(async () => null),
       create: async (args: { data: { titulo: string; cuerpo: string; datos: unknown } }) => {
         mundo.avisos.push(
           args.data as { titulo: string; cuerpo: string; datos: Record<string, unknown> },
