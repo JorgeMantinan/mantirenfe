@@ -573,12 +573,24 @@ interface AvisoSondeo {
  * multi-criterio.
  */
 /**
- * Serie de disponibilidad MONOTONA: una vez un tren se ha visto con plaza
- * (disponible=true), se conserva así aunque la fuente lo omita o lo marque
- * como no disponible en un sondeo posterior (la venta oscila: trenes entran y
- * salen de la búsqueda y el mismo tren se re-avisaba cada pocos minutos).
- * Los trenes NUEVOS que llegan con plaza siguen saltando al diff al instante.
- * Las filas de escala no se arrastran (las gestiona evaluarConexiones).
+ * Sondeos consecutivos sin plaza que declaran un tren AGOTADO de verdad. La
+ * fuente de Renfe oscila (el mismo tren entra y sale de la búsqueda o marca
+ * `disponible: false` durante unos minutos), así que un par de sondeos en
+ * negro no son un cambio real. Al llegar al umbral la fila pasa a
+ * `disponible: false` y, si la plaza vuelve, el diff la vuelve a avisar.
+ */
+export const SONDEOS_AGOTAR_PLAZA = 3;
+
+/**
+ * Serie de disponibilidad MONOTONA: mientras la fuente no lo declare agotado,
+ * una vez un tren se ha visto con plaza (disponible=true) se conserva así
+ * aunque la fuente lo omita o lo marque como no disponible en un sondeo
+ * posterior (la venta oscila: trenes entran y salen de la búsqueda y el mismo
+ * tren se re-avisaba cada pocos minutos). Los trenes NUEVOS que llegan con
+ * plaza siguen saltando al diff al instante, y un tren observado sin plaza
+ * SONDEOS_AGOTAR_PLAZA veces seguidas queda agotado: si la plaza vuelve, el
+ * diff reavisa. Las filas de escala no se arrastran (las gestiona
+ * evaluarConexiones).
  */
 export function estabilizarSerieVenta(
   anterior: EstadoSerializado[],
@@ -589,11 +601,25 @@ export function estabilizarSerieVenta(
   const salida = actual.map((f) => {
     vistas.add(f.trenId);
     const previa = previas.get(f.trenId);
-    if (previa?.disponible && !f.disponible) return { ...f, disponible: true };
-    return f;
+    if (f.disponible) {
+      // Con plaza: fila fresca de la fuente sin contador (se reinicia). Si la
+      // previa estaba agotada, el diff la ve pasar de false a true y reavisa.
+      return f;
+    }
+    if (!previa?.disponible) return f; // nunca tuvo plaza (o ya estaba agotada)
+    const sondeos = (previa.sondeosSinPlaza ?? 0) + 1;
+    return sondeos >= SONDEOS_AGOTAR_PLAZA
+      ? f // agotado de verdad: la siguiente plaza saltará al diff
+      : { ...previa, sondeosSinPlaza: sondeos }; // oscilación: se conserva la plaza vista
   });
   for (const previa of previas.values()) {
-    if (previa.disponible && !vistas.has(previa.trenId)) salida.push(previa);
+    if (!previa.disponible || vistas.has(previa.trenId)) continue;
+    const sondeos = (previa.sondeosSinPlaza ?? 0) + 1;
+    salida.push(
+      sondeos >= SONDEOS_AGOTAR_PLAZA
+        ? { ...previa, disponible: false, sondeosSinPlaza: 0 }
+        : { ...previa, sondeosSinPlaza: sondeos },
+    );
   }
   return salida;
 }

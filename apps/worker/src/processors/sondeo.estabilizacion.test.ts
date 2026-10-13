@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { estabilizarSerieVenta, type EstadoSerializado } from './sondeo';
+import {
+  diffDisponibles,
+  estabilizarSerieVenta,
+  SONDEOS_AGOTAR_PLAZA,
+  type EstadoSerializado,
+} from './sondeo';
 
 const fila = (
   trenId: string,
@@ -42,5 +47,28 @@ describe('estabilizarSerieVenta', () => {
     expect(salida).toHaveLength(0);
     // …pero las escala del actual pasan intactas
     expect(estabilizarSerieVenta([], [escala])).toEqual([escala]);
+  });
+
+  it('antes del umbral la plaza vista se conserva sin re-aviso (oscilación)', () => {
+    let serie = estabilizarSerieVenta([], [fila('G-7', true)]);
+    serie = estabilizarSerieVenta(serie, []); // 1.er sondeo sin plaza
+    expect(serie[0].disponible).toBe(true);
+    serie = estabilizarSerieVenta(serie, [fila('G-7', false)]); // 2.º, la fuente dice false
+    expect(serie[0].disponible).toBe(true);
+    // Vuelve con plaza ANTES del umbral: sigue siendo la misma plaza, no re-avisa
+    const conPlaza = estabilizarSerieVenta(serie, [fila('G-7', true)]);
+    expect(conPlaza[0].disponible).toBe(true);
+    expect(diffDisponibles(serie, conPlaza).aparecen).toHaveLength(0);
+  });
+
+  it('tras el umbral de sondeos sin plaza queda agotado y el siguiente sí reavisa', () => {
+    let serie = estabilizarSerieVenta([], [fila('H-8', true)]);
+    for (let i = 0; i < SONDEOS_AGOTAR_PLAZA; i++) serie = estabilizarSerieVenta(serie, []);
+    expect(serie).toHaveLength(1);
+    expect(serie[0].disponible).toBe(false);
+    // La fuente lo vuelve a listar con plaza: el diff ve false→true y reavisa
+    const conPlaza = estabilizarSerieVenta(serie, [fila('H-8', true)]);
+    expect(conPlaza[0].disponible).toBe(true);
+    expect(diffDisponibles(serie, conPlaza).aparecen).toHaveLength(1);
   });
 });

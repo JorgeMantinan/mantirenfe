@@ -243,6 +243,13 @@ export interface EstadoSerializado {
    * guardados por versiones anteriores no lo traen: son del criterio legado.
    */
   criterio?: string;
+  /**
+   * Sondeos consecutivos en los que la fuente no ha mostrado plaza de este
+   * tren, solo interno del worker (`estabilizarSerieVenta`): al llegar a
+   * SONDEOS_AGOTAR_PLAZA la fila pasa a agotada y la siguiente plaza vuelve a
+   * avisar. Omitido (0) en cuanto hay plaza.
+   */
+  sondeosSinPlaza?: number;
 }
 
 /**
