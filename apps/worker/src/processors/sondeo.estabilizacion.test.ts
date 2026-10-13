@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import { estabilizarSerieVenta, type EstadoSerializado } from './sondeo';
+
+const fila = (
+  trenId: string,
+  disponible: boolean,
+  extra: Partial<EstadoSerializado> = {},
+): EstadoSerializado =>
+  ({ trenId, salida: '18:00', disponible, precioMin: 12, ...extra }) as EstadoSerializado;
+
+describe('estabilizarSerieVenta', () => {
+  it('un tren que la fuente deja de listar se conserva con su plaza (no re-avisa)', () => {
+    const salida = estabilizarSerieVenta([fila('A-1', true)], []);
+    expect(salida).toHaveLength(1);
+    expect(salida[0].disponible).toBe(true);
+  });
+
+  it('un tren que la fuente marca como no disponible mantiene la plaza vista (no re-avisa)', () => {
+    const salida = estabilizarSerieVenta([fila('A-1', true)], [fila('A-1', false)]);
+    expect(salida).toHaveLength(1);
+    expect(salida[0].disponible).toBe(true);
+  });
+
+  it('un tren NUEVO con plaza aparece tal cual (el diff lo avisará al instante)', () => {
+    const salida = estabilizarSerieVenta([], [fila('B-2', true)]);
+    expect(salida).toEqual([fila('B-2', true)]);
+  });
+
+  it('un tren que nunca tuvo plaza no se inventa', () => {
+    const salida = estabilizarSerieVenta([fila('C-3', false)], [fila('C-3', false)]);
+    expect(salida).toEqual([fila('C-3', false)]);
+  });
+
+  it('si la serie previa no tenía plaza y desaparece, no se recupera', () => {
+    const salida = estabilizarSerieVenta([fila('D-4', false)], []);
+    expect(salida).toHaveLength(0);
+  });
+
+  it('las filas de escala no se arrastran (las gestiona evaluarConexiones)', () => {
+    const escala = { ...fila('escala|E-5', true), tramo: 'conexion' } as EstadoSerializado;
+    const salida = estabilizarSerieVenta([escala], []);
+    expect(salida).toHaveLength(0);
+    // …pero las escala del actual pasan intactas
+    expect(estabilizarSerieVenta([], [escala])).toEqual([escala]);
+  });
+});

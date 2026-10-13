@@ -572,34 +572,30 @@ interface AvisoSondeo {
  * `Notificacion.datos` para poder distinguirlos en el buzón de una alerta
  * multi-criterio.
  */
-/** Cooldown de los avisos de plaza: la fuente de Renfe oscila (trenes que
- * entran y salen de la búsqueda) y sin tope se reavisaba cada pocos minutos. */
-export const COOLDOWN_AVISO_PLAZA_MS = 60 * 60_000;
-
-function esAvisoPlaza(aviso: { titulo: string; datos?: unknown }): boolean {
-  const criterio = (aviso.datos as { criterio?: string } | null | undefined)?.criterio;
-  if (criterio !== undefined) return criterio === 'DISPONIBILIDAD';
-  // Filas antiguas sin `criterio`: el aviso de plaza era el de "Plaza"
-  return aviso.titulo.includes('Plaza');
-}
-
 /**
- * Quita los avisos de plaza si el último aviso de la alerta (dentro de la
- * ventana de1 h) también era de plaza: como máximo1/hora por alerta. El
- * estado se guarda igual, así que el diff no se pierde: solo se limita la
- * frecuencia. Exportado puro para testear sin BD.
+ * Serie de disponibilidad MONOTONA: una vez un tren se ha visto con plaza
+ * (disponible=true), se conserva así aunque la fuente lo omita o lo marque
+ * como no disponible en un sondeo posterior (la venta oscila: trenes entran y
+ * salen de la búsqueda y el mismo tren se re-avisaba cada pocos minutos).
+ * Los trenes NUEVOS que llegan con plaza siguen saltando al diff al instante.
+ * Las filas de escala no se arrastran (las gestiona evaluarConexiones).
  */
-export function filtrarCooldownPlazas<T extends { titulo: string; datos?: unknown }>(
-  avisos: T[],
-  ultima: { creadaEn: Date; titulo: string; datos: unknown } | null,
-  ahoraMs: number = Date.now(),
-  ventanaMs: number = COOLDOWN_AVISO_PLAZA_MS,
-): T[] {
-  if (avisos.length === 0 || !ultima) return avisos;
-  if (ahoraMs - ultima.creadaEn.getTime() > ventanaMs) return avisos;
-  if (!esAvisoPlaza({ titulo: ultima.titulo, datos: ultima.datos })) return avisos;
-  const quitar = new Set(avisos.filter(esAvisoPlaza));
-  return avisos.filter((a) => !quitar.has(a));
+export function estabilizarSerieVenta(
+  anterior: EstadoSerializado[],
+  actual: EstadoSerializado[],
+): EstadoSerializado[] {
+  const previas = new Map(anterior.filter((f) => !esFilaEscala(f)).map((f) => [f.trenId, f]));
+  const vistas = new Set<string>();
+  const salida = actual.map((f) => {
+    vistas.add(f.trenId);
+    const previa = previas.get(f.trenId);
+    if (previa?.disponible && !f.disponible) return { ...f, disponible: true };
+    return f;
+  });
+  for (const previa of previas.values()) {
+    if (previa.disponible && !vistas.has(previa.trenId)) salida.push(previa);
+  }
+  return salida;
 }
 
 function calcularAvisosDeCriterio(
@@ -1281,6 +1277,9 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   const criterios = criteriosDeAlerta(alerta);
   const etiquetas = [...new Set(criterios.map((c) => etiquetaEstado(c, criterios)))];
 
+  const anteriores = estadoAnteriorPorCriterio(alerta.ultimoEstado, alerta.criterio);
+  const etiquetaVenta = etiquetaEstado('DISPONIBILIDAD', criterios);
+
   const series = new Map<string, EstadoSerializado[]>();
   for (const etiqueta of etiquetas) {
     const fuente = crearFuenteDatos(etiqueta);
@@ -1303,7 +1302,16 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
         ),
       };
     }
-    series.set(etiqueta, serializarEstado(estado, etiqueta));
+    const filas = serializarEstado(estado, etiqueta);
+    // La serie de venta es monotona (ver estabilizarSerieVenta): evita que la
+    // oscilación de la fuente re-avise del mismo tren; el diff sigue saltando
+    // al instante con los trenes NUEVOS que llegan con plaza.
+    series.set(
+      etiqueta,
+      etiqueta === etiquetaVenta
+        ? estabilizarSerieVenta(anteriores.get(etiqueta) ?? [], filas)
+        : filas,
+    );
   }
 
   const primeraVez = !Array.isArray(alerta.ultimoEstado) || objetivoCambio;
@@ -1313,7 +1321,6 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       'Fecha objetivo nueva: el estado anterior se usa como línea base',
     );
   }
-  const anteriores = estadoAnteriorPorCriterio(alerta.ultimoEstado, alerta.criterio);
 
   // Conexiones (1 escala): solo con DISPONIBILIDAD vigilado y la casilla
   // marcada. La fila del itinerario ganador se añade a la serie del criterio de
@@ -1345,7 +1352,7 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
 
   // Un aviso por criterio que haya cambiado: los que salgan de aquí se
   // persisten TODOS en la misma transacción de abajo.
-  let avisos = primeraVez
+  const avisos = primeraVez
     ? []
     : criterios.flatMap((criterio) =>
         calcularAvisosDeCriterio(
@@ -1358,18 +1365,6 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
         ),
       );
   if (avisoEscala) avisos.push(avisoEscala);
-
-  // Cooldown: máximo1 aviso de plaza por hora y alerta (la fuente de Renfe
-  // oscila y se reavisaba casi en cada sondeo). El estado de igual se guarda,
-  // así que el diff no se pierde: solo se limita la frecuencia.
-  if (avisos.length > 0) {
-    const ultima = await prisma.notificacion.findFirst({
-      where: { alertaId: alerta.id },
-      orderBy: { creadaEn: 'desc' },
-      select: { creadaEn: true, titulo: true, datos: true },
-    });
-    avisos = filtrarCooldownPlazas(avisos, ultima);
-  }
 
   // Estado y avisos se guardan juntos en una única transacción: o se persisten
   // los dos o no se persiste nada (una Notificacion sin estado, o estado sin
@@ -1400,14 +1395,14 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
   // Va una sola vez por la serie de la venta, aunque la vigilen dos criterios.
   const criterioPrecio = criterios.find((c) => c === 'DISPONIBILIDAD' || c === 'PRECIO');
   if (criterioPrecio) {
-    const etiqueta = etiquetaEstado(criterioPrecio, criterios);
+    const etiquetaPrecio = etiquetaEstado(criterioPrecio, criterios);
     // La fila de escala no es un tren con precio: se excluye para que no entre
     // en el histórico (su `precioMin` es null y solo ensuciaría la gráfica).
     const sinEscalas = (filas: EstadoSerializado[]) => filas.filter((f) => !esFilaEscala(f));
     const puntos = await registrarHistorialPrecios(
       alerta.id,
-      sinEscalas(anteriores.get(etiqueta) ?? []),
-      sinEscalas(series.get(etiqueta) ?? []),
+      sinEscalas(anteriores.get(etiquetaPrecio) ?? []),
+      sinEscalas(series.get(etiquetaPrecio) ?? []),
       primeraVez,
       logger,
     );
