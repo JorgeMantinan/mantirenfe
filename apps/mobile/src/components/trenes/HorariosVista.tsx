@@ -42,6 +42,9 @@ type HorariosVistaProps = {
   sinEstacion: string[];
   franjaSalida: FranjaSalida;
   onFranjaSalida: (franja: FranjaSalida) => void;
+  /** Rango propio (HH:MM) del formulario: si tiene valores, manda sobre los chips. */
+  rangoCustom?: { desde: string; hasta: string };
+  onQuitarRango?: () => void;
   origen: string;
   destino: string;
   fecha: string;
@@ -57,6 +60,8 @@ export function HorariosVista({
   sinEstacion,
   franjaSalida,
   onFranjaSalida,
+  rangoCustom,
+  onQuitarRango,
   origen,
   destino,
   fecha,
@@ -74,9 +79,23 @@ export function HorariosVista({
     noche: t('trenes.franja.noche'),
   };
 
+  // El rango escrito en el formulario (desde/hasta con reloj) manda sobre los
+  // chips: es lo que llega de /estaciones y lo que el usuario pidió a mano.
+  const rangoActivo = rangoCustom && (rangoCustom.desde || rangoCustom.hasta) ? rangoCustom : null;
+
   // `horaGtfs` devuelve «HH:MM», así que comparar strings es comparar horas.
   const horariosVisibles = useMemo(() => {
     const lista = horarios ?? [];
+    if (rangoActivo) {
+      const { desde, hasta } = rangoActivo;
+      return lista.filter((t) => {
+        const salida = horaGtfs(t.salida);
+        if (!/^\d{2}:\d{2}$/.test(salida)) return false;
+        if (desde && salida < desde) return false;
+        if (hasta && salida > hasta) return false;
+        return true;
+      });
+    }
     const franja = FRANJAS_SALIDA.find((f) => f.id === franjaSalida);
     if (!franja) return lista;
     const { desde, hasta } = franja;
@@ -85,7 +104,7 @@ export function HorariosVista({
       const salida = horaGtfs(t.salida);
       return /^\d{2}:\d{2}$/.test(salida) && salida >= desde && salida < hasta;
     });
-  }, [horarios, franjaSalida]);
+  }, [horarios, franjaSalida, rangoActivo]);
 
   return (
     <FlatList
@@ -130,18 +149,34 @@ export function HorariosVista({
           </Tarjeta>
         ) : horarios && horarios.length > 0 ? (
           <View style={{ gap: espaciado.sm, marginBottom: espaciado.sm }}>
-            <View style={s.modos}>
-              {FRANJAS_SALIDA.map((f) => (
-                <Text
-                  key={f.id}
-                  style={[s.modo, franjaSalida === f.id && s.modoActivo]}
-                  onPress={() => onFranjaSalida(f.id)}
-                  suppressHighlighting
-                >
-                  {etiquetasFranja[f.id]}
+            {rangoActivo ? (
+              <View style={s.modos}>
+                <Text style={[s.modo, s.modoActivo]} suppressHighlighting>
+                  {t('trenes.rangoPersonalizado', {
+                    desde: rangoActivo.desde || '00:00',
+                    hasta: rangoActivo.hasta || '23:59',
+                  })}
                 </Text>
-              ))}
-            </View>
+                {onQuitarRango ? (
+                  <Text style={s.modo} onPress={onQuitarRango} suppressHighlighting>
+                    {t('trenes.rangoQuitar')}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <View style={s.modos}>
+                {FRANJAS_SALIDA.map((f) => (
+                  <Text
+                    key={f.id}
+                    style={[s.modo, franjaSalida === f.id && s.modoActivo]}
+                    onPress={() => onFranjaSalida(f.id)}
+                    suppressHighlighting
+                  >
+                    {etiquetasFranja[f.id]}
+                  </Text>
+                ))}
+              </View>
+            )}
             <Text style={s.meta}>
               {t('trenes.mostrando', {
                 visibles: horariosVisibles.length,

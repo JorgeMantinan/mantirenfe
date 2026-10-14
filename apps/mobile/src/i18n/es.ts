@@ -330,6 +330,8 @@ export const es = {
     mostrando: 'Mostrando {{visibles}} de {{total}} salidas',
     sinSalidasFranja: 'Ninguna salida en esa franja',
     pruebaFranja: 'Prueba otra franja o vuelve a «{{todo}}».',
+    rangoPersonalizado: 'Franja: {{desde}} – {{hasta}}',
+    rangoQuitar: 'Quitar',
     transbordo: 'Transbordo en {{estacion}}',
     transbordoDetalle:
       '{{tren1}} llega a las {{hora1}} · espera {{espera}} min · {{tren2}} sale a las {{hora2}}',

@@ -13,6 +13,8 @@ import {
   type PuntualidadTrenResponse,
 } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
+import { CampoHora } from '@/components/alertas/CampoHora';
+import { BotonElegirFecha, SelectorFechaNativa } from '@/components/alertas/SelectorFechaNativa';
 import { EstacionesVista } from '@/components/trenes/EstacionesVista';
 import { HorariosVista, type FranjaSalida } from '@/components/trenes/HorariosVista';
 import { ImpuntualesVista } from '@/components/trenes/ImpuntualesVista';
@@ -68,6 +70,11 @@ export default function Trenes() {
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  // Franja horaria propia del formulario (HH:MM, vacía = sin límite): filtra
+  // los resultados como en la web, con reloj nativo para elegir cada hora.
+  const [franjaDesde, setFranjaDesde] = useState('');
+  const [franjaHasta, setFranjaHasta] = useState('');
+  const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [horarios, setHorarios] = useState<HorarioTrenResponse[] | null>(null);
   const [errorHorarios, setErrorHorarios] = useState<string | null>(null);
   // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
@@ -365,6 +372,12 @@ export default function Trenes() {
     [origen, destino, fecha],
   );
 
+  // Referencia estable del rango escrito a mano en el formulario
+  const rangoCustom = useMemo(
+    () => ({ desde: franjaDesde, hasta: franjaHasta }),
+    [franjaDesde, franjaHasta],
+  );
+
   return (
     <View style={s.pantalla}>
       <View style={s.encabezado}>
@@ -526,6 +539,31 @@ export default function Trenes() {
               value={fecha}
               onChangeText={setFecha}
             />
+            <BotonElegirFecha onPress={() => setCalendarioAbierto(true)} />
+            <SelectorFechaNativa
+              campo={calendarioAbierto ? 'ida' : null}
+              valor={fecha}
+              minimo={new Date().toISOString().slice(0, 10)}
+              onCerrar={() => setCalendarioAbierto(false)}
+              onElegir={(iso) => {
+                setFecha(iso);
+                setCalendarioAbierto(false);
+              }}
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <CampoHora
+                valor={franjaDesde}
+                onValor={setFranjaDesde}
+                placeholder={t('nueva.desdeHora')}
+                flexible
+              />
+              <CampoHora
+                valor={franjaHasta}
+                onValor={setFranjaHasta}
+                placeholder={t('nueva.hastaHora')}
+                flexible
+              />
+            </View>
             <Boton
               titulo={cargandoPorModo.horarios ? t('trenes.buscando') : t('trenes.buscarHorarios')}
               onPress={() => void buscarHorarios()}
@@ -563,6 +601,11 @@ export default function Trenes() {
           sinEstacion={sinEstacion}
           franjaSalida={franjaSalida}
           onFranjaSalida={setFranjaSalida}
+          rangoCustom={rangoCustom}
+          onQuitarRango={() => {
+            setFranjaDesde('');
+            setFranjaHasta('');
+          }}
           origen={origen}
           destino={destino}
           fecha={fecha}

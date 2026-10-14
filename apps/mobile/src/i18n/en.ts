@@ -331,6 +331,8 @@ export const en: MismoArbol<Claves> = {
     mostrando: 'Showing {{visibles}} of {{total}} departures',
     sinSalidasFranja: 'No departures in that window',
     pruebaFranja: 'Try another window or go back to «{{todo}}».',
+    rangoPersonalizado: 'Window: {{desde}} – {{hasta}}',
+    rangoQuitar: 'Clear',
     transbordo: 'Change at {{estacion}}',
     transbordoDetalle:
       '{{tren1}} arrives at {{hora1}} · {{espera}} min wait · {{tren2}} departs at {{hora2}}',
