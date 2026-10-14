@@ -106,6 +106,7 @@ export const es = {
       'La vuelta es una alerta independiente con su propia fecha: puedes editarla o pausarla por separado.',
     fechaVuelta: 'Fecha de la vuelta',
     elegirFecha: 'Elegir en calendario',
+    elegirHora: 'Elegir hora',
     errorFechaVuelta: 'Indica la fecha de la vuelta.',
     errorFechaVueltaOrden: 'La vuelta no puede ser anterior a la ida.',
     horaDesdeVueltaLabel: 'Hora desde de la vuelta (opcional)',

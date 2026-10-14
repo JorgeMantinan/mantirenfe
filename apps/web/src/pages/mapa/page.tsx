@@ -44,8 +44,8 @@ const PATH_TREN: PathOptions = {
   weight: 2,
 };
 const PATH_TRAZA: PathOptions = {
-  color: '#0ea5e9',
-  weight: 3,
+  color: '#111111',
+  weight: 4,
   opacity: 0.8,
   dashArray: '6 8',
 };
@@ -56,6 +56,12 @@ const PATH_ESTACION: PathOptions = {
   fillOpacity: 0.9,
   weight: 3,
 };
+
+/**
+ * Altura del mapa (fuera de embebido): 480px, y más alto en pantallas con el
+ * viewport por encima de 1000px de alto, donde sobra sitio en vertical.
+ */
+const ALTURA_MAPA = 'h-[480px] [@media(min-height:1000px)]:h-[640px]';
 
 /** Parte la traza en segmentos si entre puntos hay más de maxMin de diferencia
  * (evita rectas fantasma cuando el tren lleva parado/aparcado o cambió de servicio). */
@@ -395,17 +401,15 @@ export function PaginaMapa() {
         </CardHeader>
         <CardContent className="p-0">
           {cargando && trenes === null ? (
-            <Skeleton className="h-[480px] w-full rounded-none" />
+            <Skeleton className={`${ALTURA_MAPA} w-full rounded-none`} />
           ) : leaflet === null ? (
             // Mientras baja el chunk de leaflet
-            <Skeleton className="h-[480px] w-full rounded-none" />
+            <Skeleton className={`${ALTURA_MAPA} w-full rounded-none`} />
           ) : (
             <leaflet.MapContainer
               center={CENTRO_ESPANIA}
               zoom={6}
-              className={
-                embebido ? 'h-[calc(100vh-15rem)] min-h-[320px] w-full' : 'h-[480px] w-full'
-              }
+              className={embebido ? 'h-[calc(100vh-15rem)] min-h-[320px] w-full' : ALTURA_MAPA}
               scrollWheelZoom
             >
               <leaflet.TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />

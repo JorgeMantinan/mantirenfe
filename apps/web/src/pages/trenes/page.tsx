@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
-import { BellPlus, Search, TrainFront } from 'lucide-react';
+import { BellPlus, CircleDollarSign, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { BloqueBilletes } from '@/components/BloqueBilletes';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
+import { PanelPlazasPrecio } from '@/pages/estaciones/plazas-precio';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ function grupoOperador(operador: string | null | undefined): 'Renfe' | 'Ouigo' |
 export function PaginaTrenes() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [parametros] = useSearchParams();
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
@@ -46,6 +48,8 @@ export function PaginaTrenes() {
   // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
   const [motivo, setMotivo] = useState<MotivoHorarios | null>(null);
   const [sinEstacion, setSinEstacion] = useState<string[]>([]);
+  // Fila con «Plazas y precio» desplegado (misma mecánica que en /estaciones)
+  const [plazasFila, setPlazasFila] = useState<string | null>(null);
   // Una lista por campo: escribir en Origen no deja a la vista las
   // sugerencias de Destino ni viceversa (mismo patrón que en alertas/nueva)
   const busOrigen = useBuscadorEstaciones({ limite: 5 });
@@ -108,30 +112,61 @@ export function PaginaTrenes() {
     limpiarSugerencias();
   };
 
+  // Núcleo de la búsqueda: compartido por el formulario y por la llegada con
+  // parámetros en la URL (el enlace del aviso de /estaciones).
+  const ejecutarBusqueda = useCallback(
+    async (origenBuscado: string, destinoBuscado: string, fechaBuscada: string) => {
+      setCargando(true);
+      setError(null);
+      setMotivo(null);
+      setSinEstacion([]);
+      setMostrarMas(FILAS_INICIALES_TABLA);
+      setPlazasFila(null);
+      try {
+        const datos = await api<HorariosResponse>(
+          `/trenes/horarios?origen=${encodeURIComponent(origenBuscado)}&destino=${encodeURIComponent(destinoBuscado)}&fecha=${fechaBuscada}`,
+        );
+        setResultados(datos.trenes);
+        setFuente(datos.fuente);
+        setMotivo(datos.motivo ?? null);
+        setSinEstacion(datos.estacionesNoEncontradas ?? []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t('trenes.errorBusqueda'));
+        setResultados(null);
+      } finally {
+        setCargando(false);
+      }
+    },
+    [t],
+  );
+
   const buscar = async (event: FormEvent) => {
     event.preventDefault();
     if (!origen.trim() || !destino.trim() || !fecha) return;
     limpiarSugerencias();
-    setCargando(true);
-    setError(null);
-    setMotivo(null);
-    setSinEstacion([]);
-    setMostrarMas(FILAS_INICIALES_TABLA);
-    try {
-      const datos = await api<HorariosResponse>(
-        `/trenes/horarios?origen=${encodeURIComponent(origen.trim())}&destino=${encodeURIComponent(destino.trim())}&fecha=${fecha}`,
-      );
-      setResultados(datos.trenes);
-      setFuente(datos.fuente);
-      setMotivo(datos.motivo ?? null);
-      setSinEstacion(datos.estacionesNoEncontradas ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('trenes.errorBusqueda'));
-      setResultados(null);
-    } finally {
-      setCargando(false);
-    }
+    await ejecutarBusqueda(origen.trim(), destino.trim(), fecha);
   };
+
+  // Llegada desde /estaciones (?origen=&destino=&fecha=&desde=&hasta=): se
+  // rellena el buscador con la ruta escrita allí y se consulta al entrar,
+  // con la franja horaria ya aplicada a los resultados.
+  const inicioBuscado = useRef(false);
+  useEffect(() => {
+    if (inicioBuscado.current) return;
+    inicioBuscado.current = true;
+    const origenParam = parametros.get('origen')?.trim() ?? '';
+    const destinoParam = parametros.get('destino')?.trim() ?? '';
+    if (!origenParam || !destinoParam) return;
+    const fechaParam = parametros.get('fecha') || new Date().toISOString().slice(0, 10);
+    setOrigen(origenParam);
+    setDestino(destinoParam);
+    setFecha(fechaParam);
+    const desdeParam = parametros.get('desde');
+    const hastaParam = parametros.get('hasta');
+    if (desdeParam) setFranjaDesde(desdeParam);
+    if (hastaParam) setFranjaHasta(hastaParam);
+    void ejecutarBusqueda(origenParam, destinoParam, fechaParam);
+  }, [parametros, ejecutarBusqueda]);
 
   // CTA compartido: crear una alerta de disponibilidad con la ruta consultada
   // (si se parte de un tren concreto, se le pasa su número para vigilarlo).
@@ -394,54 +429,83 @@ export function PaginaTrenes() {
                 ) : (
                   <>
                     <ul className="divide-y">
-                      {resultadosVisibles.slice(0, mostrarMas).map((tren) => (
-                        <li
-                          key={`${tren.numeroTren}-${tren.salida}`}
-                          className="flex flex-wrap items-center justify-between gap-3 py-3"
-                        >
-                          <div>
-                            <p className="font-medium">
-                              {horaGtfs(tren.salida)} → {horaGtfs(tren.llegada)}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {tren.origenNombre} · {tren.destinoNombre} · {tren.duracionMin} min
-                            </p>
-                            {tren.transbordo && (
-                              <div className="mt-1 space-y-0.5">
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-500 text-amber-700 dark:text-amber-400"
-                                >
-                                  {t('trayecto.transbordoEn', {
-                                    estacion: tren.transbordo.estacion,
-                                  })}
+                      {resultadosVisibles.slice(0, mostrarMas).map((tren) => {
+                        const claveFila = `${tren.numeroTren}-${tren.salida}`;
+                        const plazasAbiertas = plazasFila === claveFila;
+                        return (
+                          <li
+                            key={claveFila}
+                            className="flex flex-wrap items-center justify-between gap-3 py-3"
+                          >
+                            <div>
+                              <p className="font-medium">
+                                {horaGtfs(tren.salida)} → {horaGtfs(tren.llegada)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {tren.origenNombre} · {tren.destinoNombre} · {tren.duracionMin} min
+                              </p>
+                              {tren.transbordo && (
+                                <div className="mt-1 space-y-0.5">
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-500 text-amber-700 dark:text-amber-400"
+                                  >
+                                    {t('trayecto.transbordoEn', {
+                                      estacion: tren.transbordo.estacion,
+                                    })}
+                                  </Badge>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t('trenes.transbordoDetalle', {
+                                      tren1: tren.transbordo.trenPrimera,
+                                      llegada1: horaGtfs(tren.transbordo.llegadaPrimera),
+                                      minutos: tren.transbordo.esperaMin,
+                                      tren2: tren.transbordo.trenSegunda,
+                                      salida2: horaGtfs(tren.transbordo.salidaSegunda),
+                                    })}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{tren.numeroTren}</Badge>
+                              {tren.operador && (
+                                <Badge variant={esOuigo(tren.operador) ? 'aviso' : 'secondary'}>
+                                  {tren.operador}
                                 </Badge>
-                                <p className="text-xs text-muted-foreground">
-                                  {t('trenes.transbordoDetalle', {
-                                    tren1: tren.transbordo.trenPrimera,
-                                    llegada1: horaGtfs(tren.transbordo.llegadaPrimera),
-                                    minutos: tren.transbordo.esperaMin,
-                                    tren2: tren.transbordo.trenSegunda,
-                                    salida2: horaGtfs(tren.transbordo.salidaSegunda),
-                                  })}
-                                </p>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground"
+                                aria-expanded={plazasAbiertas}
+                                aria-label={t('estaciones.plazasPrecioFila', {
+                                  destino: tren.destinoNombre,
+                                })}
+                                onClick={() => setPlazasFila(plazasAbiertas ? null : claveFila)}
+                              >
+                                <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navegarAlerta(tren)}
+                              >
+                                <BellPlus className="h-4 w-4" aria-hidden="true" />{' '}
+                                {t('trenes.alerta')}
+                              </Button>
+                            </div>
+                            {plazasAbiertas ? (
+                              <div className="w-full rounded-md bg-muted/30">
+                                <PanelPlazasPrecio
+                                  origen={tren.origenNombre}
+                                  destino={tren.destinoNombre}
+                                  fecha={fecha}
+                                />
                               </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{tren.numeroTren}</Badge>
-                            {tren.operador && (
-                              <Badge variant={esOuigo(tren.operador) ? 'aviso' : 'secondary'}>
-                                {tren.operador}
-                              </Badge>
-                            )}
-                            <Button variant="outline" size="sm" onClick={() => navegarAlerta(tren)}>
-                              <BellPlus className="h-4 w-4" aria-hidden="true" />{' '}
-                              {t('trenes.alerta')}
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                     <BotonMostrarMas
                       total={resultadosVisibles.length}

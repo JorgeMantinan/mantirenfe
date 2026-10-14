@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   BellPlus,
@@ -94,6 +94,13 @@ export function PaginaEstaciones() {
   // Fila con «Plazas y precio» desplegado (clave única de la salidas);
   // los datos viven en la caché del panel, aquí solo qué fila está abierta
   const [plazasFila, setPlazasFila] = useState<string | null>(null);
+  // Aviso «Si no encuentras tu trayecto»: la ruta que se escribe a mano se
+  // lleva a /trenes (con la franja horaria si se indicó) ya filtrada
+  const [rutaOrigen, setRutaOrigen] = useState('');
+  const [rutaDestino, setRutaDestino] = useState('');
+  const [rutaDesde, setRutaDesde] = useState('');
+  const [rutaHasta, setRutaHasta] = useState('');
+  const navegar = useNavigate();
   const peticionSalidas = useRef(0);
   const peticionDetalle = useRef(0);
 
@@ -243,6 +250,17 @@ export function PaginaEstaciones() {
     ? incidencias.filter((incidencia) => incidenciaAfectaA(incidencia, [sel.nombre]))
     : [];
 
+  const buscarRuta = (event: FormEvent) => {
+    event.preventDefault();
+    const origen = rutaOrigen.trim();
+    const destino = rutaDestino.trim();
+    if (!origen || !destino) return;
+    const params = new URLSearchParams({ origen, destino, fecha: hoy() });
+    if (rutaDesde) params.set('desde', rutaDesde);
+    if (rutaHasta) params.set('hasta', rutaHasta);
+    navegar(`/trenes?${params.toString()}`);
+  };
+
   const latitud = detalle?.latitud ?? sel?.latitud ?? null;
   const longitud = detalle?.longitud ?? sel?.longitud ?? null;
   const rutaMapa = sel ? rutaMapaEstacion(sel.nombre, latitud, longitud) : '/mapa';
@@ -315,6 +333,64 @@ export function PaginaEstaciones() {
           )}
         </CardContent>
       </Card>
+
+      <form onSubmit={buscarRuta} className="space-y-3 rounded-lg border border-dashed p-4">
+        <p className="text-sm font-medium">{t('estaciones.rutaAviso')}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="ruta-origen">{t('trenes.origenLabel')}</Label>
+            <Input
+              id="ruta-origen"
+              value={rutaOrigen}
+              onChange={(e) => setRutaOrigen(e.target.value)}
+              placeholder="Madrid-Atocha"
+              required
+              autoComplete="off"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ruta-destino">{t('trenes.destinoLabel')}</Label>
+            <Input
+              id="ruta-destino"
+              value={rutaDestino}
+              onChange={(e) => setRutaDestino(e.target.value)}
+              placeholder="Sevilla-Santa Justa"
+              required
+              autoComplete="off"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="ruta-desde" className="text-xs text-muted-foreground">
+              {t('trenes.desde')}
+            </Label>
+            <Input
+              id="ruta-desde"
+              type="time"
+              className="w-auto"
+              value={rutaDesde}
+              onChange={(e) => setRutaDesde(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ruta-hasta" className="text-xs text-muted-foreground">
+              {t('trenes.hasta')}
+            </Label>
+            <Input
+              id="ruta-hasta"
+              type="time"
+              className="w-auto"
+              value={rutaHasta}
+              onChange={(e) => setRutaHasta(e.target.value)}
+            />
+          </div>
+          <Button type="submit">
+            <Search className="h-4 w-4" aria-hidden="true" />
+            {t('menu.buscarTrenes')}
+          </Button>
+        </div>
+      </form>
 
       {sel && (
         <>

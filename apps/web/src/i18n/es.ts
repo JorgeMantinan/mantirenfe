@@ -627,6 +627,7 @@ export const es = {
     plazasSi: 'Sí',
     plazasNo: 'No',
     crearAlertaDestino: 'Crear alerta a {{destino}}',
+    rutaAviso: 'Si no encuentras tu trayecto, escribe aquí Origen y Destino',
   },
 
   // ──────────────────────────────── página del mapa

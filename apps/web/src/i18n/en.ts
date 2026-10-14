@@ -625,6 +625,7 @@ export const en: MismoArbol<Claves> = {
     plazasSi: 'Yes',
     plazasNo: 'No',
     crearAlertaDestino: 'Create alert to {{destino}}',
+    rutaAviso: "Can't find your route? Type your Origin and Destination here",
   },
 
   // ──────────────────────────────── página del mapa
