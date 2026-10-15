@@ -195,12 +195,13 @@ export function calcularSalidasWidget(
           if (salida.includes('T')) {
             if (salida.slice(0, 10) !== delDia) return false;
           } else if (fechaEstado !== delDia) {
-            // Trayecto cotidiano: las filas HH:MM del último sondeo valen
-            // como horario de cualquier día aplicable posterior (el widget
-            // pinta la próxima salida, no el estado de un día concreto). Sin
-            // eso, una alerta diaria solo mostraba salidas el día evaluado y
-            // el resto decía «Sin salidas».
-            if (!alerta.recurrente || delDia < fechaEstado) return false;
+            // Trayecto cotidiano y «cualquier fecha»: las filas HH:MM del
+            // último sondeo valen como horario de cualquier día aplicable
+            // posterior (el widget pinta la próxima salida, no el estado de
+            // un día concreto). Sin eso, solo mostraban salidas el día
+            // evaluado y el resto decía «Sin salidas».
+            const esPrograma = alerta.recurrente || alerta.fechaFlexible;
+            if (!esPrograma || delDia < fechaEstado) return false;
           }
           const hhmm = salida.includes('T') ? salida.slice(11, 16) : salida.slice(0, 5);
           // Hoy solo interesan las salidas que aún no han salido

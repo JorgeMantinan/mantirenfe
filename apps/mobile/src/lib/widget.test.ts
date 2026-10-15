@@ -159,6 +159,27 @@ describe('calcularSalidasWidget', () => {
     expect(datos.salidas[0]).toMatchObject({ salida: '07:35', fecha: '2026-09-29' });
   });
 
+  it('cualquier fecha: las filas HH:MM del sondeo también valen para los días siguientes', () => {
+    const hhmm: EstadoSerializado[] = [
+      { trenId: 'f1', numeroTren: '04315', salida: '08:00', disponible: true, precioMin: 12 },
+    ];
+    const datos = calcularSalidasWidget(
+      [
+        alerta({
+          recurrente: false,
+          fechaFlexible: true,
+          fechaViaje: HOY,
+          fechaObjetivoSondeo: HOY,
+          ultimoEstado: hhmm,
+        }),
+      ],
+      AHORA, // 09:30: la de 08:00 ya ha salido hoy
+    );
+
+    expect(datos.salidas).toHaveLength(1);
+    expect(datos.salidas[0]).toMatchObject({ salida: '08:00', fecha: '2026-09-29' });
+  });
+
   it('descarta trenes cancelados', () => {
     const cancelado: EstadoSerializado[] = SONDEO.map((t) =>
       t.trenId === 't2' ? { ...t, cancelado: true } : t,
