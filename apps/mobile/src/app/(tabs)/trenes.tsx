@@ -75,6 +75,8 @@ export default function Trenes() {
   const [franjaDesde, setFranjaDesde] = useState('');
   const [franjaHasta, setFranjaHasta] = useState('');
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
+  // Fila con el panel «Plazas y precio» desplegado en el modo horarios
+  const [plazasFila, setPlazasFila] = useState<string | null>(null);
   const [horarios, setHorarios] = useState<HorarioTrenResponse[] | null>(null);
   const [errorHorarios, setErrorHorarios] = useState<string | null>(null);
   // Motivo de una respuesta vacía: estación inexistente vs. sin trenes
@@ -336,6 +338,7 @@ export default function Trenes() {
   const buscarHorarios = async () => {
     if (!origen.trim() || !destino.trim() || !fecha) return;
     limpiarSugerencias();
+    setPlazasFila(null);
     marcarCargando('horarios', true);
     setErrorHorarios(null);
     try {
@@ -589,6 +592,7 @@ export default function Trenes() {
           detalleListo={detalleListo}
           coordsSel={coordsSel}
           onCerrarSalidas={cerrarSalidas}
+          onBuscarTrenes={() => setModo('horarios')}
         />
       )}
 
@@ -606,6 +610,8 @@ export default function Trenes() {
             setFranjaDesde('');
             setFranjaHasta('');
           }}
+          plazasFila={plazasFila}
+          onPlazasFila={setPlazasFila}
           origen={origen}
           destino={destino}
           fecha={fecha}

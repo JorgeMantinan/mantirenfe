@@ -1,4 +1,5 @@
-import { Redirect, Tabs } from 'expo-router';
+import { Pressable } from 'react-native';
+import { Redirect, Tabs, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +22,17 @@ export default function TabsLayout() {
         headerTintColor: paleta.texto,
         headerTitleStyle: { fontWeight: '700' },
         tabBarStyle: { backgroundColor: paleta.fondo, borderTopColor: paleta.borde },
+        // Ajustes también siempre visible arriba a la derecha, en cualquier pestaña
+        headerRight: () => (
+          <Pressable
+            onPress={() => router.push('/ajustes')}
+            style={{ marginRight: 16, padding: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('pestanas.ajustes')}
+          >
+            <Ionicons name="settings-outline" size={22} color={paleta.texto} />
+          </Pressable>
+        ),
       }}
     >
       <Tabs.Screen

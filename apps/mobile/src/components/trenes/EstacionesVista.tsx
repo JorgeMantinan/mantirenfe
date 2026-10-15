@@ -33,6 +33,8 @@ type EstacionesVistaProps = {
   detalleListo: boolean;
   coordsSel: { lat: number; lng: number } | null;
   onCerrarSalidas: () => void;
+  /** Cambia al modo «horarios» (aviso y botón «Buscar trenes»). */
+  onBuscarTrenes: () => void;
 };
 
 /** Enlace externo a OpenStreetMap con la estación centrada (zoom 16). */
@@ -55,6 +57,7 @@ export function EstacionesVista({
   detalleListo,
   coordsSel,
   onCerrarSalidas,
+  onBuscarTrenes,
 }: EstacionesVistaProps) {
   const { paleta } = useTema();
   const { t } = useTranslation();
@@ -166,8 +169,31 @@ export function EstacionesVista({
         onEndReachedThreshold={0.4}
         onEndReached={onCargarMas}
         initialNumToRender={10}
+        ListHeaderComponent={
+          <Pressable
+            onPress={onBuscarTrenes}
+            accessibilityRole="button"
+            style={{
+              borderWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: paleta.borde,
+              borderRadius: 8,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={s.meta}>{t('trenes.noEncuentrasTrayecto')}</Text>
+          </Pressable>
+        }
         ListFooterComponent={
-          cargandoMas ? <Text style={s.pieLista}>{t('trenes.cargandoMas')}</Text> : null
+          <View style={{ marginTop: 12, gap: 8 }}>
+            {cargandoMas ? <Text style={s.pieLista}>{t('trenes.cargandoMas')}</Text> : null}
+            <Boton
+              titulo={t('trenes.irABuscarTrenes')}
+              onPress={onBuscarTrenes}
+              style={{ alignSelf: 'center' }}
+            />
+          </View>
         }
         renderItem={({ item }) => (
           <FilaEstacion

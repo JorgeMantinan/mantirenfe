@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { router } from 'expo-router';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   esOuigo,
@@ -11,6 +11,7 @@ import {
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
+import { PanelPlazasPrecio } from '@/components/trenes/PanelPlazasPrecio';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado } from '@/lib/tema';
 
@@ -45,6 +46,9 @@ type HorariosVistaProps = {
   /** Rango propio (HH:MM) del formulario: si tiene valores, manda sobre los chips. */
   rangoCustom?: { desde: string; hasta: string };
   onQuitarRango?: () => void;
+  /** Fila con el panel «Plazas y precio» desplegado (clave única; null = ninguna). */
+  plazasFila: string | null;
+  onPlazasFila: (clave: string | null) => void;
   origen: string;
   destino: string;
   fecha: string;
@@ -62,6 +66,8 @@ export function HorariosVista({
   onFranjaSalida,
   rangoCustom,
   onQuitarRango,
+  plazasFila,
+  onPlazasFila,
   origen,
   destino,
   fecha,
@@ -195,15 +201,30 @@ export function HorariosVista({
         ) : null
       }
       initialNumToRender={8}
-      renderItem={({ item }) => (
-        <FilaHorario
-          horario={item}
-          origen={origen}
-          destino={destino}
-          fecha={fecha}
-          onCrearAlerta={onCrearAlerta}
-        />
-      )}
+      renderItem={({ item }) => {
+        const clave = `${item.numeroTren}-${item.salida}`;
+        const plazasAbiertas = plazasFila === clave;
+        return (
+          <>
+            <FilaHorario
+              horario={item}
+              origen={origen}
+              destino={destino}
+              fecha={fecha}
+              onCrearAlerta={onCrearAlerta}
+              plazasAbiertas={plazasAbiertas}
+              onPlazas={() => onPlazasFila(plazasAbiertas ? null : clave)}
+            />
+            {plazasAbiertas ? (
+              <PanelPlazasPrecio
+                origen={item.origenNombre || origen}
+                destino={item.destinoNombre || destino}
+                fecha={fecha}
+              />
+            ) : null}
+          </>
+        );
+      }}
     />
   );
 }
@@ -218,12 +239,16 @@ const FilaHorario = memo(function FilaHorario({
   destino,
   fecha,
   onCrearAlerta,
+  plazasAbiertas,
+  onPlazas,
 }: {
   horario: HorarioTrenResponse;
   origen: string;
   destino: string;
   fecha: string;
   onCrearAlerta: (numeroTren: string) => void;
+  plazasAbiertas: boolean;
+  onPlazas: () => void;
 }) {
   const { paleta } = useTema();
   const { t } = useTranslation();
@@ -264,12 +289,28 @@ const FilaHorario = memo(function FilaHorario({
           </Text>
         </View>
       ) : null}
-      <Boton
-        titulo={t('trenes.masAlerta')}
-        variante="contorno"
-        onPress={() => onCrearAlerta(horario.transbordo ? '' : horario.numeroTren)}
-        style={{ marginTop: 8, alignSelf: 'flex-start' }}
-      />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
+        <Pressable
+          onPress={onPlazas}
+          accessibilityRole="button"
+          accessibilityState={{ selected: plazasAbiertas }}
+        >
+          <Text
+            style={{
+              color: paleta.primario,
+              fontSize: 13,
+              fontWeight: '600',
+            }}
+          >
+            {t('trenes.verPlazas')}
+          </Text>
+        </Pressable>
+        <Boton
+          titulo={t('trenes.masAlerta')}
+          variante="contorno"
+          onPress={() => onCrearAlerta(horario.transbordo ? '' : horario.numeroTren)}
+        />
+      </View>
     </Tarjeta>
   );
 });
