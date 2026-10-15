@@ -51,8 +51,8 @@ function nombreMes(mes: string): string {
   });
 }
 
-export default function Trenes() {
-  const [modo, setModo] = useState<Modo>('estaciones');
+export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: Modo } = {}) {
+  const [modo, setModo] = useState<Modo>(modoInicial);
   const [estaciones, setEstaciones] = useState<EstacionResponse[]>([]);
   const [buscar, setBuscar] = useState('');
   // Un spinner por modo: cada `cargar*` solo apaga SU bandera, así un modo

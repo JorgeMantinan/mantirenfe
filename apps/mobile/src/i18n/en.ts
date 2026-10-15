@@ -335,6 +335,7 @@ export const en: MismoArbol<Claves> = {
     rangoQuitar: 'Clear',
     noEncuentrasTrayecto: "Can't find your route? Type your Origin and Destination here",
     irABuscarTrenes: 'Search trains',
+    buscarMiTren: 'Find my train',
     verPlazas: 'Seats and price',
     plazasCargando: 'Checking seats and prices on Renfe sales...',
     plazasError: "Couldn't check seats and prices. Try again in a few minutes.",

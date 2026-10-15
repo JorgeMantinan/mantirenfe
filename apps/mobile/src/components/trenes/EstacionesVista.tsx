@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import {
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
+import { PanelPlazasPrecio } from '@/components/trenes/PanelPlazasPrecio';
 import { locale } from '@/i18n';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado } from '@/lib/tema';
@@ -62,6 +63,9 @@ export function EstacionesVista({
   const { paleta } = useTema();
   const { t } = useTranslation();
   const s = useMemo(() => estilosTrenes(paleta), [paleta]);
+  // Fila de salidas con el panel «Plazas y precio» desplegado (null = ninguna)
+  const [plazasSalida, setPlazasSalida] = useState<string | null>(null);
+  useEffect(() => setPlazasSalida(null), [estacionSel]);
 
   // Ficha de la estación seleccionada (fallo tolerado: sin ficha no se rompe nada)
   const latitud = detalle?.latitud ?? coordsSel?.lat ?? null;
@@ -128,34 +132,59 @@ export function EstacionesVista({
             <Text style={s.meta}>{t('trenes.sinSalidas')}</Text>
           ) : (
             <ScrollView style={s.salidasScroll} nestedScrollEnabled>
-              {(salidas ?? []).map((salida, i) => (
-                <View key={`${salida.numeroTren}-${salida.salida}-${i}`} style={{ marginTop: 6 }}>
-                  <Text style={s.nombre}>
-                    {horaGtfs(salida.salida)} · {salida.numeroTren}
-                  </Text>
-                  <Text style={s.meta}>
-                    {salida.origenNombre} → {salida.destinoNombre}
-                    {salida.operador ? ` · ${salida.operador}` : ''}
-                  </Text>
-                  {estacionSel && salida.destinoNombre !== estacionSel ? (
-                    <Pressable
-                      onPress={() =>
-                        router.push(
-                          `/alertas/nueva?origen=${encodeURIComponent(estacionSel)}` +
-                            `&destino=${encodeURIComponent(salida.destinoNombre)}` +
-                            `&fecha=${new Date().toISOString().slice(0, 10)}` +
-                            `&numeroTren=${encodeURIComponent(salida.numeroTren)}`,
-                        )
-                      }
-                      style={{ marginTop: 2, alignSelf: 'flex-start' }}
-                    >
-                      <Text style={{ color: paleta.primario, fontSize: 13, fontWeight: '600' }}>
-                        {t('trenes.crearAlertaFila')}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ))}
+              {(salidas ?? []).map((salida, i) => {
+                const clave = `${salida.numeroTren}-${salida.salida}`;
+                const esConsultada = Boolean(estacionSel && salida.destinoNombre !== estacionSel);
+                const plazasAbiertas = plazasSalida === clave;
+                return (
+                  <View key={clave} style={{ marginTop: 6 }}>
+                    <Text style={s.nombre}>
+                      {horaGtfs(salida.salida)} · {salida.numeroTren}
+                    </Text>
+                    <Text style={s.meta}>
+                      {salida.origenNombre} → {salida.destinoNombre}
+                      {salida.operador ? ` · ${salida.operador}` : ''}
+                    </Text>
+                    {esConsultada ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 12,
+                          marginTop: 4,
+                        }}
+                      >
+                        <Boton
+                          titulo={t('trenes.verPlazas')}
+                          variante="contorno"
+                          onPress={() => setPlazasSalida(plazasAbiertas ? null : clave)}
+                        />
+                        <Pressable
+                          onPress={() =>
+                            router.push(
+                              `/alertas/nueva?origen=${encodeURIComponent(estacionSel)}` +
+                                `&destino=${encodeURIComponent(salida.destinoNombre)}` +
+                                `&fecha=${new Date().toISOString().slice(0, 10)}` +
+                                `&numeroTren=${encodeURIComponent(salida.numeroTren)}`,
+                            )
+                          }
+                        >
+                          <Text style={{ color: paleta.primario, fontSize: 13, fontWeight: '600' }}>
+                            {t('trenes.crearAlertaFila')}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                    {esConsultada && plazasAbiertas ? (
+                      <PanelPlazasPrecio
+                        origen={estacionSel}
+                        destino={salida.destinoNombre}
+                        fecha={new Date().toISOString().slice(0, 10)}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
             </ScrollView>
           )}
         </Tarjeta>

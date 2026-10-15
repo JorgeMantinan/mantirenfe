@@ -334,6 +334,7 @@ export const es = {
     rangoQuitar: 'Quitar',
     noEncuentrasTrayecto: 'Si no encuentras tu trayecto, escribe aquí Origen y Destino',
     irABuscarTrenes: 'Buscar trenes',
+    buscarMiTren: 'Buscar mi tren',
     verPlazas: 'Plazas y precio',
     plazasCargando: 'Consultando plazas y precios en la venta de Renfe...',
     plazasError: 'No se pudieron consultar las plazas y precios. Inténtalo en unos minutos.',

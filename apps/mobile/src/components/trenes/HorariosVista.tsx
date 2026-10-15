@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { router } from 'expo-router';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   esOuigo,
@@ -212,7 +212,6 @@ export function HorariosVista({
               destino={destino}
               fecha={fecha}
               onCrearAlerta={onCrearAlerta}
-              plazasAbiertas={plazasAbiertas}
               onPlazas={() => onPlazasFila(plazasAbiertas ? null : clave)}
             />
             {plazasAbiertas ? (
@@ -239,7 +238,6 @@ const FilaHorario = memo(function FilaHorario({
   destino,
   fecha,
   onCrearAlerta,
-  plazasAbiertas,
   onPlazas,
 }: {
   horario: HorarioTrenResponse;
@@ -247,7 +245,6 @@ const FilaHorario = memo(function FilaHorario({
   destino: string;
   fecha: string;
   onCrearAlerta: (numeroTren: string) => void;
-  plazasAbiertas: boolean;
   onPlazas: () => void;
 }) {
   const { paleta } = useTema();
@@ -289,22 +286,8 @@ const FilaHorario = memo(function FilaHorario({
           </Text>
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
-        <Pressable
-          onPress={onPlazas}
-          accessibilityRole="button"
-          accessibilityState={{ selected: plazasAbiertas }}
-        >
-          <Text
-            style={{
-              color: paleta.primario,
-              fontSize: 13,
-              fontWeight: '600',
-            }}
-          >
-            {t('trenes.verPlazas')}
-          </Text>
-        </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+        <Boton titulo={t('trenes.verPlazas')} variante="contorno" onPress={onPlazas} />
         <Boton
           titulo={t('trenes.masAlerta')}
           variante="contorno"

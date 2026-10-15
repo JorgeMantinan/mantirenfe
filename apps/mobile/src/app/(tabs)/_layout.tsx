@@ -62,12 +62,14 @@ export default function TabsLayout() {
           ),
         }}
       />
+      {/* Ajustes vive en el icono de la cabecera; su sitio en la barra lo
+          ocupa «Buscar mi tren», el buscador de horarios con precios */}
       <Tabs.Screen
-        name="ajustes"
+        name="buscar"
         options={{
-          title: t('pestanas.ajustes'),
+          title: t('trenes.buscarMiTren'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <Ionicons name="search-outline" size={size} color={color} />
           ),
         }}
       />
