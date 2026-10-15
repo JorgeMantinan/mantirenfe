@@ -489,6 +489,7 @@ export const en: MismoArbol<Claves> = {
     proximoViaje: 'Next trip: {{fecha}}',
     sinSalidas: 'No departures today. Open MantiRenfe to refresh your alerts.',
     sinSalidasCorto: 'No departures',
+    abreApp: 'Open MantiRenfe to refresh',
     manana: 'tomorrow',
     accesibilidad: 'Next train, open MantiRenfe',
     plazasDesde: 'Seats from {{precio}}',

@@ -138,6 +138,27 @@ describe('calcularSalidasWidget', () => {
     expect(calcularSalidasWidget([alerta({ horaHasta: '09:00' })], AHORA).salidas).toHaveLength(0);
   });
 
+  it('trayecto cotidiano: las filas HH:MM del sondeo valen también para los días siguientes', () => {
+    const hhmm: EstadoSerializado[] = [
+      { trenId: 'h1', numeroTren: '04314', salida: '07:35', disponible: true, precioMin: 10 },
+    ];
+    const datos = calcularSalidasWidget(
+      [
+        alerta({
+          recurrente: true,
+          fechaViaje: '2026-01-01',
+          fechaObjetivoSondeo: HOY,
+          ultimoEstado: hhmm,
+        }),
+      ],
+      AHORA, // 09:30: la de 07:35 ya ha salido hoy
+    );
+
+    // Sin reutilizar, solo valdría el día evaluado (hoy) y ya pasó: «Sin salidas»
+    expect(datos.salidas).toHaveLength(1);
+    expect(datos.salidas[0]).toMatchObject({ salida: '07:35', fecha: '2026-09-29' });
+  });
+
   it('descarta trenes cancelados', () => {
     const cancelado: EstadoSerializado[] = SONDEO.map((t) =>
       t.trenId === 't2' ? { ...t, cancelado: true } : t,
@@ -366,8 +387,8 @@ describe('resumenWidget (widget mini)', () => {
     });
   });
 
-  it('estado vacío: "Sin salidas" o el próximo viaje conocido', () => {
-    expect(resumenWidget(null, AHORA).vacio).toBe('Sin salidas');
+  it('estado vacío: sin caché pide abrir la app, con datos «Sin salidas» o el próximo viaje', () => {
+    expect(resumenWidget(null, AHORA).vacio).toBe('Abre MantiRenfe para actualizar');
     expect(resumenWidget(calcularSalidasWidget([], AHORA), AHORA).vacio).toBe('Sin salidas');
 
     const conViaje = calcularSalidasWidget(

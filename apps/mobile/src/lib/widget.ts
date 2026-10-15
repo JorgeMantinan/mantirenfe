@@ -195,7 +195,12 @@ export function calcularSalidasWidget(
           if (salida.includes('T')) {
             if (salida.slice(0, 10) !== delDia) return false;
           } else if (fechaEstado !== delDia) {
-            return false;
+            // Trayecto cotidiano: las filas HH:MM del último sondeo valen
+            // como horario de cualquier día aplicable posterior (el widget
+            // pinta la próxima salida, no el estado de un día concreto). Sin
+            // eso, una alerta diaria solo mostraba salidas el día evaluado y
+            // el resto decía «Sin salidas».
+            if (!alerta.recurrente || delDia < fechaEstado) return false;
           }
           const hhmm = salida.includes('T') ? salida.slice(11, 16) : salida.slice(0, 5);
           // Hoy solo interesan las salidas que aún no han salido
@@ -348,9 +353,12 @@ export function resumenWidget(datos: DatosWidget | null, hoy: Date = new Date())
       numeroTren: null,
       ruta: null,
       dia: null,
-      vacio: proximo
-        ? t('widget.proximoViaje', { fecha: fechaCorta(proximo) })
-        : t('widget.sinSalidasCorto'),
+      vacio: !datos
+        ? // Sin caché: todavía no se ha sincronizado (app sin abrir)
+          t('widget.abreApp')
+        : proximo
+          ? t('widget.proximoViaje', { fecha: fechaCorta(proximo) })
+          : t('widget.sinSalidasCorto'),
     };
   }
   const fecha = salida.fecha ?? datos?.fecha ?? '';
