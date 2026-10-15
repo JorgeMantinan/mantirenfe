@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { horaGtfs, type TrenDisponibilidadResponse } from '@mantirenfe/shared-types';
-import { Tarjeta } from '@/components/Tarjeta';
+import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
 import { api } from '@/lib/api';
 import { formatearPrecio } from '@/lib/precios';
@@ -97,20 +97,32 @@ export function PanelPlazasPrecio({
           <Text style={s.meta}>{t('trenes.plazasSinDatos')}</Text>
         ) : (
           estado.trenes.map((tren) => (
-            <View key={`${tren.numeroTren}-${tren.salida}`} style={{ marginTop: 4 }}>
+            <View
+              key={`${tren.numeroTren}-${tren.salida}`}
+              style={{
+                marginTop: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
               <Text style={s.nombre}>
                 {horaGtfs(tren.salida)} · {tren.numeroTren}
               </Text>
-              <Text style={s.meta}>
+              <Etiqueta tono={tren.cancelado ? 'error' : tren.disponible ? 'exito' : 'neutro'}>
                 {tren.cancelado
                   ? t('comunes.cancelado')
                   : tren.disponible
-                    ? t('trenes.plazasSi')
-                    : t('trenes.plazasNo')}
-                {' · '}
-                {formatearPrecio(tren.precioMin)}
-                {tren.tarifa ? ` · ${tren.tarifa}` : ''}
-              </Text>
+                    ? t('comunes.hayPlazas')
+                    : t('comunes.completo')}
+              </Etiqueta>
+              {tren.precioMin !== null ? (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: paleta.aviso }}>
+                  {t('detalle.desde', { precio: formatearPrecio(tren.precioMin) })}
+                  {tren.tarifa ? ` · ${tren.tarifa}` : ''}
+                </Text>
+              ) : null}
             </View>
           ))
         )

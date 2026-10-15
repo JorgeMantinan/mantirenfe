@@ -431,16 +431,42 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
         )}
 
         {modo === 'estaciones' && (
-          <TextInput
-            style={s.campo}
-            placeholder={t('trenes.placeholderBuscar')}
-            placeholderTextColor={paleta.textoSecundario}
-            value={buscar}
-            onChangeText={(v) => {
-              setBuscar(v);
-              buscarEstacionesTexto(v);
-            }}
-          />
+          <>
+            <TextInput
+              style={s.campo}
+              placeholder={t('trenes.placeholderBuscar')}
+              placeholderTextColor={paleta.textoSecundario}
+              value={buscar}
+              onChangeText={(v) => {
+                setBuscar(v);
+                buscarEstacionesTexto(v);
+              }}
+            />
+            {/* Siempre visible junto al buscador: salta al formulario de ruta */}
+            <Pressable
+              onPress={() => setModo('horarios')}
+              accessibilityRole="button"
+              style={{
+                borderWidth: 1.5,
+                borderStyle: 'dashed',
+                borderColor: paleta.primario,
+                borderRadius: 10,
+                padding: 12,
+                marginTop: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: paleta.primario,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {t('trenes.noEncuentrasTrayecto')}
+              </Text>
+            </Pressable>
+          </>
         )}
 
         {modo === 'posiciones' && vistaPos === 'lista' && (

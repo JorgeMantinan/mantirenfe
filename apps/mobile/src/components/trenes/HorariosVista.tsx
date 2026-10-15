@@ -11,6 +11,7 @@ import {
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
+import { BotonPlazas } from '@/components/trenes/BotonPlazas';
 import { PanelPlazasPrecio } from '@/components/trenes/PanelPlazasPrecio';
 import { useTema } from '@/lib/tema-contexto';
 import { espaciado } from '@/lib/tema';
@@ -212,6 +213,7 @@ export function HorariosVista({
               destino={destino}
               fecha={fecha}
               onCrearAlerta={onCrearAlerta}
+              plazasAbiertas={plazasAbiertas}
               onPlazas={() => onPlazasFila(plazasAbiertas ? null : clave)}
             />
             {plazasAbiertas ? (
@@ -238,6 +240,7 @@ const FilaHorario = memo(function FilaHorario({
   destino,
   fecha,
   onCrearAlerta,
+  plazasAbiertas,
   onPlazas,
 }: {
   horario: HorarioTrenResponse;
@@ -245,6 +248,7 @@ const FilaHorario = memo(function FilaHorario({
   destino: string;
   fecha: string;
   onCrearAlerta: (numeroTren: string) => void;
+  plazasAbiertas: boolean;
   onPlazas: () => void;
 }) {
   const { paleta } = useTema();
@@ -287,7 +291,7 @@ const FilaHorario = memo(function FilaHorario({
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-        <Boton titulo={t('trenes.verPlazas')} variante="contorno" onPress={onPlazas} />
+        <BotonPlazas activo={plazasAbiertas} onPress={onPlazas} />
         <Boton
           titulo={t('trenes.masAlerta')}
           variante="contorno"

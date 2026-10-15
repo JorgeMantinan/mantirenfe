@@ -35,12 +35,24 @@ export default function TabsLayout() {
         ),
       }}
     >
+      {/* Orden de la barra: Alertas · Buscar mi tren · Trenes · Avisos.
+          Ajustes no es pestaña (su ruta vive y se abre desde el engranaje
+          de la cabecera: `href: null` la oculta de la barra). */}
       <Tabs.Screen
         name="index"
         options={{
           title: t('pestanas.alertas'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="buscar"
+        options={{
+          title: t('trenes.buscarMiTren'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search-outline" size={size} color={color} />
           ),
         }}
       />
@@ -62,17 +74,7 @@ export default function TabsLayout() {
           ),
         }}
       />
-      {/* Ajustes vive en el icono de la cabecera; su sitio en la barra lo
-          ocupa «Buscar mi tren», el buscador de horarios con precios */}
-      <Tabs.Screen
-        name="buscar"
-        options={{
-          title: t('trenes.buscarMiTren'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search-outline" size={size} color={color} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="ajustes" options={{ href: null }} />
     </Tabs>
   );
 }

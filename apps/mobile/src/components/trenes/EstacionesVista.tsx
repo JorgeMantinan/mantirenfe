@@ -11,6 +11,7 @@ import {
 import { Boton } from '@/components/Boton';
 import { Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
+import { BotonPlazas } from '@/components/trenes/BotonPlazas';
 import { PanelPlazasPrecio } from '@/components/trenes/PanelPlazasPrecio';
 import { locale } from '@/i18n';
 import { useTema } from '@/lib/tema-contexto';
@@ -154,9 +155,8 @@ export function EstacionesVista({
                           marginTop: 4,
                         }}
                       >
-                        <Boton
-                          titulo={t('trenes.verPlazas')}
-                          variante="contorno"
+                        <BotonPlazas
+                          activo={plazasAbiertas}
                           onPress={() => setPlazasSalida(plazasAbiertas ? null : clave)}
                         />
                         <Pressable
@@ -198,22 +198,6 @@ export function EstacionesVista({
         onEndReachedThreshold={0.4}
         onEndReached={onCargarMas}
         initialNumToRender={10}
-        ListHeaderComponent={
-          <Pressable
-            onPress={onBuscarTrenes}
-            accessibilityRole="button"
-            style={{
-              borderWidth: 1,
-              borderStyle: 'dashed',
-              borderColor: paleta.borde,
-              borderRadius: 8,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={s.meta}>{t('trenes.noEncuentrasTrayecto')}</Text>
-          </Pressable>
-        }
         ListFooterComponent={
           <View style={{ marginTop: 12, gap: 8 }}>
             {cargandoMas ? <Text style={s.pieLista}>{t('trenes.cargandoMas')}</Text> : null}
