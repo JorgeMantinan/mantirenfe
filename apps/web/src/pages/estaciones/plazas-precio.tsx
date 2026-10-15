@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { BellPlus } from 'lucide-react';
+import { BellPlus, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatearPrecio } from '@/lib/precios';
 import { Button } from '@/components/ui/button';
@@ -31,9 +31,11 @@ export function obtenerPlazasPrecio(
   origen: string,
   destino: string,
   fecha: string,
+  forzar = false,
 ): Promise<TrenDisponibilidadResponse[]> {
   const clave = clavePlazasPrecio(origen, destino, fecha);
   const ahora = Date.now();
+  if (forzar) cachePlazas.delete(clave);
   const previa = cachePlazas.get(clave);
   if (previa && previa.caduca > ahora) return previa.promesa;
 
@@ -73,6 +75,15 @@ type EstadoPanel =
 export function PanelPlazasPrecio({ origen, destino, fecha }: PanelPlazasPrecioProps) {
   const { t } = useTranslation();
   const [estado, setEstado] = useState<EstadoPanel>({ fase: 'cargando' });
+  const [actualizando, setActualizando] = useState(false);
+
+  const recargar = () => {
+    setActualizando(true);
+    obtenerPlazasPrecio(origen, destino, fecha, true)
+      .then((trenes) => setEstado({ fase: 'ok', trenes }))
+      .catch(() => setEstado({ fase: 'error' }))
+      .finally(() => setActualizando(false));
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -95,6 +106,15 @@ export function PanelPlazasPrecio({ origen, destino, fecha }: PanelPlazasPrecioP
 
   return (
     <div className="space-y-2 p-2" data-testid="panel-plazas-precio">
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" onClick={recargar} disabled={actualizando}>
+          <RefreshCw
+            className={`h-4 w-4 ${actualizando ? 'animate-spin' : ''}`}
+            aria-hidden="true"
+          />
+          {t('estaciones.actualizar')}
+        </Button>
+      </div>
       {estado.fase === 'cargando' ? (
         <div aria-live="polite" className="space-y-2">
           <Skeleton className="h-4 w-full" />

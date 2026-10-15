@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { horaGtfs, type TrenDisponibilidadResponse } from '@mantirenfe/shared-types';
+import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
 import { estilosTrenes } from '@/components/trenes/estilos';
 import { api } from '@/lib/api';
@@ -24,9 +25,11 @@ function obtenerPlazasPrecio(
   origen: string,
   destino: string,
   fecha: string,
+  forzar = false,
 ): Promise<TrenDisponibilidadResponse[]> {
   const clave = `${origen}|${destino}|${fecha}`;
   const ahora = Date.now();
+  if (forzar) cachePlazas.delete(clave);
   const previa = cachePlazas.get(clave);
   if (previa && previa.caduca > ahora) return previa.promesa;
 
@@ -69,6 +72,15 @@ export function PanelPlazasPrecio({
   const { t } = useTranslation();
   const s = useMemo(() => estilosTrenes(paleta), [paleta]);
   const [estado, setEstado] = useState<EstadoPanel>({ fase: 'cargando' });
+  const [actualizando, setActualizando] = useState(false);
+
+  const recargar = () => {
+    setActualizando(true);
+    obtenerPlazasPrecio(origen, destino, fecha, true)
+      .then((trenes) => setEstado({ fase: 'ok', trenes }))
+      .catch(() => setEstado({ fase: 'error' }))
+      .finally(() => setActualizando(false));
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -87,7 +99,16 @@ export function PanelPlazasPrecio({
 
   return (
     <Tarjeta style={{ marginTop: 6, marginBottom: 6 }}>
-      <Text style={s.nombre}>{t('trenes.verPlazas')}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={s.nombre}>{t('trenes.verPlazas')}</Text>
+        <Boton
+          titulo={t('comunes.actualizar')}
+          variante="fantasma"
+          cargando={actualizando}
+          onPress={recargar}
+          style={{ minHeight: 36, paddingVertical: 4, paddingHorizontal: 8 }}
+        />
+      </View>
       {estado.fase === 'cargando' ? <Text style={s.meta}>{t('trenes.plazasCargando')}</Text> : null}
       {estado.fase === 'error' ? (
         <Text style={{ color: paleta.error, fontSize: 13 }}>{t('trenes.plazasError')}</Text>

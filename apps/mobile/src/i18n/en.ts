@@ -28,6 +28,7 @@ export const en: MismoArbol<Claves> = {
     hayPlazas: 'Seats available',
     sinDatos: 'No data',
     plazas: 'Seats',
+    actualizar: 'Refresh',
     errorActualizar: 'Could not be updated',
     timeout: 'The request took too long. Check your connection and try again.',
     avisoConfig: 'EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are missing in .env',

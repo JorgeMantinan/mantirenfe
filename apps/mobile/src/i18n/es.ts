@@ -26,6 +26,7 @@ export const es = {
     hayPlazas: 'Hay plazas',
     sinDatos: 'Sin datos',
     plazas: 'Plazas',
+    actualizar: 'Actualizar',
     errorActualizar: 'No se pudo actualizar',
     timeout: 'La petición ha tardado demasiado. Comprueba tu conexión e inténtalo de nuevo.',
     avisoConfig:
