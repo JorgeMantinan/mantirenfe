@@ -18,7 +18,7 @@ import {
 } from '@mantirenfe/shared-types';
 import { FuenteRenfeDwr } from '@mantirenfe/venta';
 import { aplicarRetrasos, type PosicionCruda } from './retrasos';
-import { enriquecerPosiciones } from './enriquecer';
+import { enriquecerPosiciones, type HorarioActivo } from './enriquecer';
 import { trayectosPorParadas } from './paradas';
 import { Semforo } from '../common/semforo';
 import {
@@ -80,6 +80,13 @@ export class TrenesService {
   /** Cliente DWR de la venta: su caché por ruta+fecha es por proceso (módulo). */
   private readonly fuenteVenta = new FuenteRenfeDwr();
   private cachePosiciones: CachePosiciones | null = null;
+  // Horarios por número para enriquecer el mapa: se recargan como mucho cada
+  // 10 min (y se limpian al cambiar de día). Antes se consultaban a la BD en
+  // CADA refresco del mapa (cada 30 s, hasta 5.000 filas de horarioTren):
+  // era de los mayores consumidores de egress de Supabase.
+  private horariosPorTren = new Map<string, HorarioActivo[]>();
+  private rellenoHorariosHasta = 0;
+  private diaHorarios = '';
   private enCurso = false;
   private ultimaPersistenciaPosiciones = 0;
   private readonly intervaloPersistenciaMs =
@@ -346,49 +353,65 @@ export class TrenesService {
     posiciones: PosicionTrenResponse[],
   ): Promise<PosicionTrenResponse[]> {
     try {
-      const claves = new Set<string>();
-      for (const p of posiciones) {
-        if (p.numeroTren) claves.add(p.numeroTren);
-        if (p.tripId) claves.add(p.tripId);
-      }
-      if (claves.size === 0) return posiciones;
+      const numeros = [
+        ...new Set(posiciones.map((p) => p.numeroTren).filter((n): n is string => Boolean(n))),
+      ];
+      if (numeros.length === 0) return posiciones;
 
       const hoy = new Date();
       hoy.setUTCHours(0, 0, 0, 0);
       const ayer = new Date(hoy);
       ayer.setUTCDate(ayer.getUTCDate() - 1);
 
-      const horarios = await getPrisma().horarioTren.findMany({
-        where: {
-          fecha: { in: [ayer, hoy] },
-          numeroTren: { in: [...claves] },
-        },
-        select: {
-          numeroTren: true,
-          salida: true,
-          llegada: true,
-          operador: true,
-          origen: { select: { nombre: true } },
-          destino: { select: { nombre: true } },
-        },
-        // Red de seguridad: los números en juego son los de los trenes
-        // visible en el mapa (≤ ~500) × 2 días, muy por debajo del tope.
-        take: 5_000,
-      });
-      if (horarios.length === 0) return posiciones;
+      // Caché por número: los horarios del día no cambian. Solo se piden los
+      // que falten y como mucho cada 10 min; al cambiar de día se vacía.
+      const dia = hoy.toISOString().slice(0, 10);
+      if (this.diaHorarios !== dia) {
+        this.diaHorarios = dia;
+        this.horariosPorTren.clear();
+        this.rellenoHorariosHasta = 0;
+      }
+      const faltan = numeros.filter((n) => !this.horariosPorTren.has(n));
+      if (faltan.length > 0 && Date.now() >= this.rellenoHorariosHasta) {
+        this.rellenoHorariosHasta = Date.now() + 10 * 60_000;
+        const horarios = await getPrisma().horarioTren.findMany({
+          where: {
+            fecha: { in: [ayer, hoy] },
+            numeroTren: { in: faltan },
+          },
+          select: {
+            numeroTren: true,
+            salida: true,
+            llegada: true,
+            operador: true,
+            origen: { select: { nombre: true } },
+            destino: { select: { nombre: true } },
+          },
+          // Red de seguridad: los números en juego son los de los trenes
+          // visible en el mapa (≤ ~500) × 2 días, muy por debajo del tope.
+          take: 5_000,
+        });
+        for (const h of horarios) {
+          const lista = this.horariosPorTren.get(h.numeroTren) ?? [];
+          lista.push({
+            numeroTren: h.numeroTren,
+            origenNombre: h.origen.nombre,
+            destinoNombre: h.destino.nombre,
+            salida: h.salida,
+            llegada: h.llegada,
+            operador: h.operador,
+          });
+          this.horariosPorTren.set(h.numeroTren, lista);
+        }
+        // Los que no traen horario quedan marcados: no se vuelven a pedir
+        for (const n of faltan) {
+          if (!this.horariosPorTren.has(n)) this.horariosPorTren.set(n, []);
+        }
+      }
 
-      return enriquecerPosiciones(
-        posiciones,
-        horarios.map((h) => ({
-          numeroTren: h.numeroTren,
-          origenNombre: h.origen.nombre,
-          destinoNombre: h.destino.nombre,
-          salida: h.salida,
-          llegada: h.llegada,
-          operador: h.operador,
-        })),
-        new Date(),
-      );
+      const planos = numeros.flatMap((n) => this.horariosPorTren.get(n) ?? []);
+      if (planos.length === 0) return posiciones;
+      return enriquecerPosiciones(posiciones, planos, new Date());
     } catch (error) {
       this.logger.warn(`No se pudieron enriquecer posiciones con horarios: ${String(error)}`);
       return posiciones;

@@ -186,11 +186,23 @@ let cacheEstaciones: {
 } | null = null;
 const TTL_ESTACIONES_MS = 30 * 60_000;
 
+/** Huella del feed visto por última vez: si no cambia, la BD no se toca. */
+let ultimaHuellaFeed: string | null = null;
+
 export async function sincronizarIncidencias(logger: Logger): Promise<void> {
   const url = urlAlertas();
   try {
     const datos = await descargarAlertasGtfsRt(url);
     const alertas = parsearAlertasGtfsRt(datos);
+    // Si el feed no ha cambiado desde el último barrido no se toca la BD:
+    // el upsert de TODAS las alertas cada minuto (con RETURNING de la fila
+    // completa) era un goteo constante de egress de Supabase (~68 filas ×
+    // 1440/día ≈ 1,7 GB/mes cuando el feed está quieto).
+    const huella = JSON.stringify(alertas);
+    if (huella === ultimaHuellaFeed) {
+      logger.debug({ recibidas: alertas.length }, 'Feed de incidencias sin cambios');
+      return;
+    }
     const prisma = getPrisma();
 
     let porCodigo = new Map<string, string>();
@@ -250,6 +262,8 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
       { recibidas: alertas.length, activas: vigentes.size, desactivadas: desactivadas.count },
       'Incidencias GTFS-RT sincronizadas',
     );
+    // Solo tras escribir con éxito: si falla, el próximo barrido reintegra
+    ultimaHuellaFeed = huella;
   } catch (error) {
     logger.warn({ url, err: error }, 'Incidencias GTFS-RT: no se pudo actualizar el feed');
   }
