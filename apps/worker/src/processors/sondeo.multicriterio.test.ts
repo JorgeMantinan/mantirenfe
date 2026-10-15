@@ -5,6 +5,7 @@ import {
   criteriosDeAlerta,
   estadoAnteriorPorCriterio,
   etiquetaEstado,
+  reiniciarCacheEstadoAlerta,
   sondearAlerta,
 } from './sondeo';
 
@@ -146,6 +147,7 @@ function guardado(parcial: Partial<EstadoSerializado> & { trenId: string }): Est
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reiniciarCacheEstadoAlerta();
   mundo.criterio = 'DISPONIBILIDAD';
   mundo.criterios = [];
   mundo.precioObjetivo = null;

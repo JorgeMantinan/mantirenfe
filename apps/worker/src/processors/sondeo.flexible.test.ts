@@ -5,6 +5,7 @@ import {
   cuerpoAvisoFlexible,
   fechasSondeoFlexible,
   parsearEstadoFlexible,
+  reiniciarCacheEstadoAlerta,
   sondearAlerta,
   SONDEOS_FLEXIBLE_POR_ALERTA,
 } from './sondeo';
@@ -122,6 +123,7 @@ async function sondear(): Promise<string[]> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reiniciarCacheEstadoAlerta();
   mundo.estadoFlexible = undefined;
   mundo.ultimoEstado = undefined;
   mundo.conPlazas = new Set();

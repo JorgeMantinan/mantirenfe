@@ -3,6 +3,9 @@ generator client {
   // debian-openssl-3.0.x: el engine por defecto (1.1.x) no carga en Debian 12
   // (node:*-slim) porque solo trae OpenSSL 3. "native" cubre el desarrollo local.
   binaryTargets   = ["native", "debian-openssl-3.0.x"]
+  // `omit` en las queries (5.18, estable en 6.x): el worker deja de descargar
+  // `ultimoEstado` en cada sondeo — era de los mayores consumidores de egress.
+  previewFeatures = ["omitApi"]
 }
 
 datasource db {

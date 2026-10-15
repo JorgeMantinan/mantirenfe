@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EstadoSerializado, EstadoTrenDisponible } from '@mantirenfe/shared-types';
-import { sondearAlerta } from './sondeo';
+import { reiniciarCacheEstadoAlerta, sondearAlerta } from './sondeo';
 
 /**
  * Fecha objetivo de una alerta recurrente con `diasSemana`: el sondeo trabaja
@@ -142,6 +142,7 @@ function fila(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reiniciarCacheEstadoAlerta();
   // Solo se congela el reloj: el resto de timers (promesas, await) sigue real
   vi.useFakeTimers({ toFake: ['Date'] });
   // 2026-10-06 es martes (2026-10-04 fue domingo)

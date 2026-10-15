@@ -1204,6 +1204,44 @@ async function sondearFlexible(alerta: AlertaFlexible, logger: Logger): Promise<
   );
 }
 
+/**
+ * `ultimoEstado` (el JSON grande de cada alerta) vive en memoria por proceso:
+ * solo el worker lo escribe, y si la API lo resetea o edita la alerta cambia
+ * otro campo de la fila, cosa que invalida la huella y fuerza una lectura
+ * fresca. Antes se re-descargaba de Supabase en CADA sondeo: era de los
+ * mayores consumidores de egress y el cuota free ya se ha comido (6,3 GB/5 GB).
+ */
+const cacheEstadoAlerta = new Map<string, { huella: string; estado: unknown }>();
+
+/** Vacia la caché de estado (solo para los tests, que comparten el módulo). */
+export function reiniciarCacheEstadoAlerta(): void {
+  cacheEstadoAlerta.clear();
+}
+
+/** JSON de la fila SIN el sello del sondeo (que cambia en cada ciclo). */
+function huellaFilaAlerta(fila: object): string {
+  const { ultimoSondeoEn: _sello, ...resto } = fila as Record<string, unknown>;
+  return JSON.stringify(resto);
+}
+
+/** Estado cacheado de la alerta; solo vuelve a leerlo si la fila ha cambiado. */
+async function ultimoEstadoAlerta(
+  prisma: ReturnType<typeof getPrisma>,
+  alertaId: string,
+  fila: object,
+): Promise<unknown> {
+  const huella = huellaFilaAlerta(fila);
+  const cacheado = cacheEstadoAlerta.get(alertaId);
+  if (cacheado && cacheado.huella === huella) return cacheado.estado;
+  const sola = await prisma.alerta.findUnique({
+    where: { id: alertaId },
+    select: { ultimoEstado: true },
+  });
+  const estado = sola?.ultimoEstado ?? null;
+  cacheEstadoAlerta.set(alertaId, { huella, estado });
+  return estado;
+}
+
 export async function sondearAlerta(alertaId: string, logger: Logger): Promise<void> {
   const prisma = getPrisma();
 
@@ -1239,8 +1277,10 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     return;
   }
 
-  const alerta = await prisma.alerta.findUnique({
+  const fila = await prisma.alerta.findUnique({
     where: { id: alertaId },
+    // El JSON de estado no viaja aquí: lo trae `ultimoEstadoAlerta` (caché)
+    omit: { ultimoEstado: true },
     include: {
       usuario: {
         include: {
@@ -1251,14 +1291,16 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     },
   });
 
-  if (!alerta) {
+  if (!fila) {
     logger.warn({ alertaId }, 'Alerta no existe');
+    cacheEstadoAlerta.delete(alertaId);
     return;
   }
-  if (alerta.estado !== 'ACTIVA') {
-    logger.debug({ alertaId, estado: alerta.estado }, 'Alerta no activa, se omite');
+  if (fila.estado !== 'ACTIVA') {
+    logger.debug({ alertaId, estado: fila.estado }, 'Alerta no activa, se omite');
     return;
   }
+  const alerta = { ...fila, ultimoEstado: await ultimoEstadoAlerta(prisma, alertaId, fila) };
 
   // "Cualquier fecha": el sondeo rota por el rango en vez de anclarse a un día
   if (alerta.fechaFlexible) {
@@ -1413,6 +1455,12 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
       }),
     ),
   ]);
+  // El estado recién guardado pasa a la caché: el próximo sondeo no lo vuelve
+  // a descargar de Supabase mientras la fila no cambie por otro lado.
+  const cacheadoEstado = cacheEstadoAlerta.get(alertaId);
+  if (cacheadoEstado) {
+    cacheEstadoAlerta.set(alertaId, { ...cacheadoEstado, estado: actual });
+  }
 
   // Histórico de precios para DISPONIBILIDAD y PRECIO: los dos se sondean con
   // la fuente de venta (precio disponible). RETRASO/HORARIO/APERTURA_VENTA no

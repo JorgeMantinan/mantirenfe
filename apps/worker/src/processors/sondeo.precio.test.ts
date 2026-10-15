@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EstadoSerializado, EstadoTrenDisponible } from '@mantirenfe/shared-types';
-import { sondearAlerta } from './sondeo';
+import { reiniciarCacheEstadoAlerta, sondearAlerta } from './sondeo';
 
 /**
  * Mundo en memoria del test: la fuente devuelve `trenes`, el prisma ficticio
@@ -123,6 +123,7 @@ async function sondear(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reiniciarCacheEstadoAlerta();
   mundo.criterio = 'PRECIO';
   mundo.precioObjetivo = 35;
   mundo.trenes = [];

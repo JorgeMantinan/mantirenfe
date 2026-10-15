@@ -1,7 +1,13 @@
 import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EstadoSerializado, EstadoTrenDisponible } from '@mantirenfe/shared-types';
-import { esFilaEscala, minutosDeHora, sondearAlerta, textoHoraMin } from './sondeo';
+import {
+  esFilaEscala,
+  minutosDeHora,
+  reiniciarCacheEstadoAlerta,
+  sondearAlerta,
+  textoHoraMin,
+} from './sondeo';
 
 /**
  * Mundo en memoria del test: la fuente devuelve los directos de la ruta (sin
@@ -221,6 +227,7 @@ async function sondear(): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reiniciarCacheEstadoAlerta();
   mundo.conexiones = true;
   mundo.criterio = 'DISPONIBILIDAD';
   mundo.criterios = ['DISPONIBILIDAD'];
