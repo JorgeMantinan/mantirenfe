@@ -434,14 +434,13 @@ describe('TrenesService.puntualidadMes (agrupación por eje)', () => {
     expect(respuestas.every((r) => JSON.stringify(r) === JSON.stringify(respuestas[0]))).toBe(true);
   });
 
-  it('si ParadaHorario no devuelve nada, todo el mes agrupa por vehículo', async () => {
+  it('los grupos sin trayecto completo no se listan (tren sin ruta en el feed)', async () => {
     instalar({ servicios: SERVICIOS, paradas: [], estaciones: [MADRID] });
 
     const respuesta = await new TrenesService().puntualidadMes(MES);
 
-    // Un solo vehículo → un solo grupo con los4 servicios
-    expect(respuesta).toHaveLength(1);
-    expect(respuesta[0]?.clave).toBe('veh:V1');
-    expect(respuesta[0]?.vecesImpuntuales).toBe(4);
+    // Agrupados por vehículo pero sin origen/destino/salida/llegada: quedan
+    // fuera del ranking («solo el nombre del tren» = no en funcionamiento)
+    expect(respuesta).toEqual([]);
   });
 });

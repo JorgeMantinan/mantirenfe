@@ -73,7 +73,12 @@ export class TrenesController {
   @Get('puntualidad')
   @EsPublico()
   @Throttle({ default: { ttl: 10_000, limit: 10 } })
-  puntualidad(@Query('mes') mes?: string, @Query('orden') orden?: string) {
-    return this.trenesService.puntualidadMes(mes, orden);
+  puntualidad(
+    @Query('mes') mes?: string,
+    @Query('orden') orden?: string,
+    @Query('q') q?: string,
+    @Query('limite') limite?: string,
+  ) {
+    return this.trenesService.puntualidadMes(mes, orden, q, limite);
   }
 }

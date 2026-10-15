@@ -1,5 +1,5 @@
-import { memo, useMemo } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { FlatList, RefreshControl, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { horaGtfs, type PuntualidadTrenResponse } from '@mantirenfe/shared-types';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
@@ -12,30 +12,99 @@ type ImpuntualesVistaProps = {
   datos: PuntualidadTrenResponse[] | null;
   error: string | null;
   onRefrescar: () => void;
+  /** Texto del buscador (la petición va con el valor ya debounced). */
+  q: string;
+  onQ: (texto: string) => void;
 };
+
+type ColImpuntuales = 'veces' | 'medio' | 'peor';
 
 function formatMinutos(segundos: number): string {
   if (segundos < 60) return `${Math.round(segundos)} s`;
   return `${Math.round(segundos / 60)} min`;
 }
 
-export function ImpuntualesVista({ cargando, datos, error, onRefrescar }: ImpuntualesVistaProps) {
+export function ImpuntualesVista({
+  cargando,
+  datos,
+  error,
+  onRefrescar,
+  q,
+  onQ,
+}: ImpuntualesVistaProps) {
   const { paleta } = useTema();
   const { t } = useTranslation();
   const s = useMemo(() => estilosTrenes(paleta), [paleta]);
+  // Ordenación local por columna (los datos vienen por «veces» de la API)
+  const [ordenCol, setOrdenCol] = useState<{ col: ColImpuntuales; dir: 'asc' | 'desc' } | null>(
+    null,
+  );
+
+  const datosVista = useMemo(() => {
+    const arr = datos ?? [];
+    if (!ordenCol) return arr;
+    const dir = ordenCol.dir === 'asc' ? 1 : -1;
+    return [...arr].sort((a, b) => {
+      if (ordenCol.col === 'veces') return (a.vecesImpuntuales - b.vecesImpuntuales) * dir;
+      if (ordenCol.col === 'medio') return (a.retrasoMedioSeg - b.retrasoMedioSeg) * dir;
+      return (a.retrasoMaxSeg - b.retrasoMaxSeg) * dir;
+    });
+  }, [datos, ordenCol]);
+
+  const etiquetas: Record<ColImpuntuales, string> = {
+    veces: t('trenes.orden.veces'),
+    medio: t('trenes.orden.retraso'),
+    peor: t('trenes.ordenPeor'),
+  };
+  const columnas: ColImpuntuales[] = ['veces', 'medio', 'peor'];
+
+  const alternarOrden = (col: ColImpuntuales) => {
+    if (ordenCol?.col === col) {
+      setOrdenCol({ col, dir: ordenCol.dir === 'desc' ? 'asc' : 'desc' });
+    } else {
+      setOrdenCol({ col, dir: 'desc' });
+    }
+  };
 
   return (
     <FlatList
-      data={datos ?? []}
+      data={datosVista}
       keyExtractor={(item) => item.clave ?? item.vehiculoId}
-      refreshControl={<RefreshControl refreshing={cargando} onRefresh={onRefrescar} />}
+      refreshControl={<RefreshControl refreshing={cargando} onRefresh={() => onRefrescar()} />}
       contentContainerStyle={s.lista}
       ListHeaderComponent={
-        error ? (
-          <Tarjeta style={{ borderColor: paleta.error }}>
-            <Text style={{ color: paleta.error }}>{error}</Text>
-          </Tarjeta>
-        ) : null
+        <View style={{ gap: 8, marginBottom: 8 }}>
+          {error ? (
+            <Tarjeta style={{ borderColor: paleta.error }}>
+              <Text style={{ color: paleta.error }}>{error}</Text>
+            </Tarjeta>
+          ) : null}
+          <TextInput
+            style={s.campo}
+            placeholder={t('trenes.buscarImpuntuales')}
+            placeholderTextColor={paleta.textoSecundario}
+            value={q}
+            onChangeText={onQ}
+          />
+          <View style={s.modos}>
+            {columnas.map((col) => (
+              <Text
+                key={col}
+                style={[s.modo, ordenCol?.col === col && s.modoActivo]}
+                onPress={() => alternarOrden(col)}
+                suppressHighlighting
+              >
+                {etiquetas[col]}
+                {ordenCol?.col === col ? (ordenCol.dir === 'desc' ? ' ↓' : ' ↑') : ''}
+              </Text>
+            ))}
+            {ordenCol ? (
+              <Text style={s.modo} onPress={() => setOrdenCol(null)} suppressHighlighting>
+                {t('trenes.reiniciarOrden')}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       }
       ListEmptyComponent={
         error ? null : (

@@ -109,7 +109,9 @@ export class TrenesService {
   private readonly semaforoPuntualidad = new Semforo(2);
   private readonly cachePuntualidad = new Map<string, EntradaPuntualidad>();
   private readonly puntualidadEnCurso = new Map<string, Promise<PuntualidadTrenResponse[]>>();
-  private static readonly TTL_PUNTUALIDAD_MS = 60_000;
+  //5 minutos: la puntualidad de un mes cambia poco y cada recálculo cuesta
+  // ~9 MB de egress (ParadaHorario); con60 s era un goteo constante.
+  private static readonly TTL_PUNTUALIDAD_MS = 5 * 60_000;
   private static readonly MAX_CACHE_PUNTUALIDAD = 60;
 
   async horarios(query: unknown): Promise<HorariosResponse> {
@@ -773,14 +775,19 @@ export class TrenesService {
       .sort((a, b) => a.salida.localeCompare(b.salida));
   }
 
-  async puntualidadMes(mes?: string, orden?: string): Promise<PuntualidadTrenResponse[]> {
-    // Clave CANÓNICA (no la entrada cruda del usuario): `rangoMes` ya resuelve
-    // mes inválido = mes en curso y solo hay dos ordenaciones reales. Sin esto,
-    // un `?mes=basura` o un `?orden=x` distinto fabricaría claves nuevas y
-    // saltaría la caché + el single-flight, permitiendo N cálculos de 63k filas
-    // en paralelo (justo lo que revienta los 512 MB de Render).
+  async puntualidadMes(
+    mes?: string,
+    orden?: string,
+    q?: string,
+    limite?: string,
+  ): Promise<PuntualidadTrenResponse[]> {
+    // Clave CANÓNICA por MES (no la entrada cruda del usuario): `rangoMes` ya
+    // resuelve mes inválido = mes en curso. El orden y la búsqueda se aplican
+    // después sobre la lista cacheada (son cortes en memoria), así que un
+    // `?orden=` o un `?q=` distintos NO recalculan las 63k filas (antes la
+    // clave incluía el orden: dos caches ×9 MB de paradas cada caducidad).
     const { desde, hasta } = rangoMes(mes);
-    const clave = `${desde.toISOString()}|${hasta.toISOString()}|${orden === 'impuntualidad' ? 'impuntualidad' : 'veces'}`;
+    const clave = `${desde.toISOString()}|${hasta.toISOString()}`;
 
     const cacheada = this.cachePuntualidad.get(clave);
     if (cacheada) {
@@ -788,17 +795,17 @@ export class TrenesService {
         // Reinsertar la marca la como la más reciente (LRU)
         this.cachePuntualidad.delete(clave);
         this.cachePuntualidad.set(clave, cacheada);
-        return cacheada.valor;
+        return this.cortarPuntualidad(cacheada.valor, orden, q, limite);
       }
       this.cachePuntualidad.delete(clave);
     }
 
-    // Mismo mes y orden en vuelo: en vez de repetir 60k filas, se reutiliza
+    // Mismo mes en vuelo: en vez de repetir 63k filas, se reutiliza
     const enCurso = this.puntualidadEnCurso.get(clave);
-    if (enCurso) return enCurso;
+    if (enCurso) return enCurso.then((v) => this.cortarPuntualidad(v, orden, q, limite));
 
     const calculo = this.semaforoPuntualidad
-      .ejecutar(() => this.calcularPuntualidadMes(mes, orden))
+      .ejecutar(() => this.calcularPuntualidadMes(mes))
       .then((valor) => {
         this.cachePuntualidad.set(clave, {
           valor,
@@ -815,13 +822,45 @@ export class TrenesService {
         this.puntualidadEnCurso.delete(clave);
       });
     this.puntualidadEnCurso.set(clave, calculo);
-    return calculo;
+    return calculo.then((v) => this.cortarPuntualidad(v, orden, q, limite));
   }
 
-  private async calcularPuntualidadMes(
-    mes?: string,
+  /**
+   * Corte de petición sobre la lista cacheada (que va completa y ordenada por
+   * veces): busca por tren o trayecto, reordena si hace falta y limita el
+   * resultado — 20 por defecto, los peores del mes.
+   */
+  private cortarPuntualidad(
+    lista: PuntualidadTrenResponse[],
     orden?: string,
-  ): Promise<PuntualidadTrenResponse[]> {
+    q?: string,
+    limite?: string,
+  ): PuntualidadTrenResponse[] {
+    const texto = q?.trim().toLowerCase() ?? '';
+    let filas = lista;
+    if (texto) {
+      filas = filas.filter((f) => {
+        const tren = (f.numeroTren ?? f.vehiculoId).toLowerCase();
+        const origen = (f.origenNombre ?? '').toLowerCase();
+        const destino = (f.destinoNombre ?? '').toLowerCase();
+        return tren.includes(texto) || origen.includes(texto) || destino.includes(texto);
+      });
+    }
+    if (orden === 'impuntualidad') {
+      const alfabeticamente = (a: PuntualidadTrenResponse, b: PuntualidadTrenResponse) =>
+        (a.clave ?? a.vehiculoId).localeCompare(b.clave ?? b.vehiculoId);
+      filas = [...filas].sort(
+        (a, b) =>
+          b.retrasoMedioSeg - a.retrasoMedioSeg ||
+          b.vecesImpuntuales - a.vecesImpuntuales ||
+          alfabeticamente(a, b),
+      );
+    }
+    const tope = Math.min(Math.max(Number(limite) || 20, 1), 200);
+    return filas.slice(0, tope);
+  }
+
+  private async calcularPuntualidadMes(mes?: string): Promise<PuntualidadTrenResponse[]> {
     const { desde, hasta } = rangoMes(mes);
     const prisma = getPrisma();
 
@@ -884,24 +923,22 @@ export class TrenesService {
 
     aplicarLlegadaEstimada(resultado);
 
-    const alfabeticamente = (a: PuntualidadTrenResponse, b: PuntualidadTrenResponse) =>
-      (a.clave ?? a.vehiculoId).localeCompare(b.clave ?? b.vehiculoId);
-    if (orden === 'impuntualidad') {
-      resultado.sort(
-        (a, b) =>
-          b.retrasoMedioSeg - a.retrasoMedioSeg ||
-          b.vecesImpuntuales - a.vecesImpuntuales ||
-          alfabeticamente(a, b),
-      );
-    } else {
-      resultado.sort(
-        (a, b) =>
-          b.vecesImpuntuales - a.vecesImpuntuales ||
-          b.retrasoMedioSeg - a.retrasoMedioSeg ||
-          alfabeticamente(a, b),
-      );
-    }
-    return resultado.slice(0, 100);
+    // Solo se listan trenes con trayecto completo (origen, destino, salida y
+    // llegada): un tren que solo aparece por su número, sin ruta conocida, no
+    // aporta nada al ranking (es el «no está en funcionamiento» del feed).
+    const conTrayecto = resultado.filter(
+      (f) => f.origenNombre && f.destinoNombre && f.salida && f.llegada,
+    );
+
+    // Orden canónico de la caché: los más veces impuntuales primero; el
+    // orden que pida el cliente se aplica en `cortarPuntualidad`.
+    conTrayecto.sort(
+      (a, b) =>
+        b.vecesImpuntuales - a.vecesImpuntuales ||
+        b.retrasoMedioSeg - a.retrasoMedioSeg ||
+        (a.clave ?? a.vehiculoId).localeCompare(b.clave ?? b.vehiculoId),
+    );
+    return conTrayecto;
   }
 
   /**

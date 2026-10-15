@@ -95,6 +95,10 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
   const [orden, setOrden] = useState<OrdenImpuntuales>('veces');
   const [impuntuales, setImpuntuales] = useState<PuntualidadTrenResponse[] | null>(null);
   const [errorImpuntuales, setErrorImpuntuales] = useState<string | null>(null);
+  // Buscador de impuntuales: el input va en crudo y la petición, con debounce
+  const [impuntualesQ, setImpuntualesQ] = useState('');
+  const [impuntualesQD, setImpuntualesQD] = useState('');
+  const timerImpuntuales = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const { paleta } = useTema();
   const { t } = useTranslation();
@@ -279,7 +283,20 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
     timerBusqueda.current = setTimeout(() => cargarEstaciones(q), 250);
   };
 
-  useEffect(() => () => clearTimeout(timerBusqueda.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(timerBusqueda.current);
+      clearTimeout(timerImpuntuales.current);
+    },
+    [],
+  );
+
+  // Buscador de impuntuales con debounce: la petición va al soltar la tecla
+  const buscarImpuntualesTexto = (texto: string) => {
+    setImpuntualesQ(texto);
+    clearTimeout(timerImpuntuales.current);
+    timerImpuntuales.current = setTimeout(() => setImpuntualesQD(texto.trim()), 300);
+  };
 
   // Sugerencias para el formulario de horarios (hook compartido con alertas)
   const { sugOrigen, sugDestino, buscarSugerencias, limpiarSugerencias } = useSugerenciasEstacion();
@@ -311,7 +328,12 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
     setImpuntuales(null);
     setErrorImpuntuales(null);
     marcarCargando('impuntuales', true);
-    api<PuntualidadTrenResponse[]>(`/trenes/puntualidad?mes=${mes}&orden=${orden}`)
+    // Sin búsqueda: los20 peores; con búsqueda, hasta100 coincidencias
+    const q = impuntualesQD;
+    const url =
+      `/trenes/puntualidad?mes=${mes}&orden=${orden}&limite=${q ? 100 : 20}` +
+      (q ? `&q=${encodeURIComponent(q)}` : '');
+    api<PuntualidadTrenResponse[]>(url)
       .then((d) => {
         if (peticion !== peticionImpuntuales.current) return;
         setImpuntuales(d);
@@ -325,7 +347,7 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
       .finally(() => {
         if (peticion === peticionImpuntuales.current) marcarCargando('impuntuales', false);
       });
-  }, [mes, orden, marcarCargando]);
+  }, [mes, orden, marcarCargando, impuntualesQD]);
 
   useFocusEffect(
     useCallback(() => {
@@ -663,6 +685,8 @@ export default function Trenes({ modoInicial = 'estaciones' }: { modoInicial?: M
           datos={impuntuales}
           error={errorImpuntuales}
           onRefrescar={refrescar}
+          q={impuntualesQ}
+          onQ={buscarImpuntualesTexto}
         />
       )}
     </View>

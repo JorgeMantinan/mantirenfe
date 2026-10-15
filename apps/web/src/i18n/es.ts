@@ -501,6 +501,12 @@ export const es = {
     colServicios: 'Servicios impuntuales',
     colRetrasoMedio: 'Retraso medio',
     colPeorRetraso: 'Peor retraso',
+    buscador: 'Buscar tren o trayecto...',
+    reiniciar: 'Reiniciar',
+    top20:
+      'Se muestran los {{n}} peores del mes. Usa el buscador para encontrar un tren o trayecto.',
+    busquedaDesc: '{{n}} resultados para «{{q}}»',
+    ordenarPor: 'Ordenar por {{columna}}',
     nota: 'Llegada estimada = llegada programada + peor retraso registrado en el mes: es una estimación orientativa, no una hora oficial.',
   },
 

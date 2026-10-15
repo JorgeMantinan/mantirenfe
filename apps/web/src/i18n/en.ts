@@ -500,6 +500,11 @@ export const en: MismoArbol<Claves> = {
     colServicios: 'Late services',
     colRetrasoMedio: 'Average delay',
     colPeorRetraso: 'Worst delay',
+    buscador: 'Search train or route...',
+    reiniciar: 'Reset',
+    top20: 'Showing the {{n}} worst of the month. Use the search to find a train or route.',
+    busquedaDesc: '{{n}} results for "{{q}}"',
+    ordenarPor: 'Sort by {{columna}}',
     nota: 'Estimated arrival = scheduled arrival + worst delay recorded this month: an indicative estimate, not an official time.',
   },
 
