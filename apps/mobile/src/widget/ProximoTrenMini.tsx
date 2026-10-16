@@ -55,41 +55,49 @@ export function ProximoTrenMini({ datos }: { datos: DatosWidget | null }) {
           maxLines={3}
         />
       ) : (
-        <>
-          {/* Solo si la salida no es hoy hace falta decir el día */}
-          {resumen.dia ? (
+        [
+          /* IMPORTANTE: sin <>…</> — el renderizador de widgets del launcher
+             (buildWidgetTree) ejecuta los componentes a mano y NO entiende
+             fragments: con salidas, el mini crasheaba y solo se llegaba a ver
+             el estado vacío. Los hijos van en array plano. */
+          resumen.dia ? (
             <TextWidget
+              key="dia"
               text={resumen.dia.toUpperCase()}
               style={{ color: BLANCO_SUAVE, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}
               maxLines={1}
             />
-          ) : null}
+          ) : null,
           <TextWidget
+            key="hora"
             text={resumen.hora ?? ''}
             style={{ color: BLANCO, fontSize: 30, fontWeight: '800' }}
             maxLines={1}
-          />
-          {hayEstado ? (
+          />,
+          hayEstado ? (
             <TextWidget
+              key="estado"
               text={estado.texto}
               style={{ color: COLOR_ESTADO[estado.tono], fontSize: 11, fontWeight: '700' }}
               truncate="END"
               maxLines={1}
             />
-          ) : null}
+          ) : null,
           <TextWidget
+            key="tren"
             text={resumen.numeroTren ?? ''}
             style={{ color: BLANCO, fontSize: 14, fontWeight: '700' }}
             truncate="END"
             maxLines={1}
-          />
+          />,
           <TextWidget
+            key="ruta"
             text={resumen.ruta ?? ''}
             style={{ color: BLANCO_SUAVE, fontSize: 12 }}
             truncate="END"
             maxLines={2}
-          />
-        </>
+          />,
+        ]
       )}
     </FlexWidget>
   );
