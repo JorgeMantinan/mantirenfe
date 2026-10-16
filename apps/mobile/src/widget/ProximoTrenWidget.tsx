@@ -59,7 +59,11 @@ export function ProximoTrenWidget({ datos }: { datos: DatosWidget | null }) {
               ? t('widget.abreApp')
               : datos.proximoViaje
                 ? t('widget.proximoViaje', { fecha: fechaCorta(datos.proximoViaje) })
-                : t('widget.sinSalidas')
+                : datos.vacioMotivo === 'sin-alertas'
+                  ? t('widget.sinAlertas')
+                  : datos.vacioMotivo === 'sin-estado'
+                    ? t('widget.sinEstado')
+                    : t('widget.sinSalidas')
           }
           style={{ color: BLANCO_SUAVE, fontSize: 13 }}
           maxLines={3}

@@ -408,9 +408,24 @@ describe('resumenWidget (widget mini)', () => {
     });
   });
 
-  it('estado vacío: sin caché pide abrir la app, con datos «Sin salidas» o el próximo viaje', () => {
+  it('estado vacío: sin caché pide abrir la app; sin alertas, sin estado o «Sin salidas»', () => {
     expect(resumenWidget(null, AHORA).vacio).toBe('Abre MantiRenfe para actualizar');
-    expect(resumenWidget(calcularSalidasWidget([], AHORA), AHORA).vacio).toBe('Sin salidas');
+    expect(resumenWidget(calcularSalidasWidget([], AHORA), AHORA).vacio).toBe(
+      'Sin alertas activas. Crea una desde la app.',
+    );
+
+    // Alerta activa sin ningún sondeo todavía: se distingue de «sin salidas»
+    const sinEstado = alerta({ fechaViaje: HOY, ultimoEstado: null });
+    expect(resumenWidget(calcularSalidasWidget([sinEstado], AHORA), AHORA).vacio).toBe(
+      'Esperando el primer sondeo de tus alertas.',
+    );
+
+    // Con estado, pero la única salida de hoy ya salió (07:00 < 09:30)
+    const yaSalida: EstadoSerializado[] = [
+      { trenId: 'p1', numeroTren: '04401', salida: '07:00', disponible: true, precioMin: 8 },
+    ];
+    const tarde = alerta({ fechaViaje: HOY, ultimoEstado: yaSalida });
+    expect(resumenWidget(calcularSalidasWidget([tarde], AHORA), AHORA).vacio).toBe('Sin salidas');
 
     const conViaje = calcularSalidasWidget(
       [alerta({ fechaViaje: '2026-10-12', ultimoEstado: null })],

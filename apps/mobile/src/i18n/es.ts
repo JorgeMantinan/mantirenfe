@@ -501,6 +501,8 @@ export const es = {
     proximoViaje: 'Próximo viaje: {{fecha}}',
     sinSalidas: 'Sin salidas de hoy. Abre MantiRenfe para refrescar tus alertas.',
     sinSalidasCorto: 'Sin salidas',
+    sinAlertas: 'Sin alertas activas. Crea una desde la app.',
+    sinEstado: 'Esperando el primer sondeo de tus alertas.',
     abreApp: 'Abre MantiRenfe para actualizar',
     manana: 'mañana',
     accesibilidad: 'Próximo tren, abre MantiRenfe',

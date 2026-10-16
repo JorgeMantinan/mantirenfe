@@ -34,6 +34,13 @@ export function PaginaAjustes() {
         if (cancelado) return;
         setPreferencias(p);
         if (p.tema && !edicionTemaReciente()) setTheme(aNextTheme(p.tema));
+        // Los avisos por email están retirados de la web: si quedaba activada
+        // de una versión anterior, se apaga en silencio
+        if (p.notificacionesEmail) {
+          const sinEmail = { ...p, notificacionesEmail: false };
+          setPreferencias(sinEmail);
+          void api('/auth/preferencias', { method: 'POST', json: sinEmail }).catch(() => undefined);
+        }
       })
       .catch(() => {
         if (cancelado) return;
@@ -174,18 +181,7 @@ export function PaginaAjustes() {
               onCheckedChange={(v) => void guardar({ notificacionesPush: v })}
             />
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label htmlFor="email">{t('ajustes.emailLabel')}</Label>
-              <p className="text-sm text-muted-foreground">{t('ajustes.emailDesc')}</p>
-            </div>
-            <Switch
-              id="email"
-              checked={preferencias?.notificacionesEmail ?? false}
-              disabled={!preferencias || guardando}
-              onCheckedChange={(v) => void guardar({ notificacionesEmail: v })}
-            />
-          </div>
+          {/* Los avisos por email se han retirado (por defecto, apagados) */}
           <div className="flex items-center justify-between gap-4">
             <div>
               <Label htmlFor="recordatorio">{t('ajustes.recordatorioLabel')}</Label>

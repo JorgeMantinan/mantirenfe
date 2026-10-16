@@ -46,6 +46,12 @@ export interface DatosWidget {
    * próximos días: el widget pinta "Próximo viaje: 3 oct" en vez de un vacío.
    */
   proximoViaje?: string;
+  /**
+   * Por qué no hay salidas cuando no hay ni próximo viaje: sin alertas
+   * activas, o con alertas a la espera del primer sondeo. Ayuda al usuario a
+   * distinguir «no tengo nada» de «todavía no se ha sondeado».
+   */
+  vacioMotivo?: 'sin-alertas' | 'sin-estado';
 }
 
 const rellenar = (n: number): string => String(n).padStart(2, '0');
@@ -178,6 +184,13 @@ export function calcularSalidasWidget(
   const fecha = fechaLocal(ahora);
   const hora = horaLocal(ahora);
   const candidatas: SalidaWidget[] = [];
+  let alertasActivas = 0;
+  let algunaConEstado = false;
+  for (const a of alertas) {
+    if (a.estado !== 'ACTIVA') continue;
+    alertasActivas += 1;
+    if (Array.isArray(a.ultimoEstado) && a.ultimoEstado.length > 0) algunaConEstado = true;
+  }
 
   for (let dia = 0; dia <= DIAS_ADELANTE_WIDGET; dia++) {
     const delDia = sumarDias(fecha, dia);
@@ -255,7 +268,24 @@ export function calcularSalidasWidget(
           .sort()[0]
       : undefined;
 
-  return { fecha, salidas, actualizadoEn: ahora.toISOString(), proximoViaje };
+  // Motivo del vacío (si no hay ni próximo viaje): ¿no hay alertas o aún no
+  // se ha sondeado ninguna?
+  const vacioMotivo =
+    salidas.length === 0 && proximoViaje === undefined
+      ? alertasActivas === 0
+        ? ('sin-alertas' as const)
+        : algunaConEstado
+          ? undefined
+          : ('sin-estado' as const)
+      : undefined;
+
+  return {
+    fecha,
+    salidas,
+    actualizadoEn: ahora.toISOString(),
+    proximoViaje,
+    ...(vacioMotivo ? { vacioMotivo } : {}),
+  };
 }
 
 /**
@@ -359,7 +389,11 @@ export function resumenWidget(datos: DatosWidget | null, hoy: Date = new Date())
           t('widget.abreApp')
         : proximo
           ? t('widget.proximoViaje', { fecha: fechaCorta(proximo) })
-          : t('widget.sinSalidasCorto'),
+          : datos.vacioMotivo === 'sin-alertas'
+            ? t('widget.sinAlertas')
+            : datos.vacioMotivo === 'sin-estado'
+              ? t('widget.sinEstado')
+              : t('widget.sinSalidasCorto'),
     };
   }
   const fecha = salida.fecha ?? datos?.fecha ?? '';
