@@ -49,11 +49,10 @@ async function main() {
       await prisma.$executeRawUnsafe(
         `ALTER TABLE public."${tabla.relname}" ENABLE ROW LEVEL SECURITY`,
       );
-      const sinPolicy = await prisma.$queryRaw<Array<{ n: number }>>(
-        `SELECT count(*)::int AS n FROM pg_policies
+      const sinPolicy = await prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT count(*)::int AS n FROM pg_policies
          WHERE schemaname='public' AND tablename=${tabla.relname}
-           AND policyname='app_dml' AND 'mantirenfe_app' = ANY (roles)`,
-      );
+           AND policyname='app_dml' AND 'mantirenfe_app' = ANY (roles)`;
       if ((sinPolicy[0]?.n ?? 0) === 0) {
         await prisma.$executeRawUnsafe(
           `CREATE POLICY "app_dml" ON public."${tabla.relname}"
