@@ -591,11 +591,19 @@ export const SONDEOS_AGOTAR_PLAZA = 3;
  * SONDEOS_AGOTAR_PLAZA veces seguidas queda agotado: si la plaza vuelve, el
  * diff reavisa. Las filas de escala no se arrastran (las gestiona
  * evaluarConexiones).
+ *
+ * Con `programa` (trayecto cotidiano o cualquier fecha) las filas agotadas NO
+ * se caen nunca: de noche la búsqueda se vacía y, sin esto, el estado quedaba
+ * en [] — «sin datos» en las tarjetas hasta que el feed volvía por la mañana.
+ * Conservado como horario, tarjetas y widget enseñan de noche ya la salida de
+ * mañana, y al amanecer el diff (false → true) vuelve a avisar de las plazas.
  */
 export function estabilizarSerieVenta(
   anterior: EstadoSerializado[],
   actual: EstadoSerializado[],
+  opciones: { programa?: boolean } = {},
 ): EstadoSerializado[] {
+  const { programa = false } = opciones;
   const previas = new Map(anterior.filter((f) => !esFilaEscala(f)).map((f) => [f.trenId, f]));
   const vistas = new Set<string>();
   const salida = actual.map((f) => {
@@ -613,7 +621,13 @@ export function estabilizarSerieVenta(
       : { ...previa, sondeosSinPlaza: sondeos }; // oscilación: se conserva la plaza vista
   });
   for (const previa of previas.values()) {
-    if (!previa.disponible || vistas.has(previa.trenId)) continue;
+    if (vistas.has(previa.trenId)) continue;
+    if (!previa.disponible) {
+      // Con `programa` las filas agotadas se conservan como horario (no se
+      // caen con el feed vacío de noche); sin programa, fuera.
+      if (programa) salida.push({ ...previa });
+      continue;
+    }
     const sondeos = (previa.sondeosSinPlaza ?? 0) + 1;
     salida.push(
       sondeos >= SONDEOS_AGOTAR_PLAZA
@@ -1377,7 +1391,10 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
     series.set(
       etiqueta,
       etiqueta === etiquetaVenta
-        ? estabilizarSerieVenta(anteriores.get(etiqueta) ?? [], filas)
+        ? estabilizarSerieVenta(anteriores.get(etiqueta) ?? [], filas, {
+            // Cotidiano/flexible: el horario se repite, la serie no se vacía
+            programa: alerta.recurrente || alerta.fechaFlexible,
+          })
         : filas,
     );
   }

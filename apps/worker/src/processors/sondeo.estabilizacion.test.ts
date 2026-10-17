@@ -71,4 +71,21 @@ describe('estabilizarSerieVenta', () => {
     expect(conPlaza[0].disponible).toBe(true);
     expect(diffDisponibles(serie, conPlaza).aparecen).toHaveLength(1);
   });
+
+  it('con programa las filas agotadas no se caen con el feed vacío (noche)', () => {
+    let serie = estabilizarSerieVenta([], [fila('N-9', true)], { programa: true });
+    for (let i = 0; i < 5; i++) serie = estabilizarSerieVenta(serie, [], { programa: true });
+    // Sigue habiendo fila (agotada): sin ella las tarjetas decían «sin datos»
+    expect(serie).toHaveLength(1);
+    expect(serie[0].disponible).toBe(false);
+    // Al amanecer el feed vuelve con plaza: el diff ve false→true y reavisa
+    const manana = estabilizarSerieVenta(serie, [fila('N-9', true)], { programa: true });
+    expect(diffDisponibles(serie, manana).aparecen).toHaveLength(1);
+  });
+
+  it('sin programa las filas agotadas se caen del feed vacío (puntual)', () => {
+    let serie = estabilizarSerieVenta([], [fila('P-1', true)]);
+    for (let i = 0; i < 5; i++) serie = estabilizarSerieVenta(serie, []);
+    expect(serie).toHaveLength(0);
+  });
 });
