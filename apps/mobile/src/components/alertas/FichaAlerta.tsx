@@ -17,6 +17,11 @@ function criteriosDe(alerta: AlertaResponse): CriterioAlerta[] {
   return alerta.criterios?.length ? alerta.criterios : [alerta.criterio];
 }
 
+/** Lista de criterios vigilados de una alerta (compartida con la lista de inicio). */
+export function criteriosDeAlerta(alerta: AlertaResponse): CriterioAlerta[] {
+  return criteriosDe(alerta);
+}
+
 type Props = {
   alerta: AlertaResponse;
   onCompartir: () => void;

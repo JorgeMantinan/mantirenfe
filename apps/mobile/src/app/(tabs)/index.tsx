@@ -7,8 +7,15 @@ import type { AlertaResponse, EstadisticasResponse } from '@mantirenfe/shared-ty
 import { TIPO_AVISO_SIN_TIPO } from '@mantirenfe/shared-types';
 import { Boton } from '@/components/Boton';
 import { Etiqueta, Tarjeta } from '@/components/Tarjeta';
+import { criteriosDeAlerta } from '@/components/alertas/FichaAlerta';
 import { api } from '@/lib/api';
-import { etiquetaAvisos, etiquetaEstado } from '@/lib/alertas';
+import {
+  etiquetaAvisos,
+  etiquetaCriterio,
+  etiquetaDiasSemana,
+  etiquetaEstado,
+} from '@/lib/alertas';
+import { formatearPrecio } from '@/lib/precios';
 import {
   contenidoLista,
   fondoPantalla,
@@ -22,6 +29,7 @@ import {
 import {
   cuentaAtras,
   etiquetaDia,
+  fechaCorta,
   proximasSalidas,
   relojPeninsular,
   textoPlazas,
@@ -235,6 +243,66 @@ const tonoEstado = (estado: string): 'exito' | 'aviso' | 'neutro' =>
  * Fila de una alerta suelta: ruta, meta, avisos, estado y sus acciones.
  * Navega a `/alertas/[id]` al tocarla.
  */
+/**
+ * Meta de una alerta dentro de la lista: chips de criterio (plazas, precio…),
+ * modalidad (conexiones / cualquier fecha / días), fecha legible, objetivo de
+ * precio, franja horaria y tren. Es lo mismo que enseña la ficha de detalle,
+ * para poder distinguir las alertas sin entrar en cada una.
+ */
+function MetaListaAlerta({ item }: { item: AlertaResponse }) {
+  const { paleta } = useTema();
+  const { t } = useTranslation();
+  const s = useMemo(() => estilos(paleta), [paleta]);
+  const criterios = criteriosDeAlerta(item);
+
+  return (
+    <>
+      <View style={s.chipsAlerta}>
+        {criterios.map((c) => (
+          <Etiqueta key={c} tono="neutro">
+            {etiquetaCriterio(c)}
+          </Etiqueta>
+        ))}
+        {item.conexiones ? <Etiqueta tono="primario">{t('detalle.conexiones')}</Etiqueta> : null}
+        {item.fechaFlexible ? (
+          <Etiqueta tono="primario">{t('nueva.frecuencia.flexible')}</Etiqueta>
+        ) : null}
+        {item.recurrente ? (
+          <Etiqueta tono="primario">{etiquetaDiasSemana(item.diasSemana)}</Etiqueta>
+        ) : null}
+      </View>
+      <Text style={s.detalle}>
+        {t('lista.metaAlerta', {
+          fecha: item.fechaFlexible
+            ? t('detalle.rangoFechas', {
+                desde: fechaCorta(item.fechaDesde ?? item.fechaViaje),
+                hasta: fechaCorta(item.fechaHasta ?? item.fechaViaje),
+              })
+            : fechaCorta(item.fechaViaje),
+          min: item.intervaloSondeoMin,
+          bono: item.bono,
+        })}
+      </Text>
+      {criterios.includes('PRECIO') && item.precioObjetivo != null ? (
+        <Text style={s.detalle}>
+          {t('detalle.objetivo', { precio: formatearPrecio(item.precioObjetivo) })}
+        </Text>
+      ) : null}
+      {item.horaDesde || item.horaHasta ? (
+        <Text style={s.detalle}>
+          {t('detalle.franja', {
+            desde: item.horaDesde ?? '00:00',
+            hasta: item.horaHasta ?? '23:59',
+          })}
+          {item.numeroTren ? t('detalle.trenSufijo', { tren: item.numeroTren }) : ''}
+        </Text>
+      ) : item.numeroTren ? (
+        <Text style={s.detalle}>{t('detalle.tren', { tren: item.numeroTren })}</Text>
+      ) : null}
+    </>
+  );
+}
+
 function FilaAlerta({
   item,
   alternar,
@@ -266,13 +334,7 @@ function FilaAlerta({
               {item.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
               {item.destinoNombre}
             </Text>
-            <Text style={s.detalle}>
-              {t('lista.metaAlerta', {
-                fecha: item.fechaViaje,
-                min: item.intervaloSondeoMin,
-                bono: item.bono,
-              })}
-            </Text>
+            <MetaListaAlerta item={item} />
             <View style={s.filaAvisos}>
               <Ionicons name="notifications-outline" size={13} color={paleta.textoSecundario} />
               <Text style={s.avisos}>{etiquetaAvisos(item.avisosRecibidos ?? 0)}</Text>
@@ -350,13 +412,7 @@ function TarjetaIdaVuelta({
               {ida.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
               {ida.destinoNombre}
             </Text>
-            <Text style={s.detalle}>
-              {t('lista.metaAlerta', {
-                fecha: ida.fechaViaje,
-                min: ida.intervaloSondeoMin,
-                bono: ida.bono,
-              })}
-            </Text>
+            <MetaListaAlerta item={ida} />
           </View>
           <View style={s.filaDerecha}>
             <Etiqueta tono={tonoEstado(ida.estado)}>{etiquetaEstado(ida.estado)}</Etiqueta>
@@ -378,7 +434,11 @@ function TarjetaIdaVuelta({
         <View style={s.filaAlerta}>
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={s.grupoTramo}>{t('alertas.vuelta')}</Text>
-            <Text style={s.ruta}>{vuelta.fechaViaje}</Text>
+            <Text style={s.ruta}>
+              {vuelta.origenNombre} <Text style={{ color: paleta.primario }}>→</Text>{' '}
+              {vuelta.destinoNombre}
+            </Text>
+            <MetaListaAlerta item={vuelta} />
           </View>
           <View style={s.filaDerecha}>
             <Etiqueta tono={tonoEstado(vuelta.estado)}>{etiquetaEstado(vuelta.estado)}</Etiqueta>
@@ -666,6 +726,11 @@ const estilos = (c: Paleta) =>
     },
     ruta: nombre(c),
     detalle: meta(c),
+    chipsAlerta: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 4,
+    },
     filaAvisos: {
       flexDirection: 'row',
       alignItems: 'center',
