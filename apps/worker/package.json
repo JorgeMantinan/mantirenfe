@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src && prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
+    "tarea": "tsx scripts/tarea.ts",
+    "snapshot-posiciones": "tsx scripts/snapshot-posiciones.ts",
     "clean": "rm -rf dist",
     "db:backfill-tripids": "tsx scripts/backfill-tripids.ts"
   },

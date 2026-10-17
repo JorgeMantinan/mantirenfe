@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarRetrasos, type PosicionCruda } from './retrasos';
+import { aplicarRetrasos, type PosicionCruda } from '@mantirenfe/shared-types';
 
 const posicion = (sobrantes: Partial<PosicionCruda>): PosicionCruda => ({
   id: 'VP_1',

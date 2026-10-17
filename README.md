@@ -20,19 +20,19 @@ Sistema de alertas sobre la red ferroviaria española: vigila disponibilidad de 
 
 ## Stack
 
-| Capa             | Tecnología                                                                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| API              | NestJS + TypeScript, REST con OpenAPI/Swagger, auth JWT (Passport) validada contra Supabase JWKS                                              |
-| Worker           | Proceso Node separado: Redis + BullMQ (colas, reintentos, rate-limiting), sondeo de fuentes y notificaciones                                  |
-| Web              | React + Vite (TypeScript), PWA instalable, React Router, i18next, Leaflet/React-Leaflet, Tailwind + Radix UI                                  |
-| Móvil            | React Native + Expo (EAS), notificaciones push                                                                                                |
-| Datos            | PostgreSQL (Supabase) + Prisma; roles separados (DML en runtime vs migraciones)                                                               |
-| Fuentes de datos | GTFS-RT (posición, retrasos, alertas), GTFS estático (horarios, trips, stops), API de disponibilidad de venta (DWR), feeds OUIGO desde el NAP |
-| Calidad y ops    | Sentry, logging estructurado con Pino, endpoint `/health` con métricas de sondeo                                                              |
-| Monorepo         | Turborepo + pnpm (`apps/api`, `apps/web`, `apps/mobile`, `apps/worker`, `packages/database`, `packages/shared-types`, `packages/venta`)       |
-| Testing          | Vitest (unit) + Playwright (E2E de humo contra producción)                                                                                    |
-| CI/CD            | GitHub Actions: `ci.yml` (lint+typecheck+test+build), `e2e.yml`, `sync-gtfs.yml`, `backup.yml`                                                |
-| Infraestructura  | Docker multi-stage por servicio + `docker-compose` local (postgres, redis, api, worker, web), Husky + commitlint                              |
+| Capa             | Tecnología                                                                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API              | NestJS + TypeScript, REST con OpenAPI/Swagger, auth JWT (Passport) validada contra Supabase JWKS                                                                                                |
+| Worker           | Tareas de fondo (barrido de alertas, incidencias, suprimidos, snapshot, digest, poda): CLIs de un solo disparo en GitHub Actions en producción; proceso Node con Redis + BullMQ en local/docker |
+| Web              | React + Vite (TypeScript), PWA instalable, React Router, i18next, Leaflet/React-Leaflet, Tailwind + Radix UI                                                                                    |
+| Móvil            | React Native + Expo (EAS), notificaciones push                                                                                                                                                  |
+| Datos            | PostgreSQL (Supabase) + Prisma; roles separados (DML en runtime vs migraciones)                                                                                                                 |
+| Fuentes de datos | GTFS-RT (posición, retrasos, alertas), GTFS estático (horarios, trips, stops), API de disponibilidad de venta (DWR), feeds OUIGO desde el NAP                                                   |
+| Calidad y ops    | Sentry, logging estructurado con Pino, endpoint `/health` con métricas de sondeo                                                                                                                |
+| Monorepo         | Turborepo + pnpm (`apps/api`, `apps/web`, `apps/mobile`, `apps/worker`, `packages/database`, `packages/shared-types`, `packages/venta`)                                                         |
+| Testing          | Vitest (unit) + Playwright (E2E de humo contra producción)                                                                                                                                      |
+| CI/CD            | GitHub Actions: `ci.yml` (lint+typecheck+test+build), `worker.yml` (tareas programadas), `e2e.yml`, `sync-gtfs.yml`, `backup.yml`                                                               |
+| Infraestructura  | Docker multi-stage por servicio + `docker-compose` local (postgres, redis, api, worker, web), Husky + commitlint                                                                                |
 
 ## Estructura
 
@@ -49,7 +49,7 @@ mantirenfe/
 │   └── venta/             Lógica de acceso a la fuente de disponibilidad (DWR/mock)
 ├── docker-compose.yml     Postgres + Redis + api + worker + web (local)
 ├── Dockerfile             Build multi-stage (api/worker)
-├── render.yaml            Blueprint: servicios API y worker en Render
+├── render.yaml            Blueprint: API en Render (worker en Actions)
 └── vercel.json            Web en Vercel (rewrites /api → Render)
 ```
 
@@ -119,13 +119,14 @@ Definidas en `.env.example` (copiar a `.env` en la raíz). Variables principales
 ## Despliegue
 
 - Web: Vercel ([mantirenfe.vercel.app](https://mantirenfe.vercel.app)), build con `pnpm turbo build --filter=@mantirenfe/web` (`vercel.json`); las llamadas `/api` se reescriben a la API en Render.
-- API y worker: Render (`render.yaml`, blueprint de dos servicios Docker con health check `/api/health`).
-- Base de datos: Supabase; Redis en la nube (Upstash/Render).
+- API: Render (`render.yaml`, servicio Docker con health check `/api/health`); duerme tras 15 min sin tráfico (plan free).
+- **Worker: GitHub Actions** (`.github/workflows/worker.yml`, repo público = gratis e ilimitado): proceso efímero por tarea — barrido/incidencias/suprimidos/snapshot cada 5 min, digest a las 06:00 UTC, resumen semanal el lunes y poda a las 04:00 UTC. Sustituyó al servicio `mantirenfe-worker` 24/7 de Render (744 h/mes de las 750 h free del workspace). Secrets del repo: `BACKUP_DATABASE_URL` (como `DATABASE_URL`), `VAPID_*` y —opcional para email— `SMTP_*`/`EMAIL_DESDE` (sin ellos los correos quedan desactivados).
+- Base de datos: Supabase; Redis en la nube (Upstash/Render) — solo para la API/local; el worker en Actions ya no usa Redis.
 - Sync diario de GTFS y backup semanal de BD: GitHub Actions programados (`sync-gtfs.yml`, `backup.yml`).
 
 ## Estado
 
-- Desplegada y operativa en producción (web + API + worker).
+- Desplegada y operativa en producción (web + API en Render, worker en Actions).
 - App móvil con EAS build listo, aún no publicada en tiendas.
 - OUIGO se importa solo si hay `NAP_API_KEY`; iryo no publica GTFS (no hay nada que configurar).
 - Pendientes declarados: alertas por vagón, filtros de bonos (estudiante, discapacidad), integración con servicios de viaje a destino.

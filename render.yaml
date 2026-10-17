@@ -1,17 +1,18 @@
-# Blueprint de Render: DOS servicios (512 MB cada uno en free) en lugar de
-# API+worker juntos en un contenedor — los OOM repetidos venían de compartir
-# 512 MB (API ~140 MB + worker + picos de sondeo/posiciones).
+# Blueprint de Render: UN servicio (API) en free.
+#
+# El worker dejó de desplegarse aquí (2026-10): sus tareas (barrido cada
+# 5 min, incidencias, suprimidos, snapshot de posiciones, digest diario,
+# resumen semanal, poda) corren en GitHub Actions (`.github/workflows/
+# worker.yml`) — un proceso efímero por tarea en vez de un servicio 24/7,
+# que se comía 744 h/mes de las 750 h free del workspace de Render.
+# En repos públicos Actions es gratis e ilimitado.
 #
 # Al aplicar este Blueprint (Render → New + → Blueprint → este repo):
 #  - "mantirenfe" se ACTUALIZA en sitio (mismo nombre = misma URL pública;
-#    la web de Vercel no cambia) y pasa a correr SOLO la API (SERVICIO=api).
-#  - "mantirenfe-worker" se crea nuevo (SERVICIO=worker). Sus envs con
-#    sync:false hay que rellenarlas en su dashboard (copia los valores del
-#    servicio antiguo, están a mano en el panel de "mantirenfe").
-#  - El health check /health del worker (servicio propio) lo mantiene despierto
-#    en free y expone su memoria (diagnóstico de OOM).
-#  - Cuando los dos estén verdes, ELIMINA el contenedor viejo si quedara
-#    duplicado (Blueprint con mismo nombre lo reutiliza: no debería).
+#    la web de Vercel no cambia) y corre SOLO la API (SERVICIO=api).
+#  - "mantirenfe-worker" ya no está en el blueprint: si existe en tu
+#    workspace, elimínalo desde el dashboard (o pásalo a paid) tras comprobar
+#    que los runs de "Worker programado" en Actions están verdes.
 services:
   - type: web
     name: mantirenfe
@@ -56,58 +57,4 @@ services:
       - key: VAPID_PRIVATE_KEY
         sync: false
       - key: VAPID_SUBJECT
-        sync: false
-
-  - type: web
-    name: mantirenfe-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    plan: free
-    healthCheckPath: /health
-    envVars:
-      - key: SERVICIO
-        value: worker
-      - key: NODE_ENV
-        value: production
-      - key: LOG_LEVEL
-        value: info
-      - key: FUENTE_DISPONIBILIDAD
-        value: dwr
-      - key: RETRASO_UMBRAL_SEG
-        value: '300'
-      - key: DWR_CACHE_SEG
-        value: '120'
-      - key: GTFS_DIAS_VENTANA
-        value: '45'
-      - key: RESUMEN_HORA
-        value: '07:30'
-      # Env del worker — solo lo que el worker usa de verdad (verificado con
-      # grep de process.env en apps/worker). sync:false = rellenar una vez en
-      # el dashboard del servicio nuevo copiando del panel de "mantirenfe".
-      # NO necesarias aquí (las usa la API o solo el sync de GitHub Actions):
-      #   API_PORT, SUPABASE_URL, DATABASE_URL_APP, WEB_ORIGIN, SENTRY_DSN,
-      #   GTFS_RT_URLS, GTFS_ZIP_URLS, GTFS_ZIP_URLS_OUIGO, NAP_API_KEY
-      - key: REDIS_URL
-        sync: false
-      - key: DATABASE_URL_APP
-        sync: false
-      - key: VAPID_PUBLIC_KEY
-        sync: false
-      - key: VAPID_PRIVATE_KEY
-        sync: false
-      - key: VAPID_SUBJECT
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: EMAIL_DESDE
-        sync: false
-      - key: GTFS_RT_TRIP_UPDATES_URL
-        sync: false
-      - key: GTFS_RT_ALERTS_URL
         sync: false

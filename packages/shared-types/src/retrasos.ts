@@ -1,4 +1,5 @@
-import { prefijoTripId, type PosicionTrenResponse } from '@mantirenfe/shared-types';
+import { prefijoTripId } from './gtfs-rt';
+import type { PosicionTrenResponse } from './dto/trenes';
 
 export interface PosicionCruda {
   id: string;

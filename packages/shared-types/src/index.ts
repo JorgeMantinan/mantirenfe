@@ -5,6 +5,8 @@ export * from './gtfs-rt';
 export * from './horas';
 export * from './indemnizacion';
 export * from './incidencias';
+export * from './posiciones';
+export * from './retrasos';
 export * from './dto/auth';
 export * from './dto/alertas';
 export * from './dto/estaciones';

@@ -1,0 +1,165 @@
+# Tareas del worker programadas en GitHub Actions.
+#
+# Sustituyen al worker residente de Render (BullMQ + Redis): un proceso
+# efímero por tarea en vez de 24/7. La cuenta de Render free son 750 h/mes
+# compartidas por workspace y un servicio 24/7 se lleva 744 — con esto,
+# mantirenfe (API, que duerme) y manti-twitch-backend caben en el free.
+#
+# En repos públicos Actions es GRATIS e ilimitado (docs de GitHub: "usage is
+# free for standard GitHub-hosted runners in public repositories"). Contras:
+# el cron mínimo es cada 5 min (antes: barrido cada 1 min) y los schedules se
+# retrasan con frecuencia bajo carga.
+name: Worker programado
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # barrido + incidencias + suprimidos + snapshot
+    - cron: '0 6 * * *' # digest-email (07:00/08:00 peninsular)
+    - cron: '0 8 * * 1' # resumen semanal (lunes)
+    - cron: '0 4 * * *' # poda de notificaciones
+  workflow_dispatch:
+    inputs:
+      tarea:
+        description: 'Tarea a ejecutar'
+        type: choice
+        default: barrido
+        options:
+          - barrido
+          - incidencias
+          - suprimidos
+          - snapshot
+          - digest
+          - resumen-semanal
+          - poda
+
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: production
+  # La BD de producción: mismo secret que usan el sync y el backup diario.
+  DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+  VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+  VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+  VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+  # SMTP de correos (recordatorios/digest). Si no están definidos como
+  # secrets, los envíos de email quedan desactivados (email.ts lo comprueba).
+  SMTP_HOST: ${{ secrets.SMTP_HOST }}
+  SMTP_PORT: ${{ secrets.SMTP_PORT }}
+  SMTP_USER: ${{ secrets.SMTP_USER }}
+  SMTP_PASS: ${{ secrets.SMTP_PASS }}
+  EMAIL_DESDE: ${{ secrets.EMAIL_DESDE }}
+
+jobs:
+  cada_cinco:
+    name: Cada 5 min (barrido/incidencias/suprimidos/snapshot)
+    if: >-
+      github.event.schedule == '*/5 * * * *' ||
+      (github.event_name == 'workflow_dispatch' &&
+       contains(fromJSON('["barrido","incidencias","suprimidos","snapshot"]'), inputs.tarea))
+    runs-on: ubuntu-latest
+    # Serializa tiradas de la MISMA tarea (el worker viejo tenía concurrency 1):
+    # si una barrido se alarga, la siguiente espera en cola.
+    concurrency:
+      group: worker-cada5-${{ github.event.schedule || inputs.tarea }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Compilar paquetes del workspace
+        run: pnpm turbo build --filter=@mantirenfe/worker
+
+      - name: Barrido de alertas
+        if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'barrido'
+        run: pnpm --filter @mantirenfe/worker tarea barrido
+
+      - name: Incidencias de servicio
+        if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'incidencias'
+        run: pnpm --filter @mantirenfe/worker tarea incidencias
+
+      - name: Trenes suprimidos
+        if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'suprimidos'
+        run: pnpm --filter @mantirenfe/worker tarea suprimidos
+
+      - name: Snapshot de posiciones (directo a BD, sin API)
+        if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'snapshot'
+        run: pnpm --filter @mantirenfe/worker snapshot-posiciones
+
+  diario_digest:
+    name: Digest diario (06:00 UTC)
+    if: >-
+      github.event.schedule == '0 6 * * *' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tarea == 'digest')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: worker-digest
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Compilar paquetes del workspace
+        run: pnpm turbo build --filter=@mantirenfe/worker
+      - name: Digest diario de salidas
+        run: pnpm --filter @mantirenfe/worker tarea digest
+
+  semanal_resumen:
+    name: Resumen semanal (lunes 08:00 UTC)
+    if: >-
+      github.event.schedule == '0 8 * * 1' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tarea == 'resumen-semanal')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: worker-resumen
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Compilar paquetes del workspace
+        run: pnpm turbo build --filter=@mantirenfe/worker
+      - name: Resumen semanal
+        run: pnpm --filter @mantirenfe/worker tarea resumen-semanal
+
+  poda_notificaciones:
+    name: Poda de notificaciones (04:00 UTC)
+    if: >-
+      github.event.schedule == '0 4 * * *' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tarea == 'poda')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: worker-poda
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Compilar paquetes del workspace
+        run: pnpm turbo build --filter=@mantirenfe/worker
+      - name: Poda de notificaciones
+        run: pnpm --filter @mantirenfe/worker tarea poda

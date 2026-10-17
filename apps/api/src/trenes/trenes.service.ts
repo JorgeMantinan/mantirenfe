@@ -1,15 +1,14 @@
 import { BadRequestException, BadGatewayException, Injectable, Logger } from '@nestjs/common';
-import { buscarEstaciones, getPrisma, type Prisma } from '@mantirenfe/database';
+import { buscarEstaciones, getPrisma } from '@mantirenfe/database';
 import {
   busquedaHorariosQuerySchema,
   cruzarConexiones,
   EstadoDisponibilidad,
-  fechaGtfs,
   horaGtfs,
   HorarioTrenResponse,
   HorariosResponse,
-  parsearCancelados,
-  parsearRetrasos,
+  obtenerPosicionesRetrasadas,
+  persistirPosicionesSnapshot,
   PosicionTrenResponse,
   prefijoTripId,
   PuntualidadTrenResponse,
@@ -17,7 +16,6 @@ import {
   TrenDisponibilidadResponse,
 } from '@mantirenfe/shared-types';
 import { FuenteRenfeDwr } from '@mantirenfe/venta';
-import { aplicarRetrasos, type PosicionCruda } from './retrasos';
 import { enriquecerPosiciones, type HorarioActivo } from './enriquecer';
 import { trayectosPorParadas } from './paradas';
 import { Semforo } from '../common/semforo';
@@ -40,29 +38,6 @@ interface EntradaPuntualidad {
   valor: PuntualidadTrenResponse[];
   caduca: number;
 }
-
-interface TripUpdates {
-  retrasos: Map<string, number>;
-  cancelados: Set<string>;
-}
-
-/**
- * Techo de retraso admisible al registrar impuntualidad: 6 h (21.600 s).
- *
- * El feed GTFS-RT emite `delay` absurdos que NO son retrasos de viajeros:
- *  - viajes de plataforma/mantenimiento, reconocibles por el `numeroTren` con
- *    `PLATF` (p. ej. `C4a-27318-PLATF.(0)`);
- *  - cruces de medianoche: un servicio reanudado a la 1:00 arrastra un delay
- *    de ~24 h desde la salida programada del día anterior.
- * En septiembre se colaron 1.426 min (23,7 h), 1.074 min y 735 min en el
- * ranking y lo pintaban con +1000 min imposibles. Cualquier muestra por
- * encima de este techo se descarta al escribir (el umbral de impuntualidad
- * sigue siendo PUNTUALIDAD_UMBRAL_SEG = 300 s).
- */
-const PUNTUALIDAD_RETRASO_MAX_SEG = 21_600;
-
-/** Viajes de plataforma/mantenimiento: no son servicios de viajeros. */
-const PUNTUALIDAD_NUMERO_TREN_PLATAFORMA = 'PLATF';
 
 /** Trayecto (y horario) más repetido de un grupo de impuntualidad. */
 interface TrayectoFrecuente {
@@ -288,32 +263,11 @@ export class TrenesService {
 
     this.enCurso = true;
     try {
-      const urls = (
-        process.env.GTFS_RT_URLS ??
-        'https://gtfsrt.renfe.com/vehicle_positions.json,https://gtfsrt.renfe.com/vehicle_positions_LD.json'
-      )
-        .split(',')
-        .map((u) => u.trim())
-        .filter(Boolean);
-      const urlRetrasos =
-        process.env.GTFS_RT_TRIP_UPDATES_URL?.trim() ??
-        'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
-
-      const [resultados, tripUpdates] = await Promise.all([
-        Promise.allSettled(urls.map((url) => this.obtenerFeed(url))),
-        this.obtenerTripUpdates(urlRetrasos),
-      ]);
-      const crudas: PosicionCruda[] = [];
-      for (const resultado of resultados) {
-        if (resultado.status === 'fulfilled') crudas.push(...resultado.value);
-      }
-
-      const datos = aplicarRetrasos(
-        crudas,
-        tripUpdates.retrasos,
-        new Date().toISOString(),
-        tripUpdates.cancelados,
-      );
+      // Feeds de posiciones + trip updates + retrasos: cadena compartida con
+      // el snapshot del worker (shared-types/src/posiciones.ts).
+      const datos = await obtenerPosicionesRetrasadas({
+        aviso: (mensaje) => this.logger.warn(mensaje),
+      });
       const enriquecidos = await this.enriquecerConHorarios(datos);
 
       this.cachePosiciones = { datos: enriquecidos, caduca: Date.now() + ttl };
@@ -421,121 +375,9 @@ export class TrenesService {
   }
 
   private async persistirPosiciones(datos: PosicionTrenResponse[]): Promise<void> {
-    try {
-      const prisma = getPrisma();
-      const ahora = new Date();
-
-      // Snapshot en lote (antes: un upsert por tren = N+1 de escritura).
-      // `skipDuplicates` NO actualiza las filas que ya existen, así que se
-      // borran primero los ids del snapshot y se reinsertan enteras: al final
-      // la tabla refleja el último snapshot con la misma semántica que el
-      // upsert, pero en dos escrituras y sin idas y venidas por tren.
-      const filas = datos.map((posicion) => ({
-        id: posicion.id,
-        numeroTren: posicion.numeroTren,
-        latitud: posicion.latitud,
-        longitud: posicion.longitud,
-        velocidadKmh: posicion.velocidadKmh,
-        retrasoSeg: posicion.retrasoSeg,
-        actualizadaEn: ahora,
-      }));
-      if (filas.length > 0) {
-        await prisma.$transaction(async (tx) => {
-          await tx.posicionTren.deleteMany({ where: { id: { in: filas.map((f) => f.id) } } });
-          await tx.posicionTren.createMany({ data: filas, skipDuplicates: true });
-        });
-      }
-
-      // Traza: un punto por tren y snapshot (para dibujar por dónde ha pasado)
-      if (datos.length > 0) {
-        await prisma.posicionHistorial.createMany({
-          data: datos.map((p) => ({
-            vehiculoId: p.id,
-            tripId: p.tripId ?? null,
-            numeroTren: p.numeroTren,
-            latitud: p.latitud,
-            longitud: p.longitud,
-            retrasoSeg: p.retrasoSeg,
-            en: ahora,
-          })),
-        });
-      }
-
-      // Impuntualidad: un registro por servicio (tripId) y día con el retraso máximo visto
-      const umbralSeg = Number(process.env.PUNTUALIDAD_UMBRAL_SEG ?? '300');
-      // El "día" de impuntualidad es el peninsular (`fechaGtfs`), el mismo que
-      // usan el worker y el resto de tablas con columna `fecha`: un servicio de
-      // la madrugada (00:00-02:00 peninsular) no debe caer en el día UTC anterior
-      const hoy = new Date(`${fechaGtfs(ahora)}T00:00:00Z`);
-      const impuntuales = datos.filter(
-        (p) =>
-          p.tripId &&
-          typeof p.retrasoSeg === 'number' &&
-          p.retrasoSeg >= umbralSeg &&
-          // Sanidad de la muestra: nada de artefactos (ver PUNTUALIDAD_RETRASO_MAX_SEG)
-          p.retrasoSeg <= PUNTUALIDAD_RETRASO_MAX_SEG &&
-          !p.numeroTren?.includes(PUNTUALIDAD_NUMERO_TREN_PLATAFORMA),
-      );
-      if (impuntuales.length > 0) {
-        const maxPorViaje = new Map<string, number>();
-        for (const p of impuntuales) {
-          const viaje = p.tripId as string;
-          maxPorViaje.set(viaje, Math.max(maxPorViaje.get(viaje) ?? 0, p.retrasoSeg as number));
-        }
-        const existentes = await prisma.impuntualidadTren.findMany({
-          where: { fecha: hoy, tripId: { in: [...maxPorViaje.keys()] } },
-          select: { tripId: true, retrasoMaxSeg: true },
-          // Red de seguridad: los ids vienen del feed (≤ cientos de trenes/día;
-          // medido: 4.628 filas en todo un mes), muy por debajo del tope.
-          take: 5_000,
-        });
-        const previos = new Map(existentes.map((e) => [e.tripId, e.retrasoMaxSeg]));
-
-        // En vez de un create/update por viaje: altas en un solo lote y subidas
-        // agrupadas por retraso (un updateMany por cada conjunto de valores iguales)
-        const aCrear: Prisma.ImpuntualidadTrenCreateManyInput[] = [];
-        const aSubir = new Map<number, string[]>();
-        for (const [viaje, retraso] of maxPorViaje) {
-          const previo = previos.get(viaje);
-          if (previo === undefined) {
-            const primera = impuntuales.find((p) => p.tripId === viaje);
-            aCrear.push({
-              tripId: viaje,
-              vehiculoId: primera?.id ?? 'desconocido',
-              numeroTren: primera?.numeroTren ?? null,
-              fecha: hoy,
-              retrasoMaxSeg: retraso,
-            });
-          } else if (retraso > previo) {
-            const viajes = aSubir.get(retraso) ?? [];
-            viajes.push(viaje);
-            aSubir.set(retraso, viajes);
-          }
-        }
-        if (aCrear.length > 0) {
-          // `skipDuplicates` cubre la carrera con otro proceso que inserte el
-          // mismo (tripId, fecha): antes se tragaba el error del create
-          await prisma.impuntualidadTren.createMany({ data: aCrear, skipDuplicates: true });
-        }
-        for (const [retraso, viajes] of aSubir) {
-          await prisma.impuntualidadTren.updateMany({
-            where: { fecha: hoy, tripId: { in: viajes } },
-            data: { retrasoMaxSeg: retraso },
-          });
-        }
-      }
-
-      // Poda: lo no visto en 24 h deja de interesar (los ids estables no crecen)
-      await prisma.posicionTren.deleteMany({
-        where: { actualizadaEn: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-      });
-      const diasHistorial = Number(process.env.POSICIONES_HISTORIAL_DIAS ?? '2');
-      await prisma.posicionHistorial.deleteMany({
-        where: { en: { lt: new Date(Date.now() - diasHistorial * 24 * 60 * 60 * 1000) } },
-      });
-    } catch (error) {
-      this.logger.warn(`No se pudieron persistir posiciones: ${String(error)}`);
-    }
+    // Implementación compartida con el snapshot programado del worker
+    // (shared-types/src/posiciones.ts): estado + traza + impuntualidad + poda.
+    await persistirPosicionesSnapshot(getPrisma(), datos, (mensaje) => this.logger.warn(mensaje));
   }
 
   private async posicionesDesdeBd(): Promise<PosicionTrenResponse[]> {
@@ -1023,93 +865,6 @@ export class TrenesService {
       fila.salida ??= mejor.salida;
       fila.llegada ??= mejor.llegada;
       fila.fecha ??= mejor.fecha;
-    }
-  }
-
-  private async obtenerTripUpdates(url: string): Promise<TripUpdates> {
-    const urls = url
-      .split(',')
-      .map((u) => u.trim())
-      .filter(Boolean);
-    const resultados = await Promise.allSettled(urls.map((u) => this.descargarTripUpdates(u)));
-    const retrasos = new Map<string, number>();
-    const cancelados = new Set<string>();
-    for (const [i, resultado] of resultados.entries()) {
-      if (resultado.status === 'rejected') {
-        this.logger.warn(
-          `No se pudieron obtener trip updates GTFS-RT (${urls[i]}): ${String(resultado.reason)}`,
-        );
-        continue;
-      }
-      for (const [clave, delay] of resultado.value.retrasos) {
-        const previo = retrasos.get(clave);
-        if (previo === undefined || delay > previo) retrasos.set(clave, delay);
-      }
-      for (const clave of resultado.value.cancelados) cancelados.add(clave);
-    }
-    return { retrasos, cancelados };
-  }
-
-  private async descargarTripUpdates(url: string): Promise<TripUpdates> {
-    const controlador = new AbortController();
-    const timeout = setTimeout(() => controlador.abort(), 8_000);
-    try {
-      const respuesta = await fetch(url, {
-        signal: controlador.signal,
-        headers: { accept: 'application/json' },
-      });
-      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
-      const feed = await respuesta.json();
-      return {
-        retrasos: parsearRetrasos(feed),
-        cancelados: parsearCancelados(feed),
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  private async obtenerFeed(url: string): Promise<PosicionCruda[]> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
-    try {
-      const respuesta = await fetch(url, {
-        signal: controller.signal,
-        headers: { accept: 'application/json' },
-      });
-      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
-      const feed = (await respuesta.json()) as {
-        entity?: Array<{
-          id?: string;
-          vehicle?: {
-            position?: { latitude?: number; longitude?: number; speed?: number };
-            timestamp?: number;
-            trip?: { tripId?: string };
-            vehicle?: { label?: string; id?: string };
-          };
-        }>;
-      };
-
-      const crudas: PosicionCruda[] = [];
-      for (const entity of feed.entity ?? []) {
-        const vehicle = entity.vehicle;
-        const position = vehicle?.position;
-        if (!position || position.latitude == null || position.longitude == null) continue;
-        crudas.push({
-          id: vehicle.vehicle?.id ?? vehicle.trip?.tripId ?? entity.id ?? crypto.randomUUID(),
-          numeroTren: vehicle.vehicle?.label ?? vehicle.trip?.tripId ?? null,
-          latitud: position.latitude,
-          longitud: position.longitude,
-          velocidadKmh:
-            position.speed != null && position.speed >= 0
-              ? Math.round(position.speed * 3.6 * 10) / 10
-              : null,
-          tripId: vehicle.trip?.tripId ?? null,
-        });
-      }
-      return crudas;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }
