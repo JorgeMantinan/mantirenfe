@@ -154,12 +154,16 @@ const { prismaMock, store } = vi.hoisted(() => {
             tripId: h.tripId ?? null,
           }));
       },
-      update: async (args: { where: { id: string }; data: { tripId: string } }) => {
-        const fila = store.horarios.find((h) => h.id === args.where.id);
-        if (!fila) throw new Error(`sin fila ${args.where.id}`);
-        fila.tripId = args.data.tripId;
-        store.reparaciones.push({ id: args.where.id, tripId: args.data.tripId });
-        return fila;
+      updateMany: async (args: { where: { id: { in: string[] } }; data: { tripId: string } }) => {
+        let count = 0;
+        for (const id of args.where.id.in) {
+          const fila = store.horarios.find((h) => h.id === id);
+          if (!fila) continue;
+          fila.tripId = args.data.tripId;
+          store.reparaciones.push({ id, tripId: args.data.tripId });
+          count++;
+        }
+        return { count };
       },
       count: async () => 0,
       deleteMany: async () => ({ count: 0 }),
@@ -603,10 +607,16 @@ describe('repararTripIdsDesactualizados', () => {
               (f.tripId === null ? admiteNull : !fuera.includes(f.tripId)),
           );
         },
-        update: async (args) => {
-          const fila = filasBd.find((f) => f.id === args.where.id);
-          if (fila) fila.tripId = args.data.tripId;
-          actualizadas.push({ id: args.where.id, tripId: args.data.tripId });
+        updateMany: async (args) => {
+          let count = 0;
+          for (const id of args.where.id.in) {
+            const fila = filasBd.find((f) => f.id === id);
+            if (!fila) continue;
+            fila.tripId = args.data.tripId;
+            actualizadas.push({ id, tripId: args.data.tripId });
+            count++;
+          }
+          return { count };
         },
       },
     };

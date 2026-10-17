@@ -608,7 +608,10 @@ export interface BaseReparacionTripIds {
         tripId: string | null;
       }>
     >;
-    update: (args: { where: { id: string }; data: { tripId: string } }) => Promise<unknown>;
+    updateMany: (args: {
+      where: { id: { in: string[] } };
+      data: { tripId: string };
+    }) => Promise<{ count: number }>;
   };
 }
 
@@ -648,7 +651,7 @@ function claveDeFila(f: {
  * - Solo se tocan filas cuya clave está en el feed: las filas huérfanas (cuya
  *   programación ya no existe) no tienen tripId con el que sustituirlas.
  *
- * Devuelve el número de UPDATEs ejecutados.
+ * Devuelve el número de filas actualizadas.
  */
 export async function repararTripIdsDesactualizados(
   cliente: BaseReparacionTripIds,
@@ -697,13 +700,27 @@ export async function repararTripIdsDesactualizados(
   });
 
   let reparadas = 0;
+  // Una escritura por tripId nuevo (ids agrupados en IN de a 500): el UPDATE
+  // fila a fila contra Supabase (~100 ms/updated) era el cuello de botella del
+  // sync diario (≈24k updates LD ≈ 40-60 min → el timeout de 20 min lo mataba).
+  const idsPorNuevo = new Map<string, string[]>();
   for (const existente of candidatas) {
     // Vigente en el feed (viaje gemelo de la misma clave única): no se toca
     if (existente.tripId !== null && tripIdsPublicados.has(existente.tripId)) continue;
     const nuevo = porClave.get(claveDeFila(existente))?.tripId;
     if (nuevo === undefined || nuevo === existente.tripId) continue;
-    await cliente.horarioTren.update({ where: { id: existente.id }, data: { tripId: nuevo } });
-    reparadas++;
+    const ids = idsPorNuevo.get(nuevo);
+    if (ids) ids.push(existente.id);
+    else idsPorNuevo.set(nuevo, [existente.id]);
+  }
+  for (const [nuevo, ids] of idsPorNuevo) {
+    for (let i = 0; i < ids.length; i += 500) {
+      const actualizadas = await cliente.horarioTren.updateMany({
+        where: { id: { in: ids.slice(i, i + 500) } },
+        data: { tripId: nuevo },
+      });
+      reparadas += actualizadas.count;
+    }
   }
   return reparadas;
 }
