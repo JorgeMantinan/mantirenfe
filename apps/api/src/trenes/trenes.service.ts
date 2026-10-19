@@ -65,7 +65,10 @@ export class TrenesService {
   private enCurso = false;
   private ultimaPersistenciaPosiciones = 0;
   private readonly intervaloPersistenciaMs =
-    Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
+    //15 min (antes10): cada snapshot reescribe estado + historial de traza +
+    // impuntualidad con sus índices — escrituras que cuentan para el Disk IO.
+    // La traza sigue sin saltarse segmentos (el corte del mapa es a30 min).
+    Number(process.env.POSICIONES_PERSISTIR_SEG ?? '900') * 1000;
 
   /**
    * `GET /trenes/puntualidad` es, con diferencia, la query más pesada del API:
@@ -84,9 +87,9 @@ export class TrenesService {
   private readonly semaforoPuntualidad = new Semforo(2);
   private readonly cachePuntualidad = new Map<string, EntradaPuntualidad>();
   private readonly puntualidadEnCurso = new Map<string, Promise<PuntualidadTrenResponse[]>>();
-  //5 minutos: la puntualidad de un mes cambia poco y cada recálculo cuesta
-  // ~9 MB de egress (ParadaHorario); con60 s era un goteo constante.
-  private static readonly TTL_PUNTUALIDAD_MS = 5 * 60_000;
+  //15 minutos: la puntualidad de un mes cambia poco y cada recálculo cuesta
+  // ~9 MB de LECTURA de ParadaHorario (Disc IO); con60 s era un goteo.
+  private static readonly TTL_PUNTUALIDAD_MS = 15 * 60_000;
   private static readonly MAX_CACHE_PUNTUALIDAD = 60;
 
   async horarios(query: unknown): Promise<HorariosResponse> {

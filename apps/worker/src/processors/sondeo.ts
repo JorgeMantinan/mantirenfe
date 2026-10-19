@@ -582,6 +582,23 @@ interface AvisoSondeo {
 export const SONDEOS_AGOTAR_PLAZA = 3;
 
 /**
+ * JSON canónico (claves ordenadas, sin depender del orden que imponga jsonb
+ * al leer) para comparar estados: si un sondeo no ha cambiado NADA, el estado
+ * no se reescribe — es el mismo blob de unos KB por alerta y cada ciclo, y el
+ * Disk IO de Supabase (presupuesto aparte del egress) se va en esas escrituras.
+ */
+export function canonico(valor: unknown): string {
+  if (Array.isArray(valor)) return `[${valor.map(canonico).join(',')}]`;
+  if (valor && typeof valor === 'object') {
+    const entradas = Object.entries(valor as Record<string, unknown>).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    return `{${entradas.map(([k, v]) => `${JSON.stringify(k)}:${canonico(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(valor) ?? 'null';
+}
+
+/**
  * Serie de disponibilidad MONOTONA: mientras la fuente no lo declare agotado,
  * una vez un tren se ha visto con plaza (disponible=true) se conserva así
  * aunque la fuente lo omita o lo marque como no disponible en un sondeo
@@ -1453,12 +1470,15 @@ export async function sondearAlerta(alertaId: string, logger: Logger): Promise<v
 
   // Estado y avisos se guardan juntos en una única transacción: o se persisten
   // los dos o no se persiste nada (una Notificacion sin estado, o estado sin
-  // aviso, dejaría el sondeo y el buzón sin cuadrar).
+  // aviso, dejaría el sondeo y el buzón sin cuadrar). El JSON del estado solo
+  // se escribe si algo ha cambiado de verdad (canonico): con N alertas cada
+  // pocos minutos era el mayor generador de escrituras (Disk IO).
+  const estadoCambia = canonico(actual) !== canonico(alerta.ultimoEstado ?? null);
   await prisma.$transaction([
     prisma.alerta.update({
       where: { id: alerta.id },
       data: {
-        ultimoEstado: actual as object,
+        ...(estadoCambia ? { ultimoEstado: actual as object } : {}),
         ultimoSondeoEn: new Date(),
         // Se guarda con el estado y en la MISMA transacción: los dos hablan de
         // la misma fecha, que es lo que permite detectar el cambio de fecha
