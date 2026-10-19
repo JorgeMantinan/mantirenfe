@@ -198,6 +198,12 @@ export interface BasePersistenciaPosiciones {
       data: FilaSnapshotPosicion[];
       skipDuplicates?: boolean;
     }): Promise<{ count: number }>;
+    // Opcional (los dobles de test no lo llevan): frescura del último
+    // snapshot para el throttle de escrituras (Disk IO).
+    findFirst?(args: {
+      orderBy: { actualizadaEn: 'desc' };
+      select: { actualizadaEn: true };
+    }): Promise<{ actualizadaEn: Date } | null>;
   };
   posicionHistorial: {
     createMany(args: { data: FilaHistorialPosicion[] }): Promise<{ count: number }>;
@@ -246,6 +252,25 @@ export async function persistirPosicionesSnapshot(
 ): Promise<void> {
   try {
     const ahora = new Date();
+
+    // Throttle de escrituras (presupuesto DIARIO de Disk IO de Supabase): si
+    // el último snapshot es más reciente que POSICIONES_PERSISTIR_SEG (10 min
+    // por defecto), no se reescribe nada. El cron de Actions corre cada 5 min:
+    // sin esto reescribía estado + historial de traza + impuntualidad + sus
+    // índices el DOBLE que el worker viejo (288 vs 144 snapshots al día).
+    // La lectura va al índice de actualizadaEn (index-only, casi sin IO).
+    const intervaloMs = Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
+    const ultima =
+      typeof cliente.posicionTren.findFirst === 'function'
+        ? await cliente.posicionTren.findFirst({
+            orderBy: { actualizadaEn: 'desc' },
+            select: { actualizadaEn: true },
+          })
+        : null;
+    if (ultima && ahora.getTime() - ultima.actualizadaEn.getTime() < intervaloMs) {
+      aviso?.('Snapshot de posiciones omitido: el último no ha cumplido POSICIONES_PERSISTIR_SEG');
+      return;
+    }
 
     const filas = datos.map((posicion) => ({
       id: posicion.id,
