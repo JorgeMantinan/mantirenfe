@@ -21,7 +21,7 @@
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/swagger": "^7.4.0",
     "@nestjs/throttler": "^6.2.1",
-    "@prisma/client": "^5.18.0",
+    "@prisma/client": "^7.10.1",
     "@sentry/node": "^8.0.0",
     "bullmq": "^5.0.0",
     "ioredis": "^5.4.0",
