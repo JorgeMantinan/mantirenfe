@@ -100,6 +100,7 @@ export const es = {
     navHorarios: 'Buscar horarios',
     navMapa: 'Mapa',
     navEstaciones: 'Estaciones',
+    navGuia: 'Guía',
     cta: 'Crear alerta',
     afiliacion:
       ' es un proyecto independiente y no está afiliado, patrocinado ni respaldado por Renfe Operadora, Adif ni ningún operador ferroviario.',
@@ -179,6 +180,88 @@ export const es = {
     trayectosTitulo: 'Horarios de tren por trayectos de España | MantiRenfe',
     trayectosDescripcion:
       'Busca horarios de tren entre dos estaciones: primeras salidas del día, duración, tren y operador con datos abiertos de Renfe. Trayectos populares y alertas personalizadas.',
+    // Una entrada por página pública: sin título propio todas las rutas
+    // servían el mismo, que es una señal de «contenido duplicado».
+    landingTitulo: 'MantiRenfe: alertas de tren, plazas libres y horarios en tiempo real',
+    landingDescripcion:
+      'Te avisamos en cuanto se libera una plaza, hay retraso o se suprime un tren de Renfe u OUIGO. Horarios, mapa en tiempo real y alertas por push o email. Gratis y sin instalar nada.',
+    guiaTitulo: 'Guía de alertas de tren: plazas libres, retrasos y supresiones | MantiRenfe',
+    guiaDescripcion:
+      'Cómo funcionan las alertas de disponibilidad, retrasos y supresiones de MantiRenfe: qué datos se usan, con cuánta antelación avisa y cómo crear tu primera alerta en dos minutos.',
+    incidenciasTitulo: 'Incidencias de trenes hoy en la red Renfe | MantiRenfe',
+    incidenciasDescripcion:
+      'Incidencias de servicio activas ahora mismo en la red ferroviaria española: cortes, obras, retardos y avisos operativos, con la hora de la última actualización.',
+    suprimidosTitulo: 'Trenes suprimidos hoy: cancelaciones de Renfe | MantiRenfe',
+    suprimidosDescripcion:
+      'Lista de trenes suprimidos y cancelaciones detectadas hoy y en los próximos días en la red Renfe, actualizada cada 5 minutos y con aviso push si vigilas ese tren.',
+    puntualidadTitulo: 'Trenes más impuntuales de Renfe: puntualidad por trayecto | MantiRenfe',
+    puntualidadDescripcion:
+      'Ranking de trenes y trayectos más impuntuales de Renfe: retraso medio por servicio, evolución mensual y percentiles calculados con datos GTFS de tiempo real.',
+    trenesTitulo: 'Horarios de trenes de hoy: Renfe, OUIGO e Iryo | MantiRenfe',
+    trenesDescripcion:
+      'Busca un tren por estación y fecha y consulta salidas, llegadas, duración, plazas disponibles y precio estimado, con datos abiertos de Renfe y comparativa multioperador.',
+    estacionesTitulo: 'Estaciones de tren: salidas, aforo e incidencias | MantiRenfe',
+    estacionesDescripcion:
+      'Ficha de cada estación de la red: próximas salidas, ocupación de coches, incidencias que la afectan y precios de las plazas libres de cada tren.',
+    mapaTitulo: 'Mapa de trenes en tiempo real en España | MantiRenfe',
+    mapaDescripcion:
+      'Posición en vivo de los trenes de Cercanías y Larga Distancia sobre un mapa: última posición conocida, velocidad y estado de cada composición.',
+    transparenciaTitulo: 'Transparencia: fuentes de datos y financiación | MantiRenfe',
+    transparenciaDescripcion:
+      'Quién hay detrás de MantiRenfe, de dónde salen los datos (GTFS-RT de MITRAMS, venta de Renfe, NAP de OUIGO), cómo se financia y en qué estado está el proyecto.',
+    privacidadTitulo: 'Política de privacidad | MantiRenfe',
+    privacidadDescripcion:
+      'Qué datos se guardan en MantiRenfe (alertas, preferencias y suscripciones push), quién los procesa, durante cuánto tiempo y cómo ejercer tus derechos.',
+    terminosTitulo: 'Condiciones del servicio | MantiRenfe',
+    terminosDescripcion:
+      'Reglas de uso de MantiRenfe: servicio gratuito sin garantía de disponibilidad de billetes, procedencia de los datos públicos y limitación de responsabilidad.',
+    cookiesTitulo: 'Política de cookies | MantiRenfe',
+    cookiesDescripcion:
+      'Qué cookies usa MantiRenfe (técnicas de sesión y, solo si aceptas, medición y anuncios de Google AdSense) y cómo desactivarlas desde tu navegador.',
+  },
+
+  // ──────────────────────────────── guía (contenido editorial de /guia)
+  guia: {
+    h1: 'Guía de alertas de tren: plazas libres, retrasos y supresiones',
+    entradilla:
+      'MantiRenfe vigila la red ferroviaria española por ti: te avisa cuando se libera una plaza en el tren que quieres, cuando se retrasa más de lo que toleras y cuando se suprime. Aquí explicamos cómo funciona y qué datos usa.',
+    s1Titulo: 'Qué vigila MantiRenfe',
+    s1Texto:
+      'Cuatro señales que importan cuando ya tienes el billete o estás buscando uno: la disponibilidad de plazas del tren que te interesa, los retrasos por encima del umbral que elijas, las supresiones de servicios y las incidencias de la red (cortes, obras y avisos operativos). Se pueden combinar: la misma alerta puede avisarte de plazas y de retrasos a la vez.',
+    s2Titulo: 'Cómo se detecta una plaza libre',
+    s2Texto:
+      'El worker vuelve a consultar la disponibilidad de cada tren vigilado cada 5 minutos y compara el resultado con el anterior. Si aparece un hueco —o si el número de plazas sube, como cuando alguien devuelve su cambio— salta el aviso por push o por email. El sondeo es periódico, no instantáneo: en el peor de los casos el aviso tarda lo mismo que el intervalo de sondeo.',
+    s3Titulo: 'Retrasos, supresiones e incidencias',
+    s3Texto:
+      'Los retrasos y las posiciones salen del feed GTFS-RT que publica el MITRAMS, el mismo dato que usa cualquier app oficial, con actualizaciones continuas. Las supresiones se detectan comparando los servicios programados con los publicados, y las incidencias se leen del feed de avisos. Si el tren que vigilas aparece suprimido, el aviso llega antes de que te desplaces a la estación.',
+    s4Titulo: 'Cómo crear una alerta en dos minutos',
+    s4Texto:
+      'Regístrate con email o con Google, elige el trayecto, la fecha y el tren (o todos los del día), define el umbral de retraso y el canal: notificación push del navegador, push de la app móvil o email. Después puedes pausar, editar o borrar la alerta desde tu panel y añadir una ventana de aviso previo para ir andando a la estación.',
+    s5Titulo: 'De dónde salen los datos',
+    s5Texto:
+      'GTFS y GTFS-RT del MITRAMS para horarios, posiciones, retrasos e incidencias; la API pública de disponibilidad de la venta de Renfe para las plazas libres; y el Punto de Acceso Nacional para los datos de OUIGO. Los datos de Renfe se publican bajo su licencia de datos abiertos y se citan en cada página.',
+    faqTitulo: 'Preguntas frecuentes',
+    faq1Pregunta: '¿MantiRenfe vende billetes?',
+    faq1Respuesta:
+      'No. MantiRenfe no vende billetes ni reserva plazas: solo vigila la disponibilidad y los avisos de la red. Cuando detecta un hueco te avisa para que compres tú directamente en la web de Renfe o de OUIGO.',
+    faq2Pregunta: '¿Cada cuánto se actualizan los datos?',
+    faq2Respuesta:
+      'Las alertas, incidencias, supresiones y posiciones se repasan cada 5 minutos; las posiciones del mapa se guardan cada pocos segundos. Los horarios GTFS se sincronizan una vez al día, de madrugada.',
+    faq3Pregunta: '¿Avisa siempre que hay una plaza libre?',
+    faq3Respuesta:
+      'Solo si has creado una alerta para ese trayecto y esa fecha, y solo cuando el cambio es relevante: una plaza que aparece o un aumento repentino de disponibilidad. El objetivo es el aviso útil, no el ruido.',
+    faq4Pregunta: '¿Funciona con OUIGO e Iryo?',
+    faq4Respuesta:
+      'Sí con OUIGO: sus trenes se importan desde el Punto de Acceso Nacional y aparecen en los horarios y en el comparador de precios. Iryo no publica datos en el mismo formato, así que por ahora solo se muestra cuando aparece en los feeds del MITRAMS.',
+    faq5Pregunta: '¿Tiene coste? ¿Cómo se financia?',
+    faq5Respuesta:
+      'El uso es gratuito. El proyecto se financia con enlaces de afiliación a billetes, con los anuncios que se muestran en algunas páginas y con donaciones voluntarias; todo está detallado en la página de transparencia.',
+    faq6Pregunta: '¿Funciona en el móvil?',
+    faq6Respuesta:
+      'Sí. La web es una PWA instalable desde el navegador y además hay app para Android con notificaciones push nativas. Las alertas son las mismas en web y en móvil.',
+    ctaTitulo: '¿Quieres que te avise la próxima vez?',
+    ctaTexto: 'Crea tu primera alerta en dos minutos y deja de mirar la web de venta cada hora.',
+    ctaBoton: 'Crear alerta',
   },
 
   // ──────────────────────────────── formulario / campos comunes

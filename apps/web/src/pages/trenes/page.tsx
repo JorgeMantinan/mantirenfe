@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { BellPlus, CircleDollarSign, Search, TrainFront } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { BloqueBilletes } from '@/components/BloqueBilletes';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { PanelPlazasPrecio } from '@/pages/estaciones/plazas-precio';
@@ -35,6 +36,7 @@ function grupoOperador(operador: string | null | undefined): 'Renfe' | 'Ouigo' |
 }
 
 export function PaginaTrenes() {
+  useMetaPagina('/trenes');
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [parametros] = useSearchParams();

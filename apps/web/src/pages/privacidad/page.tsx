@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { PaginaLegal } from '@/components/layout/PaginaLegal';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
@@ -14,6 +15,7 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
 const FUERTE = { strong: <strong className="text-foreground" /> };
 
 export function PaginaPrivacidad() {
+  useMetaPagina('/privacidad');
   const { t } = useTranslation();
 
   return (

@@ -18,10 +18,12 @@ import { TrayectosPopulares } from '@/components/TrayectosPopulares';
 import { SelectorIdioma } from '@/components/SelectorIdioma';
 import { TRAYECTOS_POPULARES, etiquetaTrayecto, rutaTrayecto } from '@/lib/trayectos';
 import { useAuth } from '@/hooks/useAuth';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { hayAfiliacion, hayDonaciones, urlDonaciones } from '@/lib/monetizacion';
 import { i18n, rutaEnIdioma, type Idioma } from '@/i18n';
 
 export function PaginaLanding() {
+  useMetaPagina('/');
   const { t } = useTranslation();
   const { user, authConfigurada } = useAuth();
   const lang: Idioma = i18n.language === 'en' ? 'en' : 'es';
@@ -309,6 +311,9 @@ export function PaginaLanding() {
             </Link>
             <Link to="/puntualidad" className="hover:text-foreground">
               {t('comunes.impuntuales')}
+            </Link>
+            <Link to="/guia" className="hover:text-foreground">
+              {t('pie.navGuia')}
             </Link>
             <Link to="/transparencia" className="hover:text-foreground">
               {t('comunes.transparencia')}

@@ -2,198 +2,242 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://mantirenfe.vercel.app/</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/guia</loc>
+    <lastmod>2026-10-25</lastmod>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/barcelona</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/barcelona"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/barcelona"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/sevilla</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/sevilla"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/sevilla"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/valencia</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/valencia"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/valencia"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/malaga</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/malaga"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/malaga"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/bilbao</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/bilbao"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/bilbao"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/barcelona/valencia</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/barcelona/valencia"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/barcelona/valencia"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/a-coruna/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/a-coruna/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/a-coruna/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/vigo/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/vigo/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/vigo/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/sevilla/malaga</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/sevilla/malaga"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/sevilla/malaga"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/valencia/barcelona</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/valencia/barcelona"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/valencia/barcelona"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/madrid/zaragoza</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/zaragoza"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/zaragoza"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/granada/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/granada/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/granada/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/murcia/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/murcia/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/murcia/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/valladolid/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/valladolid/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/valladolid/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/trayectos/salamanca/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/salamanca/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/salamanca/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/barcelona</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/barcelona"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/barcelona"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/sevilla</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/sevilla"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/sevilla"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/valencia</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/valencia"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/valencia"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/malaga</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/malaga"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/malaga"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/bilbao</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/bilbao"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/bilbao"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/barcelona/valencia</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/barcelona/valencia"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/barcelona/valencia"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/a-coruna/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/a-coruna/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/a-coruna/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/vigo/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/vigo/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/vigo/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/sevilla/malaga</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/sevilla/malaga"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/sevilla/malaga"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/valencia/barcelona</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/valencia/barcelona"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/valencia/barcelona"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/madrid/zaragoza</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/madrid/zaragoza"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/madrid/zaragoza"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/granada/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/granada/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/granada/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/murcia/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/murcia/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/murcia/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/valladolid/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/valladolid/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/valladolid/madrid"/>
   </url>
   <url>
     <loc>https://mantirenfe.vercel.app/en/trayectos/salamanca/madrid</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-25</lastmod>
     <xhtml:link rel="alternate" hreflang="es" href="https://mantirenfe.vercel.app/trayectos/salamanca/madrid"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://mantirenfe.vercel.app/en/trayectos/salamanca/madrid"/>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/incidencias</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/suprimidos</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/puntualidad</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/trenes</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/estaciones</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/mapa</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/transparencia</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/privacidad</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/terminos</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://mantirenfe.vercel.app/cookies</loc>
+    <lastmod>2026-10-25</lastmod>
   </url>
 </urlset>

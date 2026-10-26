@@ -294,12 +294,14 @@ export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
         </div>
 
         {estado === 'cargando' ? (
-          <div className="space-y-3">
+          <div className="space-y-3" aria-busy="true">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-40 w-full" />
             <Skeleton className="h-10 w-2/3" />
           </div>
-        ) : estado === 'sin-estacion' ? (
+        ) : null}
+
+        {estado === 'sin-estacion' ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
@@ -325,7 +327,9 @@ export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
               ) : null}
             </CardContent>
           </Card>
-        ) : (
+        ) : null}
+
+        {estado === 'listo' || estado === 'error' ? (
           <>
             {error ? (
               <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
@@ -351,7 +355,14 @@ export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
                 </CardContent>
               </Card>
             ) : null}
+          </>
+        ) : null}
 
+        {/* No dependen del resultado del sondeo: se pintan también mientras
+            carga, de modo que el HTML prerenderizado de esta página lleva
+            contenido de verdad y no un esqueleto. */}
+        {estado !== 'sin-estacion' ? (
+          <>
             <Card className="border-primary/30 bg-primary/5">
               <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
                 <div className="space-y-1">
@@ -371,6 +382,8 @@ export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
               </CardContent>
             </Card>
 
+            {/* `datosOrigen(null)` cae en la cita genérica, así que el bloque
+                sale también mientras carga: es contenido, no estado. */}
             <div className="rounded-lg border bg-muted/40 p-4 text-sm">
               <p className="font-semibold">{t.datosTitulo}</p>
               <ul className="mt-1 space-y-1 text-muted-foreground">
@@ -387,7 +400,7 @@ export function PaginaTrayecto({ lang = 'es' }: { lang?: Idioma }) {
               <TrayectosPopulares cantidad={10} rutaActual={rutaActual} lang={lang} />
             </section>
           </>
-        )}
+        ) : null}
       </div>
     </SeoShell>
   );

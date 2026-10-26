@@ -49,9 +49,93 @@
       "source": "/api/:path*",
       "destination": "https://mantirenfe.onrender.com/api/:path*"
     },
+    { "source": "/guia", "destination": "/guia.html" },
+    { "source": "/incidencias", "destination": "/incidencias.html" },
+    { "source": "/suprimidos", "destination": "/suprimidos.html" },
+    { "source": "/puntualidad", "destination": "/puntualidad.html" },
+    { "source": "/trenes", "destination": "/trenes.html" },
+    { "source": "/estaciones", "destination": "/estaciones.html" },
+    { "source": "/transparencia", "destination": "/transparencia.html" },
+    { "source": "/privacidad", "destination": "/privacidad.html" },
+    { "source": "/terminos", "destination": "/terminos.html" },
+    { "source": "/cookies", "destination": "/cookies.html" },
+    { "source": "/trayectos", "destination": "/trayectos.html" },
+    { "source": "/en/trayectos", "destination": "/en/trayectos.html" },
+    { "source": "/trayectos/madrid/barcelona", "destination": "/trayectos/madrid/barcelona.html" },
+    { "source": "/trayectos/madrid/sevilla", "destination": "/trayectos/madrid/sevilla.html" },
+    { "source": "/trayectos/madrid/valencia", "destination": "/trayectos/madrid/valencia.html" },
+    { "source": "/trayectos/madrid/malaga", "destination": "/trayectos/madrid/malaga.html" },
+    { "source": "/trayectos/madrid/bilbao", "destination": "/trayectos/madrid/bilbao.html" },
+    {
+      "source": "/trayectos/barcelona/valencia",
+      "destination": "/trayectos/barcelona/valencia.html"
+    },
+    { "source": "/trayectos/a-coruna/madrid", "destination": "/trayectos/a-coruna/madrid.html" },
+    { "source": "/trayectos/vigo/madrid", "destination": "/trayectos/vigo/madrid.html" },
+    { "source": "/trayectos/sevilla/malaga", "destination": "/trayectos/sevilla/malaga.html" },
+    {
+      "source": "/trayectos/valencia/barcelona",
+      "destination": "/trayectos/valencia/barcelona.html"
+    },
+    { "source": "/trayectos/madrid/zaragoza", "destination": "/trayectos/madrid/zaragoza.html" },
+    { "source": "/trayectos/granada/madrid", "destination": "/trayectos/granada/madrid.html" },
+    { "source": "/trayectos/murcia/madrid", "destination": "/trayectos/murcia/madrid.html" },
+    {
+      "source": "/trayectos/valladolid/madrid",
+      "destination": "/trayectos/valladolid/madrid.html"
+    },
+    { "source": "/trayectos/salamanca/madrid", "destination": "/trayectos/salamanca/madrid.html" },
+    {
+      "source": "/en/trayectos/madrid/barcelona",
+      "destination": "/en/trayectos/madrid/barcelona.html"
+    },
+    {
+      "source": "/en/trayectos/madrid/sevilla",
+      "destination": "/en/trayectos/madrid/sevilla.html"
+    },
+    {
+      "source": "/en/trayectos/madrid/valencia",
+      "destination": "/en/trayectos/madrid/valencia.html"
+    },
+    { "source": "/en/trayectos/madrid/malaga", "destination": "/en/trayectos/madrid/malaga.html" },
+    { "source": "/en/trayectos/madrid/bilbao", "destination": "/en/trayectos/madrid/bilbao.html" },
+    {
+      "source": "/en/trayectos/barcelona/valencia",
+      "destination": "/en/trayectos/barcelona/valencia.html"
+    },
+    {
+      "source": "/en/trayectos/a-coruna/madrid",
+      "destination": "/en/trayectos/a-coruna/madrid.html"
+    },
+    { "source": "/en/trayectos/vigo/madrid", "destination": "/en/trayectos/vigo/madrid.html" },
+    {
+      "source": "/en/trayectos/sevilla/malaga",
+      "destination": "/en/trayectos/sevilla/malaga.html"
+    },
+    {
+      "source": "/en/trayectos/valencia/barcelona",
+      "destination": "/en/trayectos/valencia/barcelona.html"
+    },
+    {
+      "source": "/en/trayectos/madrid/zaragoza",
+      "destination": "/en/trayectos/madrid/zaragoza.html"
+    },
+    {
+      "source": "/en/trayectos/granada/madrid",
+      "destination": "/en/trayectos/granada/madrid.html"
+    },
+    { "source": "/en/trayectos/murcia/madrid", "destination": "/en/trayectos/murcia/madrid.html" },
+    {
+      "source": "/en/trayectos/valladolid/madrid",
+      "destination": "/en/trayectos/valladolid/madrid.html"
+    },
+    {
+      "source": "/en/trayectos/salamanca/madrid",
+      "destination": "/en/trayectos/salamanca/madrid.html"
+    },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/shell.html"
     }
   ]
 }

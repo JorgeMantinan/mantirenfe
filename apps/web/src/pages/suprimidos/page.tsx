@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { CircleSlash, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { Badge } from '@/components/ui/badge';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ function sinDatos(fila: SuprimidoResponse): boolean {
 }
 
 export function PaginaSuprimidos() {
+  useMetaPagina('/suprimidos');
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [texto, setTexto] = useState('');

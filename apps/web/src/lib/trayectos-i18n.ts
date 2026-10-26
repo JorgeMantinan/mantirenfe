@@ -1,4 +1,5 @@
 import type { MetaPagina } from './seo';
+import { jsonLdMigas } from '@/lib/jsonld';
 import { esRutaTrayecto, i18n, rutaEnIdioma, type Idioma } from '@/i18n';
 
 export { esRutaTrayecto, rutaEnIdioma };
@@ -169,6 +170,17 @@ export function metaTrayecto(
   const anio = new Date().getFullYear();
   const titulo = i18n.t('meta.trayectoTitulo', { lng: lang, origen, destino, anio });
   const descripcion = i18n.t('meta.trayectoDescripcion', { lng: lang, origen, destino });
+  const jsonLd = jsonLdMigas(
+    [
+      { nombre: i18n.t('comunes.inicio', { lng: lang }), ruta: '/' },
+      {
+        nombre: i18n.t('pie.navTrayectos', { lng: lang }),
+        ruta: lang === 'en' ? '/en/trayectos' : '/trayectos',
+      },
+      { nombre: `${origen} → ${destino}` },
+    ],
+    lang,
+  );
   if (lang === 'en') {
     return {
       titulo,
@@ -176,6 +188,7 @@ export function metaTrayecto(
       canonical: ruta,
       lang: 'en',
       alternate: { hreflang: 'es', href: ruta.replace(/^\/en(?=\/|$)/, '') },
+      jsonLd,
     };
   }
   return {
@@ -184,6 +197,7 @@ export function metaTrayecto(
     canonical: ruta,
     lang: 'es',
     alternate: { hreflang: 'en', href: `/en${ruta}` },
+    jsonLd,
   };
 }
 
@@ -199,5 +213,12 @@ export function metaTrayectos(lang: Idioma): MetaPagina {
       lang === 'en'
         ? { hreflang: 'es', href: '/trayectos' }
         : { hreflang: 'en', href: '/en/trayectos' },
+    jsonLd: jsonLdMigas(
+      [
+        { nombre: i18n.t('comunes.inicio', { lng: lang }), ruta: '/' },
+        { nombre: i18n.t('pie.navTrayectos', { lng: lang }) },
+      ],
+      lang,
+    ),
   };
 }

@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { cambiarIdioma, esRutaTrayecto, rutaEnIdioma, type Idioma } from '@/i18n';
 
-type ClaveNav = 'pie.navTrayectos' | 'pie.navHorarios' | 'pie.navMapa' | 'pie.navEstaciones';
+type ClaveNav =
+  'pie.navTrayectos' | 'pie.navHorarios' | 'pie.navMapa' | 'pie.navEstaciones' | 'pie.navGuia';
 
 /** Solo `/trayectos` tiene versión bilingüe por URL; el resto es la misma ruta. */
 const NAV: Array<{ to: string; en?: string; clave: ClaveNav }> = [
@@ -12,6 +13,7 @@ const NAV: Array<{ to: string; en?: string; clave: ClaveNav }> = [
   { to: '/trenes', clave: 'pie.navHorarios' },
   { to: '/mapa', clave: 'pie.navMapa' },
   { to: '/estaciones', clave: 'pie.navEstaciones' },
+  { to: '/guia', clave: 'pie.navGuia' },
 ];
 
 /**

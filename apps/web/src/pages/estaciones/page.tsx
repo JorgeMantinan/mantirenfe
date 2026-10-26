@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,6 +77,7 @@ function FilaEstacion({
 }
 
 export function PaginaEstaciones() {
+  useMetaPagina('/estaciones');
   const { t } = useTranslation();
   const [texto, setTexto] = useState('');
   const {

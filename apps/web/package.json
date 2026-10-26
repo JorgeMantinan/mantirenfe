@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
+    "build": "vite build && pnpm prerender",
+    "prerender": "vite build --config vite.prerender.config.ts && node .prerender/prerender.js",
     "preview": "vite preview --host",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src && prettier --check \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist .prerender"
   },
   "dependencies": {
     "@mantirenfe/shared-types": "workspace:*",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock } from 'lucide-react';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { api } from '@/lib/api';
 import { BotonMostrarMas } from '@/components/BotonMostrarMas';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,7 @@ function comparar(
 }
 
 export function PaginaPuntualidad() {
+  useMetaPagina('/puntualidad');
   const { t } = useTranslation();
   const [mes, setMes] = useState(mesActual);
   const [orden, setOrden] = useState<'veces' | 'impuntualidad'>('veces');

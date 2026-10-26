@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { I18nextProvider, useTranslation } from 'react-i18next';
+import { tieneMetaPropia } from '@/lib/metas';
 import { cambiarIdioma, esRutaTrayecto, i18n, type Idioma } from './index';
 
 /**
@@ -23,8 +24,8 @@ function SincronizaIdiomaConRuta() {
 
 /**
  * `document.documentElement.lang` y el título por defecto siguen al idioma
- * activo. Las páginas SEO de trayecto se encargan de sus propios tags (y este
- * efecto no las toca), así que solo aplica la base en el resto de rutas.
+ * activo. Las páginas con meta propia (trayectos y las de `lib/metas.ts`) se
+ * encargan de sus tags y este efecto no las toca.
  */
 function MetaIdioma() {
   const { pathname } = useLocation();
@@ -34,7 +35,7 @@ function MetaIdioma() {
   useEffect(() => {
     const lang: Idioma = language.startsWith('en') ? 'en' : 'es';
     document.documentElement.lang = lang;
-    if (esRutaTrayecto(pathname)) return;
+    if (esRutaTrayecto(pathname) || tieneMetaPropia(pathname)) return;
     document.title = instancia.t('meta.baseTitulo', { lng: lang });
     const descripcion = document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (descripcion)

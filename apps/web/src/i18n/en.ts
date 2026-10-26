@@ -102,6 +102,7 @@ export const en: MismoArbol<Claves> = {
     navHorarios: 'Search timetables',
     navMapa: 'Map',
     navEstaciones: 'Stations',
+    navGuia: 'Guide',
     cta: 'Create alert',
     afiliacion:
       ' is an independent project, not affiliated with, sponsored or endorsed by Renfe Operadora, Adif or any rail operator.',
@@ -181,6 +182,88 @@ export const en: MismoArbol<Claves> = {
     trayectosTitulo: 'Train schedules for routes in Spain | MantiRenfe',
     trayectosDescripcion:
       'Search train timetables between two stations: first departures of the day, duration, train and operator with open data from Renfe. Popular routes and custom alerts.',
+    // One entry per public page: without them every route served the same
+    // title, which is a clear "duplicate content" signal.
+    landingTitulo: 'MantiRenfe: train alerts, free seats and live timetables',
+    landingDescripcion:
+      'We ping you the moment a seat opens up, a train runs late or gets cancelled on the Renfe or OUIGO network. Live map, timetables and alerts by push or email. Free, nothing to install.',
+    guiaTitulo: 'Train alert guide: free seats, delays and cancellations | MantiRenfe',
+    guiaDescripcion:
+      'How MantiRenfe availability, delay and cancellation alerts work: which data feeds are used, how far ahead we warn you and how to set up your first alert in two minutes.',
+    incidenciasTitulo: 'Train disruptions today on the Renfe network | MantiRenfe',
+    incidenciasDescripcion:
+      'Service disruptions active right now across the Spanish rail network: closures, engineering works, delays and operator notices, each with the time of the last update.',
+    suprimidosTitulo: 'Cancelled trains today: Renfe service cuts | MantiRenfe',
+    suprimidosDescripcion:
+      'Trains cancelled today and in the coming days on the Renfe network, refreshed every 5 minutes, with a push alert if you are watching that service.',
+    puntualidadTitulo: 'Least punctual Renfe trains: on-time ranking by route | MantiRenfe',
+    puntualidadDescripcion:
+      'Ranking of the least punctual Renfe trains and routes: average delay per service, monthly trend and percentiles computed from real-time GTFS feeds.',
+    trenesTitulo: 'Today’s train times: Renfe, OUIGO and Iryo | MantiRenfe',
+    trenesDescripcion:
+      'Search a train by station and date to see departures, arrivals, journey time, free seats and estimated price, using open data from Renfe and other operators.',
+    estacionesTitulo: 'Train stations: departures, occupancy and disruptions | MantiRenfe',
+    estacionesDescripcion:
+      'Every station on the network: next departures, carriage occupancy, disruptions affecting it and prices for the free seats on each train.',
+    mapaTitulo: 'Live train map of Spain | MantiRenfe',
+    mapaDescripcion:
+      'Live positions of commuter and long-distance trains on a map: last known location, speed and status of each service.',
+    transparenciaTitulo: 'Transparency: data sources and funding | MantiRenfe',
+    transparenciaDescripcion:
+      'Who is behind MantiRenfe, where the data comes from (MITRAMS GTFS-RT, Renfe sales, OUIGO via the national access point), how it is funded and the project status.',
+    privacidadTitulo: 'Privacy policy | MantiRenfe',
+    privacidadDescripcion:
+      'What data MantiRenfe stores (alerts, preferences and push subscriptions), who processes it, for how long and how to exercise your rights.',
+    terminosTitulo: 'Terms of service | MantiRenfe',
+    terminosDescripcion:
+      'Rules for using MantiRenfe: free service with no ticket availability guarantee, public data provenance and limitation of liability.',
+    cookiesTitulo: 'Cookie policy | MantiRenfe',
+    cookiesDescripcion:
+      'Which cookies MantiRenfe uses (session cookies and, only if you accept them, measurement and Google AdSense ads) and how to turn them off in your browser.',
+  },
+
+  // ──────────────────────────────── guide (editorial content of /guia)
+  guia: {
+    h1: 'Train alert guide: free seats, delays and cancellations',
+    entradilla:
+      'MantiRenfe watches the Spanish rail network for you: it warns you when a seat opens up on the train you want, when it is later than you are willing to accept and when it is cancelled. Here is how it works and which data it uses.',
+    s1Titulo: 'What MantiRenfe monitors',
+    s1Texto:
+      'Four signals that matter once you already have a ticket or are still looking for one: seat availability on the train you care about, delays above the threshold you choose, cancelled services and network disruptions such as closures, engineering works and operator notices. They can be combined: a single alert can cover both seats and delays.',
+    s2Titulo: 'How a free seat is detected',
+    s2Texto:
+      'The worker re-checks availability for every watched train every 5 minutes and compares the result with the previous one. If a gap appears — or the seat count goes up, as when someone returns a exchange — the alert fires by push or email. Polling is periodic, not instant: in the worst case the warning takes as long as the polling interval.',
+    s3Titulo: 'Delays, cancellations and disruptions',
+    s3Texto:
+      'Delays and positions come from the GTFS-RT feed published by MITRAMS, the same data any official app uses, updated continuously. Cancellations are found by comparing scheduled with published services, and disruptions are read from the alerts feed. If the train you are watching is cancelled you hear about it before you leave for the station.',
+    s4Titulo: 'How to create an alert in two minutes',
+    s4Texto:
+      'Sign up with email or Google, pick the route, the date and the train (or every train that day), set your delay threshold and the channel you want: browser push, mobile app push or email. You can pause, edit or delete the alert from your panel later, and add a lead time so you can walk to the station in time.',
+    s5Titulo: 'Where the data comes from',
+    s5Texto:
+      'GTFS and GTFS-RT from MITRAMS for timetables, positions, delays and disruptions; the public Renfe sales availability API for free seats; and the national access point for OUIGO data. Renfe data is published under its open data licence and credited on every page.',
+    faqTitulo: 'Frequently asked questions',
+    faq1Pregunta: 'Does MantiRenfe sell tickets?',
+    faq1Respuesta:
+      'No. MantiRenfe neither sells tickets nor reserves seats: it only monitors availability and network notices. When it spots a gap it warns you so you can buy directly on the Renfe or OUIGO website.',
+    faq2Pregunta: 'How often is the data updated?',
+    faq2Respuesta:
+      'Alerts, disruptions, cancellations and positions are refreshed every 5 minutes; map positions are stored every few seconds. GTFS timetables are synchronised once a day, overnight.',
+    faq3Pregunta: 'Does it warn me about every free seat?',
+    faq3Respuesta:
+      'Only if you created an alert for that route and date, and only when the change matters: a seat appearing or availability suddenly increasing. The goal is a useful warning, not noise.',
+    faq4Pregunta: 'Does it work with OUIGO and Iryo?',
+    faq4Respuesta:
+      'Yes with OUIGO: its trains are imported through the national access point and show up in the timetables and the price comparison. Iryo does not publish data in the same format, so it only appears when it is present in the MITRAMS feeds.',
+    faq5Pregunta: 'Is it free? How is it funded?',
+    faq5Respuesta:
+      'Using it is free. The project is funded through ticket affiliate links, the ads shown on some pages and voluntary donations; all of it is detailed on the transparency page.',
+    faq6Pregunta: 'Does it work on mobile?',
+    faq6Respuesta:
+      'Yes. The site is an installable PWA and there is also an Android app with native push notifications. Alerts are shared between web and mobile.',
+    ctaTitulo: 'Want to be warned next time?',
+    ctaTexto: 'Create your first alert in two minutes and stop checking the sales site every hour.',
+    ctaBoton: 'Create alert',
   },
 
   // ──────────────────────────────── formulario / campos comunes

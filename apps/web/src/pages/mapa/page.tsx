@@ -5,6 +5,7 @@ import type { PathOptions } from 'leaflet';
 import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useRefresco } from '@/hooks/useRefresco';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { locale } from '@/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -158,6 +159,7 @@ const PopupTren = memo(function PopupTren({
 });
 
 export function PaginaMapa() {
+  useMetaPagina('/mapa');
   const { t } = useTranslation();
   // Dentro de la APK (?app=1) el mapa ocupa casi toda la pantalla
   const { search } = useLocation();

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/lib/api';
 import { useRefresco } from '@/hooks/useRefresco';
+import { useMetaPagina } from '@/hooks/useMetaPagina';
 import { ListaIncidencias } from '@/components/ListaIncidencias';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { IncidenciaResponse } from '@/lib/incidencias';
@@ -9,6 +10,7 @@ import type { IncidenciaResponse } from '@/lib/incidencias';
 const REFRESCO_MS = 60_000;
 
 export function PaginaIncidencias() {
+  useMetaPagina('/incidencias');
   const { t } = useTranslation();
   const [datos, setDatos] = useState<IncidenciaResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);

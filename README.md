@@ -118,11 +118,19 @@ Definidas en `.env.example` (copiar a `.env` en la raíz). Variables principales
 
 ## Despliegue
 
-- Web: Vercel ([mantirenfe.vercel.app](https://mantirenfe.vercel.app)), build con `pnpm turbo build --filter=@mantirenfe/web` (`vercel.json`); las llamadas `/api` se reescriben a la API en Render.
+- Web: Vercel ([mantirenfe.vercel.app](https://mantirenfe.vercel.app)), build con `pnpm turbo build --filter=@mantirenfe/web` (`vercel.json`); las llamadas `/api` se reescriben a la API en Render. El build **prerenderiza** las páginas públicas (ver «SEO y AdSense»).
 - API: Render (`render.yaml`, servicio Docker con health check `/api/health`); duerme tras 15 min sin tráfico (plan free).
-- **Worker: GitHub Actions** (`.github/workflows/worker.yml`, repo público = gratis e ilimitado): proceso efímero por tarea — barrido/incidencias/suprimidos/snapshot cada 5 min, digest a las 06:00 UTC, resumen semanal el lunes y poda a las 04:00 UTC. Sustituyó al servicio `mantirenfe-worker` 24/7 de Render (744 h/mes de las 750 h free del workspace). Secrets del repo: `BACKUP_DATABASE_URL` (como `DATABASE_URL`), `VAPID_*` y —opcional para email— `SMTP_*`/`EMAIL_DESDE` (sin ellos los correos quedan desactivados).
+- **Worker: GitHub Actions** (`.github/workflows/worker.yml`, repo público = gratis e ilimitado): proceso efímero por tarea — barrido/incidencias/suprimidos/snapshot cada 5 min, digest a las 06:00 UTC, resumen semanal el lunes y poda a las 04:00 UTC. Sustituyó al servicio `mantirenfe-worker` 24/7 de Render (744 h/mes de las 750 h free del workspace). Secrets del repo: `BACKUP_DATABASE_URL` (como `DATABASE_URL`), `VAPID_*` y —opcional para email— `SMTP_*`/`EMAIL_DESDE` (sin ellos los correos quedan desactivados). Cada tarea va envuelta en `.github/scripts/reintentar.sh` (3 intentos con espera): de madrugada el pooler de Supabase falla de forma transitoria (_Can't reach database server_ / _EAUTHQUERY timed out_) y sin reintentos se perdía la tirada entera con el aviso «Failed in N seconds».
 - Base de datos: Supabase; Redis en la nube (Upstash/Render) — solo para la API/local; el worker en Actions ya no usa Redis.
 - Sync diario de GTFS y backup semanal de BD: GitHub Actions programados (`sync-gtfs.yml`, `backup.yml`).
+- Refresco diario de la web (opcional): `rebuild-web.yml` dispara el _deploy hook_ de Vercel si existe el secret `VERCEL_DEPLOY_HOOK`, para que las fechas del HTML prerenderizado («primeras salidas de hoy») no se queden anticuadas.
+
+### SEO y AdSense
+
+- Cada página pública declara su título, descripción, canonical, `og:*` y JSON-LD desde `apps/web/src/lib/metas.ts` (las de trayecto, desde `lib/trayectos-i18n.ts`, con el nombre de las estaciones); `useMetaPagina` los aplica al navegar. Antes todas las rutas servían el título de `index.html`.
+- El build renderiza en Node las rutas marcadas con `prerender: true` en `apps/web/src/rutas-publicas.ts` y escribe `dist/<ruta>.html` con el contenido ya pintado (`scripts/prerender.tsx`); `vercel.json` reescribe cada ruta a su `.html` y el resto cae en `shell.html` (el cascarón de la SPA). Un rastreador sin JavaScript ve texto, no un `#root` vacío.
+- El test `src/lib/seo-rutas.test.ts` comprueba que prerender, rewrites y sitemap no se descuadren.
+- `/guia` es la página editorial (guía + FAQ serializada como `FAQPage`), enlazada desde cabecera y pie; `public/sitemap.xml` lista todas las URLs indexables.
 
 ## Estado
 

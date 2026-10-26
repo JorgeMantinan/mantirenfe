@@ -1,0 +1,36 @@
+# Refresco diario del HTML prerenderizado (web en Vercel).
+#
+# El prerender (`apps/web/scripts/prerender.tsx`) imprime la fecha del día en
+# las páginas de trayecto («primeras salidas de hoy», «Train schedule for
+# Sunday, 25 October 2026») y en el sitemap: sin un deploy diario, ese HTML
+# se quedaría con la fecha del último push. Como Vercel solo compila con
+# push, este workflow dispara el *deploy hook* una vez al día.
+#
+# Configuración: secret del repo VERCEL_DEPLOY_HOOK (Vercel → Project
+# Settings → Git → Deploy Hooks). Si no está definido, la tirada sale limpia
+# sin hacer nada, así que el workflow se puede tener commitado desde ya.
+name: Refresco diario de la web
+
+on:
+  schedule:
+    - cron: '30 6 * * *' # 07:30/08:30 peninsular
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresco:
+    name: Dispara el deploy de Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy hook
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::Sin secret VERCEL_DEPLOY_HOOK: no se refresca la web."
+            exit 0
+          fi
+          # -f: un 4xx/5xx del hook hace fallar la tirada (se ve en Actions).
+          curl -fsS -X POST -o /dev/null -w 'HTTP %{http_code}\n' "$HOOK"
