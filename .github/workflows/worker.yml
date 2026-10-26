@@ -9,6 +9,10 @@
 # free for standard GitHub-hosted runners in public repositories"). Contras:
 # el cron mínimo es cada 5 min (antes: barrido cada 1 min) y los schedules se
 # retrasan con frecuencia bajo carga.
+#
+# Cada tarea pasa por `.github/scripts/reintentar.sh`: de madrugada el pooler
+# de Supabase falla de forma transitoria (red/auth) y un solo intento perdía
+# la tirada entera con el aviso "Failed in N seconds".
 name: Worker programado
 
 on:
@@ -82,21 +86,24 @@ jobs:
       - name: Compilar paquetes del workspace
         run: pnpm turbo build --filter=@mantirenfe/worker
 
+      # `reintentar.sh` envuelve cada tarea: de madrugada el pooler de Supabase
+      # falla de forma transitoria ("Can't reach database server" /
+      # "EAUTHQUERY ... timed out") y sin reintentos la tirada se perdía entera.
       - name: Barrido de alertas
         if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'barrido'
-        run: pnpm --filter @mantirenfe/worker tarea barrido
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea barrido
 
       - name: Incidencias de servicio
         if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'incidencias'
-        run: pnpm --filter @mantirenfe/worker tarea incidencias
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea incidencias
 
       - name: Trenes suprimidos
         if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'suprimidos'
-        run: pnpm --filter @mantirenfe/worker tarea suprimidos
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea suprimidos
 
       - name: Snapshot de posiciones (directo a BD, sin API)
         if: github.event.schedule == '*/5 * * * *' || inputs.tarea == 'snapshot'
-        run: pnpm --filter @mantirenfe/worker snapshot-posiciones
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker snapshot-posiciones
 
   diario_digest:
     name: Digest diario (06:00 UTC)
@@ -122,7 +129,7 @@ jobs:
       - name: Compilar paquetes del workspace
         run: pnpm turbo build --filter=@mantirenfe/worker
       - name: Digest diario de salidas
-        run: pnpm --filter @mantirenfe/worker tarea digest
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea digest
 
   semanal_resumen:
     name: Resumen semanal (lunes 08:00 UTC)
@@ -148,7 +155,7 @@ jobs:
       - name: Compilar paquetes del workspace
         run: pnpm turbo build --filter=@mantirenfe/worker
       - name: Resumen semanal
-        run: pnpm --filter @mantirenfe/worker tarea resumen-semanal
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea resumen-semanal
 
   poda_notificaciones:
     name: Poda de notificaciones (04:00 UTC)
@@ -174,4 +181,4 @@ jobs:
       - name: Compilar paquetes del workspace
         run: pnpm turbo build --filter=@mantirenfe/worker
       - name: Poda de notificaciones
-        run: pnpm --filter @mantirenfe/worker tarea poda
+        run: bash .github/scripts/reintentar.sh pnpm --filter @mantirenfe/worker tarea poda
