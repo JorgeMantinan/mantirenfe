@@ -172,7 +172,10 @@ function candidatasDe(estaciones: Array<{ nombre: string }>): Candidata[] {
 /**
  * Descarga alerts.pb, lo parsea y lo refleja en la tabla Incidencia:
  * upsert por id de alerta y `activa = false` para las que ya no aparecen.
- * Cualquier error (red, protobuf, BD) se loguea como warn y no rompe el ciclo.
+ * Solo se escribe lo que ha cambiado de verdad (comparado con la fila de la
+ * BD: la huella en memoria no vale en Actions, donde cada tirada es un
+ * proceso nuevo). Cualquier error (red, protobuf, BD) se loguea como warn y
+ * no rompe el ciclo.
  */
 /**
  * Caché de estaciones (código→nombre + regex candidatas): solo cambian con el
@@ -188,6 +191,36 @@ const TTL_ESTACIONES_MS = 30 * 60_000;
 
 /** Huella del feed visto por última vez: si no cambia, la BD no se toca. */
 let ultimaHuellaFeed: string | null = null;
+
+/** Contenido persistible de una incidencia (todo salvo id, activa y marcas). */
+interface DatosIncidencia {
+  titulo: string | null;
+  mensaje: string | null;
+  causa: string | null;
+  estacionesAfectadas: string[];
+  desde: Date | null;
+  hasta: Date | null;
+}
+
+/**
+ * ¿La fila guardada ya dice exactamente esto y sigue activa? Sirve para no
+ * reescribir en cada tirada las incidencias que el feed devuelve igual.
+ * (Exportado para el test de comparación.)
+ */
+export function sinCambios(
+  previa: DatosIncidencia & { activa: boolean },
+  nueva: DatosIncidencia,
+): boolean {
+  return (
+    previa.activa &&
+    previa.titulo === nueva.titulo &&
+    previa.mensaje === nueva.mensaje &&
+    previa.causa === nueva.causa &&
+    previa.desde?.getTime() === nueva.desde?.getTime() &&
+    previa.hasta?.getTime() === nueva.hasta?.getTime() &&
+    previa.estacionesAfectadas.join('\u0000') === nueva.estacionesAfectadas.join('\u0000')
+  );
+}
 
 export async function sincronizarIncidencias(logger: Logger): Promise<void> {
   const url = urlAlertas();
@@ -226,28 +259,54 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
     }
 
     const vigentes = new Set<string>();
+    const porId = new Map<string, DatosIncidencia>();
     for (const alerta of alertas) {
       if (vigentes.has(alerta.id)) continue;
       vigentes.add(alerta.id);
-
-      const titulo = alerta.titulo ?? resumirTitulo(alerta.mensaje);
-      const datosIncidencia = {
-        titulo,
+      porId.set(alerta.id, {
+        titulo: alerta.titulo ?? resumirTitulo(alerta.mensaje),
         mensaje: alerta.mensaje,
         causa: alerta.causa,
         estacionesAfectadas: estacionesAfectadas(alerta, porCodigo, candidatas),
         desde: alerta.desde,
         hasta: alerta.hasta,
-      };
+      });
+    }
 
+    // La comparación se hace CONTRA LA BD y no contra la huella en memoria:
+    // en Actions cada tirada es un proceso nuevo (la huella arranca en null),
+    // así que el guardia de arriba no servía y se reescribían las ~500
+    // incidencias activas aunque el feed viniera idéntico. Costaba 792k
+    // updates sobre 551 filas desde el último reset de estadísticas: el mayor
+    // goteo de escrituras de la BD después de las tablas de horarios.
+    const guardadas = await prisma.incidencia.findMany({
+      where: { id: { in: [...porId.keys()] } },
+      select: {
+        id: true,
+        titulo: true,
+        mensaje: true,
+        causa: true,
+        estacionesAfectadas: true,
+        desde: true,
+        hasta: true,
+        activa: true,
+      },
+    });
+    const previas = new Map(guardadas.map((fila) => [fila.id, fila]));
+
+    let escritas = 0;
+    for (const [id, datosIncidencia] of porId) {
+      const previa = previas.get(id);
+      if (previa && sinCambios(previa, datosIncidencia)) continue;
       try {
         await prisma.incidencia.upsert({
-          where: { id: alerta.id },
+          where: { id },
           update: { ...datosIncidencia, activa: true, actualizadaEn: new Date() },
-          create: { id: alerta.id, ...datosIncidencia, activa: true },
+          create: { id, ...datosIncidencia, activa: true },
         });
+        escritas++;
       } catch (error) {
-        logger.warn({ incidenciaId: alerta.id, err: error }, 'Incidencia no guardada');
+        logger.warn({ incidenciaId: id, err: error }, 'Incidencia no guardada');
       }
     }
 
@@ -259,7 +318,12 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
     });
 
     logger.info(
-      { recibidas: alertas.length, activas: vigentes.size, desactivadas: desactivadas.count },
+      {
+        recibidas: alertas.length,
+        activas: vigentes.size,
+        escritas,
+        desactivadas: desactivadas.count,
+      },
       'Incidencias GTFS-RT sincronizadas',
     );
     // Solo tras escribir con éxito: si falla, el próximo barrido reintegra

@@ -188,6 +188,12 @@ interface FilaHistorialPosicion {
  * Es el mismo subconjunto que usa el API; si Prisma lo cumple, se pasa `prisma`.
  */
 export interface BasePersistenciaPosiciones {
+  /**
+   * Opcional (solo Prisma real; los dobles de test no lo llevan): ejecución de
+   * SQL cruda, usada para el upsert masivo de posiciones. `PrismaClient`
+   * expone `$executeRawUnsafe`, así que el cliente real entra por esta rama.
+   */
+  $executeRawUnsafe?(sql: string, ...params: unknown[]): Promise<number>;
   posicionTren: {
     // Un único `where` con filtros opcionales (union+genérico de Prisma no
     // conviven: el `T extends DeleteManyArgs` se instanciaba con la 1ª rama).
@@ -208,6 +214,12 @@ export interface BasePersistenciaPosiciones {
   posicionHistorial: {
     createMany(args: { data: FilaHistorialPosicion[] }): Promise<{ count: number }>;
     deleteMany(args: { where: { en: { lt: Date } } }): Promise<{ count: number }>;
+    // Opcional: frescura del último punto de la traza, para escribir el
+    // historial con cadencia propia y no en cada snapshot (Disk IO).
+    findFirst?(args: {
+      orderBy: { en: 'desc' };
+      select: { en: true };
+    }): Promise<{ en: Date } | null>;
   };
   impuntualidadTren: {
     findMany(args: {
@@ -235,16 +247,79 @@ export interface BasePersistenciaPosiciones {
 /**
  * Snapshot de posiciones en las tablas de estado/historial/impuntualidad.
  *
- * - `PosicionTren`: se borran los ids del snapshot y se reinsertan enteras
- *   (la tabla refleja el último snapshot con semántica de upsert; el
- *   `skipDuplicates` + PK hace seguro el delete+insert secuencial frente a
- *   otro proceso concurrente, sin necesidad de transacción).
- * - `PosicionHistorial`: un punto por tren y snapshot (la traza).
+ * - `PosicionTren`: upsert en sitio de las filas del snapshot (con SQL cruta:
+ *   `INSERT ... ON CONFLICT (id) DO UPDATE`). Si el cliente no admite SQL
+ *   cruta (dobles de test), cae al delete+insert histórico, que es seguro
+ *   frente a otro proceso concurrente gracias a `skipDuplicates` + PK.
+ * - `PosicionHistorial`: un punto por tren y snapshot (la traza), con cadencia
+ *   propia (`POSICIONES_HISTORIAL_SEG`): no hace falta en cada snapshot.
  * - `ImpuntualidadTren`: retraso máximo por servicio y día peninsular.
  * - Poda: posiciones sin verse en 24 h e historial según POSICIONES_HISTORIAL_DIAS.
  *
  * `aviso` recibe los fallos no críticos (el original solo logueaba).
  */
+/** Filas por statement del upsert masivo (7 columnas: muy por debajo del
+ *  límite de 65.535 parámetros de Postgres). */
+const TAM_LOTE_UPSERT = 100;
+
+/**
+ * `INSERT ... ON CONFLICT (id) DO UPDATE` para reescribir el estado de
+ * `PosicionTren` EN SITIO.
+ *
+ * Antes el snapshot hacía `deleteMany` + `createMany` de la tabla entera
+ * (~500 filas, 144 veces al día): eso deja tuplas muertas en cada pasada
+ * (después hay que vaciarlas: más IO y más WAL) y la tabla vive siempre en su
+ * peor forma. El upsert actualiza cada fila donde está: la mitad de escrituras
+ * y cero basura para el autovacuum.
+ */
+export function sqlUpsertPosiciones(filas: FilaSnapshotPosicion[]): {
+  sql: string;
+  params: unknown[];
+} {
+  const columnas =
+    '"id","numeroTren","latitud","longitud","velocidadKmh","retrasoSeg","actualizadaEn"';
+  const params: unknown[] = [];
+  const valores = filas.map((fila) => {
+    params.push(
+      fila.id,
+      fila.numeroTren,
+      fila.latitud,
+      fila.longitud,
+      fila.velocidadKmh,
+      fila.retrasoSeg,
+      fila.actualizadaEn,
+    );
+    const base = params.length - 7;
+    return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7})`;
+  });
+  const sql = `INSERT INTO "PosicionTren" (${columnas}) VALUES ${valores.join(',')}
+  ON CONFLICT ("id") DO UPDATE SET
+    "numeroTren" = EXCLUDED."numeroTren",
+    "latitud" = EXCLUDED."latitud",
+    "longitud" = EXCLUDED."longitud",
+    "velocidadKmh" = EXCLUDED."velocidadKmh",
+    "retrasoSeg" = EXCLUDED."retrasoSeg",
+    "actualizadaEn" = EXCLUDED."actualizadaEn"`;
+  return { sql, params };
+}
+
+/** Escribe el estado del snapshot con upsert si el cliente admite SQL cruta. */
+async function persistirEstado(
+  cliente: BasePersistenciaPosiciones,
+  filas: FilaSnapshotPosicion[],
+): Promise<void> {
+  if (filas.length === 0) return;
+  if (typeof cliente.$executeRawUnsafe !== 'function') {
+    // Doble de test (o cliente sin SQL cruta): comportamiento histórico.
+    await cliente.posicionTren.deleteMany({ where: { id: { in: filas.map((f) => f.id) } } });
+    await cliente.posicionTren.createMany({ data: filas, skipDuplicates: true });
+    return;
+  }
+  for (let i = 0; i < filas.length; i += TAM_LOTE_UPSERT) {
+    const { sql, params } = sqlUpsertPosiciones(filas.slice(i, i + TAM_LOTE_UPSERT));
+    await cliente.$executeRawUnsafe(sql, ...params);
+  }
+}
 export async function persistirPosicionesSnapshot(
   cliente: BasePersistenciaPosiciones,
   datos: PosicionTrenResponse[],
@@ -254,12 +329,12 @@ export async function persistirPosicionesSnapshot(
     const ahora = new Date();
 
     // Throttle de escrituras (presupuesto DIARIO de Disk IO de Supabase): si
-    // el último snapshot es más reciente que POSICIONES_PERSISTIR_SEG (10 min
+    // el último snapshot es más reciente que POSICIONES_PERSISTIR_SEG (20 min
     // por defecto), no se reescribe nada. El cron de Actions corre cada 5 min:
     // sin esto reescribía estado + historial de traza + impuntualidad + sus
     // índices el DOBLE que el worker viejo (288 vs 144 snapshots al día).
     // La lectura va al índice de actualizadaEn (index-only, casi sin IO).
-    const intervaloMs = Number(process.env.POSICIONES_PERSISTIR_SEG ?? '600') * 1000;
+    const intervaloMs = Number(process.env.POSICIONES_PERSISTIR_SEG ?? '1200') * 1000;
     const ultima =
       typeof cliente.posicionTren.findFirst === 'function'
         ? await cliente.posicionTren.findFirst({
@@ -281,12 +356,24 @@ export async function persistirPosicionesSnapshot(
       retrasoSeg: posicion.retrasoSeg,
       actualizadaEn: ahora,
     }));
-    if (filas.length > 0) {
-      await cliente.posicionTren.deleteMany({ where: { id: { in: filas.map((f) => f.id) } } });
-      await cliente.posicionTren.createMany({ data: filas, skipDuplicates: true });
-    }
+    await persistirEstado(cliente, filas);
 
-    if (datos.length > 0) {
+    // La traza se dibuja con cortes de 30 min, así que el historial no hace
+    // falta en cada snapshot: POSICIONES_HISTORIAL_SEG (30 min por defecto)
+    // reparte las escrituras de `PosicionHistorial` (500 filas × 3 índices)
+    // por un tercio. La lectura de frescura va al índice de `en` (index-only).
+    const historialMs = Number(process.env.POSICIONES_HISTORIAL_SEG ?? '1800') * 1000;
+    const ultimoPunto =
+      typeof cliente.posicionHistorial.findFirst === 'function'
+        ? await cliente.posicionHistorial.findFirst({
+            orderBy: { en: 'desc' },
+            select: { en: true },
+          })
+        : null;
+    const historialVigente =
+      ultimoPunto && ahora.getTime() - ultimoPunto.en.getTime() < historialMs;
+
+    if (datos.length > 0 && !historialVigente) {
       await cliente.posicionHistorial.createMany({
         data: datos.map((p) => ({
           vehiculoId: p.id,
@@ -298,6 +385,10 @@ export async function persistirPosicionesSnapshot(
           en: ahora,
         })),
       });
+    } else if (historialVigente) {
+      aviso?.(
+        'Historial de posiciones omitido: el último punto no ha cumplido POSICIONES_HISTORIAL_SEG',
+      );
     }
 
     const umbralSeg = Number(process.env.PUNTUALIDAD_UMBRAL_SEG ?? '300');

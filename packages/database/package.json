@@ -28,6 +28,7 @@
     "db:seed": "tsx src/seed.ts",
     "db:studio": "prisma studio",
     "db:audit": "tsx scripts/audit-privilegios.ts",
+    "db:io": "tsx scripts/diagnostico-io.ts",
     "db:seguridad": "prisma db execute --file scripts/seguridad-rls.sql"
   },
   "devDependencies": {

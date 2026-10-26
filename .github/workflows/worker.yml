@@ -43,6 +43,10 @@ env:
   NODE_ENV: production
   # La BD de producción: mismo secret que usan el sync y el backup diario.
   DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+  # Escrituras de posiciones acotadas al presupuesto de Disk IO de Supabase:
+  # estado cada 20 min y traza cada 30 min (el cron corre cada 5 min).
+  POSICIONES_PERSISTIR_SEG: '1200'
+  POSICIONES_HISTORIAL_SEG: '1800'
   VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
   VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
   VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}

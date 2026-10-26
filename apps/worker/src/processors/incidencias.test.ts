@@ -5,10 +5,38 @@ import {
   incidenciaYaAvisada,
   LIMITE_INCIDENCIAS_POR_BARRIDO,
   planificarAvisosDeIncidencias,
+  sinCambios,
   TITULO_AVISO_INCIDENCIA,
   type AlertaCandidata,
   type IncidenciaNotificable,
 } from './incidencias';
+
+describe('sinCambios (escrituras de Incidencia)', () => {
+  const base = {
+    titulo: 'Retrasos en la línea',
+    mensaje: 'Circulación lenta entre Madrid y Sevilla',
+    causa: 'Obras',
+    estacionesAfectadas: ['Sevilla', 'Córdoba'],
+    desde: new Date('2026-10-26T08:00:00Z'),
+    hasta: new Date('2026-10-26T12:00:00Z'),
+  };
+
+  it('no reescribe si el contenido es idéntico y sigue activa', () => {
+    expect(sinCambios({ ...base, activa: true }, { ...base })).toBe(true);
+  });
+
+  it('reescribe si algún campo del feed ha cambiado', () => {
+    expect(sinCambios({ ...base, activa: true }, { ...base, hasta: null })).toBe(false);
+    expect(sinCambios({ ...base, activa: true }, { ...base, causa: null })).toBe(false);
+    expect(
+      sinCambios({ ...base, activa: true }, { ...base, estacionesAfectadas: ['Sevilla'] }),
+    ).toBe(false);
+  });
+
+  it('reescribe si la fila estaba inactiva (hay que reactivarla)', () => {
+    expect(sinCambios({ ...base, activa: false }, { ...base })).toBe(false);
+  });
+});
 
 function incidencia(id: string, datos: Partial<IncidenciaNotificable> = {}): IncidenciaNotificable {
   return {
