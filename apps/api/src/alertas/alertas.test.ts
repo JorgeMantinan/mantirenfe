@@ -8,11 +8,26 @@ import {
   criteriosGuardados,
   diasSemanaDe,
   esSoloLaborables,
+  exigirFechaEnHorizonte,
   formatearAlerta,
   formatearUltimoEstado,
   normalizarCriterios,
   rangoFlexible,
 } from './alertas.service';
+
+describe('exigirFechaEnHorizonte (ventana GTFS)', () => {
+  it('acepta hoy y la fecha límite exacta', () => {
+    expect(() => exigirFechaEnHorizonte('2026-10-27', '2026-10-27')).not.toThrow();
+    expect(() => exigirFechaEnHorizonte('2026-11-21', '2026-10-27')).not.toThrow();
+  });
+
+  it('rechaza una fecha fuera de la ventana explicando hasta cuándo hay horarios', () => {
+    expect(() => exigirFechaEnHorizonte('2026-11-22', '2026-10-27')).toThrow(
+      /hasta el 2026-11-21 \(antelación máxima de 25 días\)/,
+    );
+    expect(() => exigirFechaEnHorizonte('2027-06-01', '2026-10-27')).toThrow(/400|horizonte/);
+  });
+});
 
 describe('API (schemas compartidos)', () => {
   it('el esquema de alertas es el mismo que usa la web', () => {

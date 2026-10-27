@@ -918,6 +918,7 @@ export const en: MismoArbol<Claves> = {
       'We will watch any date between today and 6 months from now: we will tell you as soon as tickets go on sale.',
     errorDias: 'Pick at least one day of the week',
     fechaLabel: 'Travel date',
+    fechaMaxHint: 'Up to {{fecha}}: timetables cover {{dias}} days ahead of today.',
     horaDesdeLabel: 'Time from (optional)',
     horaHastaLabel: 'Time to (optional)',
     trenLabel: 'Specific train (optional)',

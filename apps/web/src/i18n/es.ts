@@ -921,6 +921,7 @@ export const es = {
       'Vigilará cualquier fecha entre hoy y dentro de 6 meses: te avisaremos en cuanto salgan billetes.',
     errorDias: 'Marca al menos un día de la semana',
     fechaLabel: 'Fecha del viaje',
+    fechaMaxHint: 'Hasta {{fecha}}: los horarios llegan {{dias}} días por delante de hoy.',
     horaDesdeLabel: 'Hora desde (opcional)',
     horaHastaLabel: 'Hora hasta (opcional)',
     trenLabel: 'Tren concreto (opcional)',

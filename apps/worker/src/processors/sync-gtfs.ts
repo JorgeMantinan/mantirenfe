@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import unzipper from 'unzipper';
 import { getPrisma } from '@mantirenfe/database';
+import { VENTANA_GTFS_DIAS } from '@mantirenfe/shared-types';
 import { hoyGtfs } from './reloj';
 
 const URLS_GTFS_DEFECTO = [
@@ -899,7 +900,11 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
   const desde = new Date(hoy);
   desde.setUTCDate(desde.getUTCDate() - 7);
   const hasta = new Date(hoy);
-  hasta.setUTCDate(hasta.getUTCDate() + Number(process.env.GTFS_DIAS_VENTANA ?? 45));
+  // Ventana hacia delante (`VENTANA_GTFS_DIAS`, 25 d): ver la constante para
+  // el porqué — con 45 el sync dejaba ParadaHorario en 538 MB y la BD entera
+  // por encima de los 500 MB del plan Free de Supabase.
+  const ventana = Number(process.env.GTFS_DIAS_VENTANA ?? VENTANA_GTFS_DIAS);
+  hasta.setUTCDate(hasta.getUTCDate() + ventana);
 
   // Se resuelve una sola vez: el streaming de stop_times necesita saber a qué
   // estación pertenece cada parada (hay FK a Estacion) y no cambia durante el
@@ -1245,6 +1250,22 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       },
       'Horarios GTFS importados',
     );
+  }
+
+  // Días por delante de la ventana: `diasActivos` recorta las fechas en
+  // [desde, hasta], así que la sync ya no vuelve a tocar esos días. Sin este
+  // corte, bajar VENTANA_GTFS_DIAS solo frenaría el crecimiento: los días
+  // materializados con la ventana vieja (hoy+26 … hoy+45) seguirían pesando
+  // ~240 MB de ParadaHorario + HorarioTren. Sus paradas las retira después
+  // `limpiarParadasObsoletas` (pasan a ser huérfanas de un tripId que ya no
+  // está en HorarioTren), troceado en deletes de 5.000 ids.
+  try {
+    const fuera = await prisma.horarioTren.deleteMany({ where: { fecha: { gt: hasta } } });
+    if (fuera.count > 0) {
+      logger.info({ filas: fuera.count, hasta }, 'Horarios fuera de la ventana retirados');
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'No se pudieron retirar los horarios fuera de la ventana');
   }
 
   // Limpieza final de ParadaHorario (obsoletas + huérfanas), DESPUÉS de todos

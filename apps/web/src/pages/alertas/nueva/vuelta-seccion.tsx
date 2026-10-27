@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { VENTANA_GTFS_DIAS } from '@mantirenfe/shared-types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { EstadoFormulario } from './logica';
@@ -9,6 +10,8 @@ interface Props {
     'tambienVuelta' | 'fechaVuelta' | 'horaDesdeVuelta' | 'horaHastaVuelta'
   >;
   fechaMin: string;
+  /** Fecha máxima (hoy + VENTANA_GTFS_DIAS): hasta ahí llegan los horarios. */
+  fechaMax: string;
   onTambienVuelta: (activo: boolean) => void;
   onFechaVuelta: (valor: string) => void;
   onHoraDesdeVuelta: (valor: string) => void;
@@ -19,6 +22,7 @@ interface Props {
 export function VueltaSeccion({
   estado,
   fechaMin,
+  fechaMax,
   onTambienVuelta,
   onFechaVuelta,
   onHoraDesdeVuelta,
@@ -49,10 +53,14 @@ export function VueltaSeccion({
             id="fechaVuelta"
             type="date"
             min={fechaMin}
+            max={fechaMax}
             value={fechaVuelta}
             onChange={(e) => onFechaVuelta(e.target.value)}
             required
           />
+          <p className="text-xs text-muted-foreground">
+            {t('nuevaAlerta.fechaMaxHint', { dias: VENTANA_GTFS_DIAS, fecha: fechaMax })}
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="horaDesdeVuelta">{t('nuevaAlerta.horaDesdeVueltaLabel')}</Label>

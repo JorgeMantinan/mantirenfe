@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useBuscadorEstaciones } from '@/hooks/useBuscadorEstaciones';
 import { construirAlertaVuelta } from '@/lib/alertas';
 import { DIAS_LABORABLES } from '@mantirenfe/shared-types';
+import { fechaGtfs, fechaMaximaAlerta } from '@mantirenfe/shared-types';
 import type { AlertaResponse, CriterioAlerta, HorarioTrenResponse } from '@mantirenfe/shared-types';
 import {
   MAX_CRITERIOS,
@@ -66,6 +67,10 @@ export function PaginaNuevaAlerta() {
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const fechaMin = hoyIso;
+  // Antelación máxima: hoy + VENTANA_GTFS_DIAS, donde se cortan los horarios
+  // materializados por el sync. La API valida lo mismo, así que un valor fuera
+  // de rango ni siquiera llegaría a guardarse.
+  const fechaMax = useMemo(() => fechaMaximaAlerta(fechaGtfs()), []);
   // La fecha que viaja al servidor: cotidiano y "cualquier fecha" se anclan a hoy
   const flexible = frecuencia === 'flexible';
   const fechaEfectiva = frecuencia === 'fecha' ? fecha : hoyIso;
@@ -353,6 +358,7 @@ export function PaginaNuevaAlerta() {
         <FranjaSeccion
           estado={estado}
           fechaMin={fechaMin}
+          fechaMax={fechaMax}
           onFecha={cambiarFecha}
           onHoraDesde={setHoraDesde}
           onHoraHasta={setHoraHasta}
@@ -376,6 +382,7 @@ export function PaginaNuevaAlerta() {
           <VueltaSeccion
             estado={estado}
             fechaMin={fechaMin}
+            fechaMax={fechaMax}
             onTambienVuelta={cambiarVuelta}
             onFechaVuelta={setFechaVuelta}
             onHoraDesdeVuelta={setHoraDesdeVuelta}

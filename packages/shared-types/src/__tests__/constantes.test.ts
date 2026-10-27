@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { esOuigo } from '../constantes';
+import { esOuigo, fechaMaximaAlerta, VENTANA_GTFS_DIAS } from '../constantes';
+
+describe('ventana GTFS (antelación máxima de las alertas)', () => {
+  it('la fecha máxima es hoy + VENTANA_GTFS_DIAS', () => {
+    expect(VENTANA_GTFS_DIAS).toBe(25);
+    expect(fechaMaximaAlerta('2026-10-27')).toBe('2026-11-21');
+    // Cruzando fin de mes, fin de año y febrero sin bisiesto
+    expect(fechaMaximaAlerta('2026-12-20')).toBe('2027-01-14');
+    expect(fechaMaximaAlerta('2026-02-20')).toBe('2026-03-17');
+  });
+
+  it('rechaza un día que no venga en formato ISO', () => {
+    expect(() => fechaMaximaAlerta('27/10/2026')).toThrow('FECHA_INVALIDA');
+  });
+});
 
 describe('esOuigo', () => {
   it('reconoce el operador importado desde el GTFS de OUIGO', () => {

@@ -55,7 +55,9 @@ jobs:
         run: pnpm --filter @mantirenfe/worker exec tsx src/cli/sync-gtfs.ts
         env:
           DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
-          GTFS_DIAS_VENTANA: '45'
+          # GTFS_DIAS_VENTANA no se fija aquí: la ventana la manda
+          # VENTANA_GTFS_DIAS (packages/shared-types/src/constantes.ts, hoy 25),
+          # la misma constante que valida la API y limita el formulario.
           GTFS_ZIP_URLS_OUIGO: 'https://nap.transportes.gob.es/api/Fichero/download/1766'
           NAP_API_KEY: ${{ secrets.NAP_API_KEY }}
 

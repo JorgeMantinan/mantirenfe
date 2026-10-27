@@ -15,8 +15,10 @@ import {
   ActualizarAlertaInput,
   DIAS_LABORABLES,
   HORIZONTE_FLEXIBLE_DIAS,
+  VENTANA_GTFS_DIAS,
   fechaGtfs,
   fechaIso,
+  fechaMaximaAlerta,
   horaATime,
   horaComoTexto,
   normalizarDiasSemana,
@@ -160,6 +162,21 @@ export function rangoFlexible(
   const d = desde ?? hoy;
   const h = hasta ?? sumarDias(hoy, HORIZONTE_FLEXIBLE_DIAS);
   return { desde: d, hasta: h < d ? d : h };
+}
+
+/**
+ * Corta una fecha de viaje fuera del horizonte de horarios materializados
+ * (hoy + `VENTANA_GTFS_DIAS`): guardada, esa alerta no encontraría nunca filas
+ * en `HorarioTren` y no sondearía. Devuelve 400 con la fecha límite a la vista.
+ * `hoy` se inyecta para que los tests no dependan del reloj.
+ */
+export function exigirFechaEnHorizonte(fecha: string, hoy: string = fechaGtfs()): void {
+  const maxima = fechaMaximaAlerta(hoy);
+  if (fecha > maxima) {
+    throw new BadRequestException(
+      `Fecha fuera del horizonte disponible: los horarios llegan hasta el ${maxima} (antelación máxima de ${VENTANA_GTFS_DIAS} días)`,
+    );
+  }
 }
 
 export function formatearAlerta(alerta: {
@@ -416,6 +433,13 @@ export class AlertasService {
     );
     const fechaViaje = recurrente || datos.fechaFlexible ? fechaGtfs() : datos.fechaViaje;
 
+    // La ventana GTFS marca hasta dónde llegan los horarios (hoy + 25): fuera
+    // de ella no hay filas en HorarioTren y la alerta no sondearía nunca. La
+    // web limita el input con el mismo `fechaMaximaAlerta`; aquí es la defensa
+    // para quien pase por la API. (Los modos cotidiano y "cualquier fecha" se
+    // anclan a hoy, así que no aplican.)
+    if (!(recurrente || datos.fechaFlexible)) exigirFechaEnHorizonte(fechaViaje);
+
     // Multi-criterio: cada criterio de la lista avisa por su cuenta. `criterio`
     // guarda siempre el primero para mantener el contrato legado.
     const criterios = normalizarCriterios(datos.criterios, datos.criterio);
@@ -492,6 +516,9 @@ export class AlertasService {
       cambioRuta = true;
     }
     if (datos.fechaViaje !== undefined && !flexibleFinal) {
+      // Misma frontera que en `crear`: la fecha debe caer dentro de la ventana
+      // de horarios materializados (hoy + VENTANA_GTFS_DIAS).
+      exigirFechaEnHorizonte(datos.fechaViaje);
       nuevaRuta.fechaViaje = new Date(`${datos.fechaViaje}T00:00:00Z`);
       cambioRuta = true;
       // Se re-arman los avisos del día de viaje

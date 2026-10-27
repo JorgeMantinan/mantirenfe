@@ -157,9 +157,10 @@ async function main() {
            tup_inserted AS filas_ins,
            tup_updated AS filas_upd,
            tup_deleted AS filas_del,
+           round(extract(epoch from (now() - pg_postmaster_start_time()))/86400, 1)::text AS dias_estadisticas,
            stats_reset AS reset
       FROM pg_stat_database WHERE datname = current_database()`);
-  tabla('Base de datos', base, [
+  tabla('Base de datos (los contadores acumulan desde `dias_estadisticas`)', base, [
     'tamano_bd',
     'conexiones',
     'commits',
@@ -169,6 +170,7 @@ async function main() {
     'filas_ins',
     'filas_upd',
     'filas_del',
+    'dias_estadisticas',
     'reset',
   ]);
 
