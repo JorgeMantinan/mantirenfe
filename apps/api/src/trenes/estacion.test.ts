@@ -149,20 +149,17 @@ describe('TrenesService.salidasEstacion', () => {
         operador: 'MD',
       },
     ]);
-    // Sin filtro por origen: la estación no tiene por qué ser el extremo del
-    // viaje, y solo se piden los horarios de los viajes de ESTA estación
+    // Orden nuevo (habilita borrar el índice [estacionId, tripId] de 173 MB):
+    // 1) TODOS los viajes del día —los ~4.400 que hay, servidos por el índice
+    //    [fecha, origenEstacionId]— sin filtrar por estación (que no tiene por
+    //    qué ser el extremo del viaje);
     expect(horarioFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { fecha: DIA, tripId: { in: ['T-pasa'] } },
-      }),
+      expect.objectContaining({ where: { fecha: DIA } }),
     );
-    // El primer paso es la estación: tripId distintos que paran en ella
-    expect(paradaFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { estacionId: '23002' },
-        distinct: ['tripId'],
-      }),
-    );
+    // 2) sus paradas en ESTA estación, por la PK [tripId, orden].
+    //    Antes el primer paso traía los 30k viajes de la estación de TODOS los
+    //    días y el cruce se resolvía en memoria.
+    expect(paradaFindManyMock).toHaveBeenCalledTimes(1);
     expect(paradaFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { estacionId: '23002', tripId: { in: ['T-pasa'] }, salidaMin: { not: null } },

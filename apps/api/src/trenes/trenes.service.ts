@@ -479,23 +479,18 @@ export class TrenesService {
     const mejor = encontradas[0];
     if (!mejor) return [];
 
-    // Viajes con parada en ESTA estación: solo ids distintos (`ParadaHorario`
-    // no tiene fecha, así que traen todos los días a la vez).
-    const deLaEstacion = await prisma.paradaHorario.findMany({
-      where: { estacionId: mejor.id },
-      distinct: ['tripId'],
-      orderBy: { tripId: 'asc' },
-      select: { tripId: true },
-      // Red de seguridad: la estación más transitada (Chamartín) ronda los 30k
-      // viajes distintos; el tope descartaría viajes enteros, nunca sueltos.
-      take: 100_000,
-    });
-    const tripsDeLaEstacion = deLaEstacion.map((p) => p.tripId);
-    if (tripsDeLaEstacion.length === 0) return [];
-
-    // De esos, solo los que operan ese día (una fila por trip + fecha).
-    const delDia = await prisma.horarioTren.findMany({
-      where: { fecha: new Date(`${fecha}T00:00:00Z`), tripId: { in: tripsDeLaEstacion } },
+    // Orden inverso al histórico: PRIMERO los viajes del día (una fila por
+    // trip + fecha, ~4.400, servida por el índice [fecha, origenEstacionId])
+    // y DESPUÉS sus paradas en esta estación (PK [tripId, orden] + filtro de
+    // estación).
+    //
+    // Antes empezaba por la estación: `ParadaHorario` no tiene fecha, así que
+    // devolvía los 30k viajes de TODOS los días de la estación más transitada
+    // y había que cruzarlos en memoria con el día. Con este orden el cruce
+    // cabe en el motor y se pudo borrar el índice [estacionId, tripId] de
+    // 173 MB (medido con db:io: 604 lecturas en 20 días, el 53 % de la tabla).
+    const viajesDelDia = await prisma.horarioTren.findMany({
+      where: { fecha: new Date(`${fecha}T00:00:00Z`) },
       select: {
         tripId: true,
         numeroTren: true,
@@ -507,14 +502,14 @@ export class TrenesService {
       },
       take: 20_000,
     });
-    const porTrip = new Map<string, (typeof delDia)[number]>();
-    for (const viaje of delDia) {
+    const porTrip = new Map<string, (typeof viajesDelDia)[number]>();
+    for (const viaje of viajesDelDia) {
       // Las filas antiguas (sin tripId) no permiten cruzar con ParadaHorario
       if (viaje.tripId && !porTrip.has(viaje.tripId)) porTrip.set(viaje.tripId, viaje);
     }
     if (porTrip.size === 0) return [];
 
-    // Paradas de ESTA estación en esos viajes (índice [estacionId, tripId]).
+    // Paradas de ESTA estación en los viajes de ese día (PK [tripId, orden]).
     // `salidaMin` null = el tren pasa/termina sin dejar subir: no es una salida.
     const paradas = await prisma.paradaHorario.findMany({
       where: {
