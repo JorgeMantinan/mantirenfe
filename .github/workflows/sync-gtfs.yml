@@ -37,10 +37,12 @@ jobs:
       - name: Generar cliente Prisma
         run: pnpm db:generate
 
-      # El CLI importa @mantirenfe/database (main -> dist/): hay que compilarlo
-      # (turbo construye también sus dependencias del workspace).
+      # El CLI importa @mantirenfe/database y @mantirenfe/shared-types (main ->
+      # dist/): hay que compilarlos. Se compila el worker entero para que
+      # cualquier import futuro del CLI también esté listo (turbo construye
+      # antes sus dependencias del workspace).
       - name: Compilar paquetes del workspace
-        run: pnpm turbo build --filter=@mantirenfe/database
+        run: pnpm turbo build --filter=@mantirenfe/worker
 
       # Diagnóstico: si Renfe/NAP no responden desde el runner, el sync se
       # colgaría sin logs. Imprime status HTTP en <10 s.

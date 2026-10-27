@@ -6,6 +6,7 @@ dotenv.config({ path: '../../.env' });
 import pino from 'pino';
 import { sincronizarEstaciones, sincronizarHorarios } from '../processors/sync-gtfs';
 import { hoyGtfs } from '../processors/reloj';
+import { esIndisponibilidadDeBaseDeDatos } from '../lib/errores-transitorios';
 
 /**
  * CLI de sync GTFS para GitHub Actions (`.github/workflows/sync-gtfs.yml`).
@@ -73,6 +74,17 @@ async function podaEspacio(): Promise<void> {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
+    if (esIndisponibilidadDeBaseDeDatos(error)) {
+      // Mismo criterio que el worker: si la BD no da para más no es un fallo
+      // del sync (y como es diario, la tirada de mañana lo recupera entero).
+      // Se avisa en amarillo para no disparar el correo de "Failed in N
+      // seconds" de madrugada ni tapar un fallo REAL de los feeds.
+      const aviso =
+        'Sync GTFS omitido: la base de datos no responde; se repetirá en la próxima tirada diaria';
+      logger.warn({ err: error }, aviso);
+      if (process.env.GITHUB_ACTIONS) console.error(`::warning::${aviso}`);
+      process.exit(0);
+    }
     logger.error({ err: error }, 'Sync GTFS falló');
     process.exit(1);
   });
