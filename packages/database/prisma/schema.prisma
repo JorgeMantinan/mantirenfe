@@ -276,10 +276,11 @@ model ParadaHorario {
   // gtfs: (trip_id, stop_sequence) es único por especificación. Medido en los
   // feeds: AV/LD y CER no comparten ningún trip_id (0 solapes de 7.148+114.348).
   @@id([tripId, orden])
-  // Origen de la query de horarios: paradas de una estación en viajes concretos
-  // (el filtro estacionId + tripId IN (...) necesita los dos; solo estacionId
-  // dejaba el cruce en memoria sobre decenas de miles de paradas).
-  @@index([estacionId, tripId])
+  // SIN índice sobre estacionId: todas las consultas filtran por tripId (la PK
+  // [tripId, orden] las sirve) y `salidasEstacion` ahora empieza por el día
+  // (día → viajes → paradas de la estación). El índice que había,
+  // [estacionId, tripId], pesaba 173 MB (53 % de la tabla) con 604 lecturas en
+  // 20 días: ver migración 20261027130500_quita_indice_paradas_estacion_tripid.
 }
 
 model PosicionTren {
