@@ -29,6 +29,7 @@ import {
   procesarResumenes,
 } from '../src/processors/recordatorios';
 import { sondearAlerta } from '../src/processors/sondeo';
+import { esIndisponibilidadDeBaseDeDatos } from '../src/lib/errores-transitorios';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -36,6 +37,29 @@ const logger = pino({
     ? { transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss' } } }
     : {}),
 });
+
+/**
+ * Un solo reintento (30 s) si el fallo es que la BD no da para más (Supabase
+ * sin presupuesto de Disk IO de madrugada): es transitorio y la tirada
+ * siguiente lo vuelve a intentar. Los fallos que NO son de disponibilidad se
+ * reenvían tal cual para que sigan fallando en rojo.
+ */
+async function conToleranciaABaseDeDatos(
+  nombre: string,
+  tarea: () => Promise<void>,
+  intentos = 2,
+): Promise<void> {
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      await tarea();
+      return;
+    } catch (error) {
+      if (!esIndisponibilidadDeBaseDeDatos(error) || intento === intentos) throw error;
+      logger.warn({ err: error, nombre, intento }, 'BD no disponible: se reintenta en 30 s');
+      await new Promise((resolver) => setTimeout(resolver, 30_000));
+    }
+  }
+}
 
 /** Reintentos del worker original (REINTENTOS_PROGRAMADOS de main.ts). */
 async function conReintentos(
@@ -151,10 +175,20 @@ async function main() {
   }
   logger.info({ tarea: nombre }, 'Tarea del worker arrancando');
   try {
-    await tarea(logger);
+    await conToleranciaABaseDeDatos(nombre, () => tarea(logger));
     logger.info({ tarea: nombre }, 'Tarea completada');
     process.exit(0);
   } catch (error) {
+    if (esIndisponibilidadDeBaseDeDatos(error)) {
+      // La BD de Supabase no responde (presupuesto de Disk IO agotado): no es
+      // un fallo del worker. Se avisa en amarillo y se sale en 0 para que no
+      // salte el correo de "Failed in N seconds" de madrugada ni se tape un
+      // fallo REAL (los que no son de disponibilidad siguen saliendo en rojo).
+      const aviso = `Tarea «${nombre}» omitida: la base de datos no responde; se repetirá en la próxima tirada`;
+      logger.warn({ err: error, tarea: nombre }, aviso);
+      if (process.env.GITHUB_ACTIONS) console.error(`::warning::${aviso}`);
+      process.exit(0);
+    }
     logger.error({ err: error, tarea: nombre }, 'Tarea terminó con error');
     process.exit(1);
   }

@@ -124,7 +124,8 @@ async function main() {
       FROM pg_settings
      WHERE name IN ('shared_buffers','effective_cache_size','maintenance_work_mem',
                     'work_mem','autovacuum','autovacuum_naptime','default_statistics_target',
-                    'wal_compression','max_wal_size','checkpoint_timeout','random_page_cost')
+                    'wal_compression','max_wal_size','checkpoint_timeout','random_page_cost',
+                    'statement_timeout','idle_in_transaction_session_timeout','lock_timeout')
      ORDER BY name`);
   tabla('Ajustes del servidor relevantes para E/S', config, ['parametro', 'valor', 'unit']);
 

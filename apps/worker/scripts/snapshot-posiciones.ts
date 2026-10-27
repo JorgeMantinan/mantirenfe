@@ -16,6 +16,7 @@ dotenv.config({ path: '../../.env' });
 import pino from 'pino';
 import { getPrisma } from '@mantirenfe/database';
 import { obtenerPosicionesRetrasadas, persistirPosicionesSnapshot } from '@mantirenfe/shared-types';
+import { esIndisponibilidadDeBaseDeDatos } from '../src/lib/errores-transitorios';
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -38,6 +39,15 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (esIndisponibilidadDeBaseDeDatos(error)) {
+    // Mismo criterio que `tarea.ts`: si la BD no da para más no es un fallo
+    // del worker (se avisa en amarillo y se sale en 0, sin correo de fallo).
+    const aviso =
+      'Snapshot omitido: la base de datos no responde; se repetirá en la próxima tirada';
+    logger.warn({ err: error }, aviso);
+    if (process.env.GITHUB_ACTIONS) console.error(`::warning::${aviso}`);
+    process.exit(0);
+  }
   logger.error({ err: error }, 'Snapshot de posiciones falló');
   process.exit(1);
 });
