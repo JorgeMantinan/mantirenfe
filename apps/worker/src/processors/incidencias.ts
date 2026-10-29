@@ -227,6 +227,23 @@ export async function sincronizarIncidencias(logger: Logger): Promise<void> {
   try {
     const datos = await descargarAlertasGtfsRt(url);
     const alertas = parsearAlertasGtfsRt(datos);
+
+    // El feed puede quedarse congelado del lado del publisher (así pasó: del 7
+    // al 29 de octubre no publicó NINGUNA alerta nueva, y la lista se quedó
+    // muda sin que nada fallara). Avisar en amarillo distingue «dejaron de
+    // publicar» de «se rompió el worker». Va ANTES del atajo de la huella,
+    // que saltaría el aviso al no cambiar el feed.
+    const masReciente = alertas.reduce<number | null>(
+      (maxima, a) =>
+        a.desde && (maxima === null || a.desde.getTime() > maxima) ? a.desde.getTime() : maxima,
+      null,
+    );
+    const dias = masReciente === null ? null : Math.floor((Date.now() - masReciente) / 86_400_000);
+    if (dias !== null && dias > 14) {
+      const aviso = `Feed de incidencias congelado: la alerta más reciente tiene ${dias} días (el publisher no publica nada nuevo)`;
+      logger.warn({ dias, recibidas: alertas.length }, aviso);
+      if (process.env.GITHUB_ACTIONS) console.error(`::warning::${aviso}`);
+    }
     // Si el feed no ha cambiado desde el último barrido no se toca la BD:
     // el upsert de TODAS las alertas cada minuto (con RETURNING de la fila
     // completa) era un goteo constante de egress de Supabase (~68 filas ×
