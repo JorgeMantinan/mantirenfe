@@ -378,9 +378,16 @@ export function PaginaMapa() {
       {error && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
           {error}
-          {t('mapa.errorApiAntes')}
-          <code>.env</code>
-          {t('mapa.errorApiDespues')}
+          {/* Pista de despliegue («revisa la URL de GTFS-RT en .env»): es para
+              quien mantiene el proyecto, no para quien se queda sin conexión.
+              Solo en desarrollo; en producción el usuario ve solo lo de arriba. */}
+          {import.meta.env.DEV && (
+            <span className="mt-1 block text-xs opacity-75">
+              {t('mapa.errorApiAntes')}
+              <code>.env</code>
+              {t('mapa.errorApiDespues')}
+            </span>
+          )}
         </div>
       )}
 
