@@ -51,26 +51,25 @@ const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 /** Zoom de la estación seleccionada desde /estaciones (?estacion=...). */
 const ZOOM_ESTACION = 12;
 
-/** Estilo de los marcadores y de la traza: constantes, no se recrean por render. */
+/**
+ * Estilo de los marcadores: punto morado pequeño con halo blanco. El halo es
+ * lo que hace que el punto se vea sobre el lienzo gris (tema claro) y sobre
+ * el gris oscuro (tema oscuro).
+ */
 const PATH_TREN: PathOptions = {
-  color: '#75258c',
+  color: '#ffffff',
+  weight: 1.5,
   fillColor: '#75258c',
-  fillOpacity: 0.85,
-  weight: 2,
+  fillOpacity: 1,
 };
-const PATH_TRAZA: PathOptions = {
-  color: '#111111',
-  weight: 4,
-  opacity: 0.8,
-  dashArray: '6 8',
-};
-/** Recorrido acumulado en el navegador (ver `incorporarPuntos`): más fino y
- *  transparente que la traza de la BD para que no tape el mapa. */
-const PATH_RECORRIDO: PathOptions = {
-  color: '#75258c',
-  weight: 2,
-  opacity: 0.35,
-};
+
+/**
+ * Color de las trazas (la de la BD y la del navegador comparten tono para que
+ * se lean como «el camino del tren»). El negro sobre el gris plano del mapa y
+ * junto a los puntos morados se perdía: verde azulado oscuro en tema claro y
+ * off-white #F5F5F4 (nunca blanco puro, que se funde con el gris) en oscuro.
+ */
+const TRAZA_TEMA = { claro: '#0f766e', oscuro: '#f5f5f4' } as const;
 /** Marcador de la estación elegida: ámbar y radio mayor para distinguirlo de los trenes. */
 const PATH_ESTACION: PathOptions = {
   color: '#f59e0b',
@@ -313,6 +312,16 @@ export function PaginaMapa() {
       };
     }
     return resolvedTheme === 'dark' ? TILES.oscuro : TILES.claro;
+  }, [resolvedTheme]);
+
+  // Trazas con el mismo tono en los dos estilos: verde azulado sobre el gris
+  // claro y off-white sobre el gris oscuro (ver TRAZA_TEMA).
+  const trazas = useMemo(() => {
+    const color = resolvedTheme === 'dark' ? TRAZA_TEMA.oscuro : TRAZA_TEMA.claro;
+    return {
+      bd: { color, weight: 3, opacity: 0.9, dashArray: '6 8' } as PathOptions,
+      navegador: { color, weight: 3, opacity: 0.85 } as PathOptions,
+    };
   }, [resolvedTheme]);
 
   // leaflet se carga una sola vez, al entrar en la página
@@ -570,7 +579,7 @@ export function PaginaMapa() {
                 <leaflet.CircleMarker
                   key={tren.id}
                   center={[tren.latitud, tren.longitud]}
-                  radius={7}
+                  radius={4}
                   pathOptions={PATH_TREN}
                   eventHandlers={{
                     // Al abrir el popup se precarga su traza (una sola petición)
@@ -609,7 +618,7 @@ export function PaginaMapa() {
                     <leaflet.Polyline
                       key={`recorrido-${tren.id}`}
                       positions={puntos}
-                      pathOptions={PATH_RECORRIDO}
+                      pathOptions={trazas.navegador}
                     />
                   );
                 })}
@@ -621,7 +630,7 @@ export function PaginaMapa() {
                     <leaflet.Polyline
                       key={i}
                       positions={segmento.map((p) => [p.latitud, p.longitud] as [number, number])}
-                      pathOptions={PATH_TRAZA}
+                      pathOptions={trazas.bd}
                     />
                   ) : null,
                 )}
