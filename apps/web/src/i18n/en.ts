@@ -729,6 +729,10 @@ export const en: MismoArbol<Claves> = {
       'The Renfe feed has not updated for {{min}} min: some trains may be missing on the map.',
     recuentoFiltrado: '{{visibles}} / {{total}} trains',
     recuento: '{{total}} trains',
+    recorrido: 'Trail seen',
+    recorridoPista:
+      'Accumulated with every refresh while the map is open: the last hour, in your browser (never stored on the server)',
+    recorridoBorrar: 'Clear',
     actualizar: 'Refresh',
     errorApiAntes: ' — check the API or the GTFS-RT URL in ',
     errorApiDespues: '.',

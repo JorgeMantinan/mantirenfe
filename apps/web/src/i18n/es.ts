@@ -732,6 +732,10 @@ export const es = {
       'El feed de Renfe lleva {{min}} min sin actualizar: pueden faltar trenes en el mapa.',
     recuentoFiltrado: '{{visibles}} / {{total}} trenes',
     recuento: '{{total}} trenes',
+    recorrido: 'Recorrido visto',
+    recorridoPista:
+      'Se acumula con cada refresco mientras el mapa está abierto: la última hora, en tu navegador (no se guarda en el servidor)',
+    recorridoBorrar: 'Borrar',
     actualizar: 'Actualizar',
     errorApiAntes: ' — comprueba la API o la URL de GTFS-RT en ',
     errorApiDespues: '.',

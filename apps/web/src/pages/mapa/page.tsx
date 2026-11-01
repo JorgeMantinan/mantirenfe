@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from 'next-themes';
 import { CircleDot, RefreshCw, Search } from 'lucide-react';
 import type { PathOptions } from 'leaflet';
 import { useLocation } from 'react-router-dom';
@@ -11,7 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import {
   funcionIndemnizacion,
   horaGtfs,
@@ -23,14 +26,21 @@ import {
 /** leaflet/react-leaflet entran por import dinámico (fuera del chunk raíz). */
 type MapaLeaflet = typeof import('./mapa-leaflet');
 
-// Tiles: por defecto Esri World Street (gratis, sin API key). Si quieres CARTO
-// u otro proveedor, define VITE_TILES_URL (+ VITE_TILES_ATTRIBUTION) en Vercel.
-const TILES_URL =
-  (import.meta.env.VITE_TILES_URL as string | undefined) ??
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
-const TILES_ATTRIBUTION =
-  (import.meta.env.VITE_TILES_ATTRIBUTION as string | undefined) ??
-  '© <a href="https://www.esri.com/">Esri</a>, HERE, NAVTEQ, OpenStreetMap, NGA, USGS, NPS, METI, Garmin, GIS Finland, and the GIS community';
+// Tiles: CARTO Positron (claro) y Dark Matter (oscuro) — minimalistas, sin API
+// key y con atribución obligatoria; se eligen según el tema de la web. Si
+// defines VITE_TILES_URL (+ VITE_TILES_ATTRIBUTION) en Vercel, manda ese.
+const ATRIBUTION_CARTO =
+  '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>';
+const TILES = {
+  claro: {
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution: ATRIBUTION_CARTO,
+  },
+  oscuro: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: ATRIBUTION_CARTO,
+  },
+} as const;
 
 const CENTRO_ESPANIA: [number, number] = [40.2, -3.7];
 
@@ -49,6 +59,13 @@ const PATH_TRAZA: PathOptions = {
   weight: 4,
   opacity: 0.8,
   dashArray: '6 8',
+};
+/** Recorrido acumulado en el navegador (ver `incorporarPuntos`): más fino y
+ *  transparente que la traza de la BD para que no tape el mapa. */
+const PATH_RECORRIDO: PathOptions = {
+  color: '#75258c',
+  weight: 2,
+  opacity: 0.35,
 };
 /** Marcador de la estación elegida: ámbar y radio mayor para distinguirlo de los trenes. */
 const PATH_ESTACION: PathOptions = {
@@ -79,6 +96,88 @@ function segmentarPorHuecos(puntos: PuntoTraza[], maxMin = 30): PuntoTraza[][] {
   }
   if (actual.length > 0) segmentos.push(actual);
   return segmentos;
+}
+
+/* ------------------------------------------------------------------ */
+/* Recorrido visto en el navegador.                                    */
+/*                                                                     */
+/* La traza de la BD (`/trenes/posiciones/traza`) se escribe poquísimas */
+/* veces al día, así que la mayoría de trenes no tienen ninguna. En     */
+/* cambio las posiciones en vivo llegan cada 30 s: se acumulan aquí, en */
+/* memoria + sessionStorage, para poder dibujar por dónde ha pasado el  */
+/* tren mientras el mapa ha estado abierto. No escribe nada en la BD ni */
+/* mantiene despierto a nadie.                                          */
+/* ------------------------------------------------------------------ */
+
+type PuntoVisto = [number, number];
+type Recorrido = { puntos: PuntoVisto[]; visto: number };
+/** Map en vez de objeto: además de más rápido, no dispara el aviso de
+ *  `security/detect-object-injection` (clave dinámica sobre objeto plano). */
+type Recorridos = Map<string, Recorrido>;
+
+const CLAVE_RECORRIDO = 'mantirenfe:mapa:recorrido';
+/** 30 s por punto × 120 = una hora de recorrido por vehículo. */
+const MAX_PUNTOS_POR_VEHICULO = 120;
+/** Nada de «movimientos» de milímetros: ~11 m de margen. */
+const EPSILON_GRADOS = 0.0001;
+const VIDA_RECORRIDO_MS = 6 * 60 * 60_000;
+const MAX_VEHICULOS = 120;
+
+function leerRecorridos(): Recorridos {
+  try {
+    const bruto = sessionStorage.getItem(CLAVE_RECORRIDO);
+    if (!bruto) return new Map();
+    const datos = JSON.parse(bruto) as Record<string, Recorrido>;
+    return typeof datos === 'object' && datos !== null ? new Map(Object.entries(datos)) : new Map();
+  } catch {
+    // sessionStorage bloqueado o dato corrupto: se empieza de cero
+    return new Map();
+  }
+}
+
+function guardarRecorridos(recorridos: Recorridos): void {
+  try {
+    sessionStorage.setItem(CLAVE_RECORRIDO, JSON.stringify(Object.fromEntries(recorridos)));
+  } catch {
+    // Lleno o bloqueado: el recorrido sigue en memoria, que es lo que importa
+  }
+}
+
+/** Añade la posición actual de cada tren y poda lo antiguo. (Exportado para el test.) */
+export function incorporarPuntos(prev: Recorridos, trenes: PosicionTrenResponse[]): Recorridos {
+  const ahora = Date.now();
+  const siguiente: Recorridos = new Map();
+  for (const [vehiculo, recorrido] of prev) {
+    if (ahora - recorrido.visto <= VIDA_RECORRIDO_MS) siguiente.set(vehiculo, recorrido);
+  }
+  for (const tren of trenes) {
+    const previo = siguiente.get(tren.id);
+    const puntos = previo?.puntos ?? [];
+    const ultimo = puntos[puntos.length - 1];
+    if (
+      ultimo &&
+      Math.abs(ultimo[0] - tren.latitud) < EPSILON_GRADOS &&
+      Math.abs(ultimo[1] - tren.longitud) < EPSILON_GRADOS
+    ) {
+      siguiente.set(tren.id, { puntos, visto: ahora });
+      continue;
+    }
+    siguiente.set(tren.id, {
+      puntos: [...puntos, [tren.latitud, tren.longitud] as PuntoVisto].slice(
+        -MAX_PUNTOS_POR_VEHICULO,
+      ),
+      visto: ahora,
+    });
+  }
+  if (siguiente.size > MAX_VEHICULOS) {
+    // Si hay más vehículos de los que queremos recordar, nos quedamos con los
+    // vistos hace menos (los que el usuario está mirando, en la práctica)
+    const orden = [...siguiente.entries()]
+      .sort((a, b) => b[1].visto - a[1].visto)
+      .map(([id]) => id);
+    for (const id of orden.slice(MAX_VEHICULOS)) siguiente.delete(id);
+  }
+  return siguiente;
 }
 
 interface PopupProps {
@@ -190,6 +289,28 @@ export function PaginaMapa() {
   });
   const [centroEstacion, setCentroEstacion] = useState<[number, number] | null>(entrada.coords);
 
+  // Recorrido visto en el navegador (no en la BD): ver `incorporarPuntos`
+  const [recorridos, setRecorridos] = useState<Recorridos>(leerRecorridos);
+  const [mostrarRecorrido, setMostrarRecorrido] = useState(true);
+  useEffect(() => {
+    guardarRecorridos(recorridos);
+  }, [recorridos]);
+
+  // Tiles según el tema (CARTO Positron / Dark Matter). VITE_TILES_URL manda
+  // si está definida, como hasta ahora.
+  const { resolvedTheme } = useTheme();
+  const tiles = useMemo(() => {
+    const propio = import.meta.env.VITE_TILES_URL as string | undefined;
+    if (propio) {
+      return {
+        url: propio,
+        attribution:
+          (import.meta.env.VITE_TILES_ATTRIBUTION as string | undefined) ?? TILES.claro.attribution,
+      };
+    }
+    return resolvedTheme === 'dark' ? TILES.oscuro : TILES.claro;
+  }, [resolvedTheme]);
+
   // leaflet se carga una sola vez, al entrar en la página
   useEffect(() => {
     let cancelado = false;
@@ -294,6 +415,8 @@ export function PaginaMapa() {
       api<{ trenes: PosicionTrenResponse[] }>('/trenes/posiciones')
         .then((d) => {
           setTrenes(d.trenes);
+          // Cada refresco aporta un punto por tren al recorrido visto
+          setRecorridos((prev) => incorporarPuntos(prev, d.trenes));
           setError(null);
         })
         .catch((e: unknown) => {
@@ -347,7 +470,7 @@ export function PaginaMapa() {
           </div>
           <p className="text-muted-foreground">{t('mapa.subtitulo')}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="relative">
             <Search
               className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -368,6 +491,21 @@ export function PaginaMapa() {
                 : t('mapa.recuento', { total: trenes.length })
               : '—'}
           </span>
+          <div className="flex items-center gap-2" title={t('mapa.recorridoPista')}>
+            <Switch
+              id="recorrido"
+              checked={mostrarRecorrido}
+              onCheckedChange={setMostrarRecorrido}
+            />
+            <Label htmlFor="recorrido" className="cursor-pointer text-sm text-muted-foreground">
+              {t('mapa.recorrido')}
+            </Label>
+          </div>
+          {recorridos.size > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => setRecorridos(new Map())}>
+              {t('mapa.recorridoBorrar')}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => refrescar(true)} disabled={cargando}>
             <RefreshCw className={cargando ? 'animate-spin' : ''} aria-hidden="true" />{' '}
             {t('mapa.actualizar')}
@@ -421,7 +559,7 @@ export function PaginaMapa() {
               className={embebido ? 'h-[calc(100vh-15rem)] min-h-[320px] w-full' : ALTURA_MAPA}
               scrollWheelZoom
             >
-              <leaflet.TileLayer attribution={TILES_ATTRIBUTION} url={TILES_URL} />
+              <leaflet.TileLayer attribution={tiles.attribution} url={tiles.url} />
               <leaflet.Actualizador posiciones={trenes ?? []} />
               {centroEstacion && <leaflet.Centrador center={centroEstacion} zoom={ZOOM_ESTACION} />}
               {visibles.map((tren) => (
@@ -457,6 +595,20 @@ export function PaginaMapa() {
                   </leaflet.Popup>
                 </leaflet.CircleMarker>
               )}
+              {/* Recorrido visto en el navegador: se acumula con cada refresco
+                  (30 s) y sobrevive a recargas de la pestaña. */}
+              {mostrarRecorrido &&
+                visibles.map((tren) => {
+                  const puntos = recorridos.get(tren.id)?.puntos;
+                  if (!puntos || puntos.length < 2) return null;
+                  return (
+                    <leaflet.Polyline
+                      key={`recorrido-${tren.id}`}
+                      positions={puntos}
+                      pathOptions={PATH_RECORRIDO}
+                    />
+                  );
+                })}
               {trazaVisible &&
                 traza &&
                 visibles.some((v) => v.id === traza.vehiculo) &&
