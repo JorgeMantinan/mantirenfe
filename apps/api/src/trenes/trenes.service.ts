@@ -479,42 +479,33 @@ export class TrenesService {
     const mejor = encontradas[0];
     if (!mejor) return [];
 
-    // Orden inverso al histórico: PRIMERO los viajes del día (una fila por
-    // trip + fecha, ~4.400, servida por el índice [fecha, origenEstacionId])
-    // y DESPUÉS sus paradas en esta estación (PK [tripId, orden] + filtro de
-    // estación).
+    // Orden inverso al histórico y en tres pasos cortos:
     //
-    // Antes empezaba por la estación: `ParadaHorario` no tiene fecha, así que
-    // devolvía los 30k viajes de TODOS los días de la estación más transitada
-    // y había que cruzarlos en memoria con el día. Con este orden el cruce
-    // cabe en el motor y se pudo borrar el índice [estacionId, tripId] de
-    // 173 MB (medido con db:io: 604 lecturas en 20 días, el 53 % de la tabla).
-    const viajesDelDia = await prisma.horarioTren.findMany({
-      where: { fecha: new Date(`${fecha}T00:00:00Z`) },
-      select: {
-        tripId: true,
-        numeroTren: true,
-        operador: true,
-        llegada: true,
-        destinoEstacionId: true,
-        origen: { select: { nombre: true } },
-        destino: { select: { nombre: true } },
-      },
+    //  1) IDs de los viajes del día (~4.400 × 30 B ≈ 130 kB). Antes empezaba
+    //     por la estación: `ParadaHorario` no tiene fecha, así que devolvía los
+    //     30k viajes de TODOS los días de la estación más transitada y el cruce
+    //     se resolvía en memoria. Y traer ya los detalles aquí (nombres de
+    //     estación incluidos) movería ~660 kB por petición, que es egress de
+    //     Supabase (límite de 5 GB/mes en el plan Free).
+    //  2) sus paradas en ESTA estación (PK [tripId, orden] + filtro), que es
+    //     lo que permite haber borrado el índice [estacionId, tripId] de 173 MB
+    //     (db:io: 604 lecturas en 20 días).
+    //  3) detalles SOLO de los viajes que aquí salen (unos pocos).
+    const idsDelDia = await prisma.horarioTren.findMany({
+      where: { fecha: new Date(`${fecha}T00:00:00Z`), tripId: { not: null } },
+      select: { tripId: true },
       take: 20_000,
     });
-    const porTrip = new Map<string, (typeof viajesDelDia)[number]>();
-    for (const viaje of viajesDelDia) {
-      // Las filas antiguas (sin tripId) no permiten cruzar con ParadaHorario
-      if (viaje.tripId && !porTrip.has(viaje.tripId)) porTrip.set(viaje.tripId, viaje);
-    }
-    if (porTrip.size === 0) return [];
+    const tripIds = [
+      ...new Set(idsDelDia.map((v) => v.tripId).filter((id): id is string => id !== null)),
+    ];
+    if (tripIds.length === 0) return [];
 
-    // Paradas de ESTA estación en los viajes de ese día (PK [tripId, orden]).
     // `salidaMin` null = el tren pasa/termina sin dejar subir: no es una salida.
     const paradas = await prisma.paradaHorario.findMany({
       where: {
         estacionId: mejor.id,
-        tripId: { in: [...porTrip.keys()] },
+        tripId: { in: tripIds },
         salidaMin: { not: null },
       },
       select: { tripId: true, orden: true, salidaMin: true },
@@ -531,6 +522,32 @@ export class TrenesService {
       }
     }
     if (salidaPorTrip.size === 0) return [];
+
+    // Detalles SOLO de los viajes que aquí salen (pocos): con los IDs del paso
+    // 1 ya sabíamos los del día entero, pero traer sus filas completas (con los
+    // nombres de las dos estaciones) costaría ~660 kB de egress por petición.
+    const viajes = await prisma.horarioTren.findMany({
+      where: {
+        fecha: new Date(`${fecha}T00:00:00Z`),
+        tripId: { in: [...salidaPorTrip.keys()] },
+      },
+      select: {
+        tripId: true,
+        numeroTren: true,
+        operador: true,
+        llegada: true,
+        destinoEstacionId: true,
+        origen: { select: { nombre: true } },
+        destino: { select: { nombre: true } },
+      },
+      take: 20_000,
+    });
+    const porTrip = new Map<string, (typeof viajes)[number]>();
+    for (const viaje of viajes) {
+      // Las filas antiguas (sin tripId) no permiten cruzar con ParadaHorario
+      if (viaje.tripId && !porTrip.has(viaje.tripId)) porTrip.set(viaje.tripId, viaje);
+    }
+    if (porTrip.size === 0) return [];
 
     const [ano, mes, diaDelMes] = fecha.split('-').map(Number);
     if (ano === undefined || mes === undefined || diaDelMes === undefined) return [];

@@ -94,15 +94,18 @@ function dobleParadas(filas: ParadaTest[]) {
 }
 
 /** Doble en memoria: `HorarioTren` solo devuelve los viajes de la fecha pedida
- *  y, si el filtro trae tripId, solo los de la estación consultada. */
+ *  y, si el filtro trae tripId, solo los pedidos. El primer paso consulta con
+ *  `tripId: { not: null }` (sin `in`): ahí se devuelven todos los del día. */
 function dobleHorarios(filas: ViajeTest[]) {
   horarioFindManyMock.mockImplementation(
-    async (args: { where: { fecha: Date; tripId?: { in: string[] } } }) =>
-      filas.filter(
+    async (args: { where: { fecha: Date; tripId?: { in: string[] } | { not: null } } }) => {
+      const filtro = args.where.tripId as { in?: string[] } | undefined;
+      return filas.filter(
         (h) =>
           h.fecha.getTime() === args.where.fecha.getTime() &&
-          (!args.where.tripId || args.where.tripId.in.includes(h.tripId)),
-      ),
+          (!filtro?.in || filtro.in.includes(h.tripId)),
+      );
+    },
   );
 }
 
@@ -149,16 +152,20 @@ describe('TrenesService.salidasEstacion', () => {
         operador: 'MD',
       },
     ]);
-    // Orden nuevo (habilita borrar el índice [estacionId, tripId] de 173 MB):
-    // 1) TODOS los viajes del día —los ~4.400 que hay, servidos por el índice
-    //    [fecha, origenEstacionId]— sin filtrar por estación (que no tiene por
-    //    qué ser el extremo del viaje);
+    // Tres pasos cortos (comentados en el servicio): ids del día → paradas de
+    // ESTA estación → detalles solo de los viajes que aquí salen. El detalle
+    // llega el último para no mover ~660 kB de egress por petición.
     expect(horarioFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { fecha: DIA } }),
+      expect.objectContaining({
+        where: { fecha: DIA, tripId: { not: null } },
+        select: { tripId: true },
+      }),
     );
-    // 2) sus paradas en ESTA estación, por la PK [tripId, orden].
-    //    Antes el primer paso traía los 30k viajes de la estación de TODOS los
-    //    días y el cruce se resolvía en memoria.
+    expect(horarioFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { fecha: DIA, tripId: { in: ['T-pasa'] } },
+      }),
+    );
     expect(paradaFindManyMock).toHaveBeenCalledTimes(1);
     expect(paradaFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
