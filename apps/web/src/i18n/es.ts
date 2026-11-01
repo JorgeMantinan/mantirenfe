@@ -554,6 +554,8 @@ export const es = {
       'Avisos y incidencias de cercanías publicados por Renfe en tiempo real, actualizados cada minuto',
     vacio:
       'No hay incidencias activas ahora mismo. Si aparece alguna, la verás aquí en cuanto el feed de Renfe la publique.',
+    feedCongelado:
+      'Sin novedades desde el {{fecha}} (hace {{dias}} días): el feed oficial de avisos no ha publicado nada nuevo desde entonces. Estas incidencias siguen listadas porque su baja depende de que Renfe retire el aviso.',
     sinEstacion: 'Afecta a líneas del servicio, sin estación concreta indicada',
     tituloFallback: 'Incidencia de servicio',
     periodoDesde: 'Desde el {{fecha}}',

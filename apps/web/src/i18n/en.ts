@@ -553,6 +553,8 @@ export const en: MismoArbol<Claves> = {
       'Service notices and incidents for commuter rail published by Renfe in real time, updated every minute',
     vacio:
       'There are no active incidents right now. If one appears, you will see it here as soon as Renfe’s feed publishes it.',
+    feedCongelado:
+      'No new notices since {{fecha}} ({{dias}} days ago): the official feed has not published anything new since then. These incidents are still listed because removing them depends on Renfe retiring the notice.',
     sinEstacion: 'Affects service lines, no specific station reported',
     tituloFallback: 'Service incident',
     periodoDesde: 'From {{fecha}}',
