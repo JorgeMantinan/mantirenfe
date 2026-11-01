@@ -26,19 +26,23 @@ import {
 /** leaflet/react-leaflet entran por import dinámico (fuera del chunk raíz). */
 type MapaLeaflet = typeof import('./mapa-leaflet');
 
-// Tiles: CARTO Positron (claro) y Dark Matter (oscuro) — minimalistas, sin API
-// key y con atribución obligatoria; se eligen según el tema de la web. Si
-// defines VITE_TILES_URL (+ VITE_TILES_ATTRIBUTION) en Vercel, manda ese.
-const ATRIBUTION_CARTO =
-  '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>';
+// Tiles minimalistas (gris claro / gris oscuro) de Esri, sin API key y con
+// atribución obligatoria; se eligen según el tema de la web.
+//
+// OJO: CARTO (Positron/Dark Matter) pasó a exigir API key: sin ella devuelve
+// una imagen de 256×256 con el texto «API KEY REQUIRED», que es lo que rompió
+// el mapa. Si quieres CARTO, coge una clave gratuita y define VITE_TILES_URL
+// (+ VITE_TILES_ATTRIBUTION) en Vercel, que tiene prioridad.
+const ATRIBUTION_ESRI =
+  '© <a href="https://www.esri.com/">Esri</a>, HERE, Garmin, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const TILES = {
   claro: {
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution: ATRIBUTION_CARTO,
+    url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: ATRIBUTION_ESRI,
   },
   oscuro: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: ATRIBUTION_CARTO,
+    url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: ATRIBUTION_ESRI,
   },
 } as const;
 
