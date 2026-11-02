@@ -131,7 +131,14 @@ function segmentarPorHuecos(puntos: PuntoTraza[], maxMin = 30): PuntoTraza[][] {
  * entrar en un túnel o al aparcar) y reaparece lejos.
  */
 type PuntoVisto = PuntoTraza;
-type Recorrido = { puntos: PuntoVisto[]; visto: number };
+/**
+ * `visto` = último refresh en el que apareció; `cambio` = último refresh en el
+ * que su posición CAMBIÓ. El segundo es el que manda al aplicar el tope de
+ * vehículos: si no, la primera carga se queda con una lista arbitraria (casi
+ * todos parados) y los trenes que se mueven fuera de esa lista nunca llegan a
+ * acumular puntos, porque cada refresh empiezan de cero.
+ */
+type Recorrido = { puntos: PuntoVisto[]; visto: number; cambio: number };
 /** Map en vez de objeto: además de más rápido, no dispara el aviso de
  *  `security/detect-object-injection` (clave dinámica sobre objeto plano). */
 type Recorridos = Map<string, Recorrido>;
@@ -158,16 +165,21 @@ function leerRecorridos(): Recorridos {
   try {
     const bruto = sessionStorage.getItem(CLAVE_RECORRIDO);
     if (!bruto) return new Map();
-    const datos = JSON.parse(bruto) as Record<string, Recorrido>;
+    const datos = JSON.parse(bruto) as Record<
+      string,
+      { puntos?: PuntoTraza[]; visto?: number; cambio?: number }
+    >;
     if (typeof datos !== 'object' || datos === null) return new Map();
-    // Formato antiguo (pares [lat, lng] sin fecha): se descarta entero, que
-    // sin fecha no se puede cortar por huecos.
+    // Formato antiguo (pares [lat, lng] sin fecha o sin «cambio»): se descarta
+    // entero, que sin fecha no se puede cortar por huecos.
     const validos = Object.entries(datos).filter(
       ([, recorrido]) =>
         Array.isArray(recorrido?.puntos) &&
+        typeof recorrido.visto === 'number' &&
+        typeof recorrido.cambio === 'number' &&
         recorrido.puntos.every((punto) => typeof punto?.en === 'string'),
     );
-    return new Map(validos);
+    return new Map(validos) as Recorridos;
   } catch {
     // sessionStorage bloqueado o dato corrupto: se empieza de cero
     return new Map();
@@ -182,9 +194,13 @@ function guardarRecorridos(recorridos: Recorridos): void {
   }
 }
 
-/** Añade la posición actual de cada tren y poda lo antiguo. (Exportado para el test.) */
-export function incorporarPuntos(prev: Recorridos, trenes: PosicionTrenResponse[]): Recorridos {
-  const ahora = Date.now();
+/** Añade la posición actual de cada tren y poda lo antiguo. (Exportado para
+ *  el test; `ahora` se inyecta para poder simular los refrescos.) */
+export function incorporarPuntos(
+  prev: Recorridos,
+  trenes: PosicionTrenResponse[],
+  ahora = Date.now(),
+): Recorridos {
   const corte = ahora - VIDA_RECORRIDO_MS;
   const siguiente: Recorridos = new Map();
   for (const [vehiculo, recorrido] of prev) {
@@ -201,7 +217,8 @@ export function incorporarPuntos(prev: Recorridos, trenes: PosicionTrenResponse[
       Math.abs(ultimo.latitud - tren.latitud) < EPSILON_GRADOS &&
       Math.abs(ultimo.longitud - tren.longitud) < EPSILON_GRADOS
     ) {
-      siguiente.set(tren.id, { puntos, visto: ahora });
+      // Parado: se actualiza la vista pero no el «cambio»
+      siguiente.set(tren.id, { puntos, visto: ahora, cambio: previo?.cambio ?? ahora });
       continue;
     }
     puntos.push({
@@ -213,13 +230,14 @@ export function incorporarPuntos(prev: Recorridos, trenes: PosicionTrenResponse[
     siguiente.set(tren.id, {
       puntos: puntos.slice(-MAX_PUNTOS_POR_VEHICULO),
       visto: ahora,
+      cambio: ahora,
     });
   }
   if (siguiente.size > MAX_VEHICULOS) {
-    // Si hay más vehículos de los que queremos recordar, nos quedamos con los
-    // vistos hace menos (los que el usuario está mirando, en la práctica)
+    // El tope se queda con los vehículos que hace menos que se movieron (los
+    // que de verdad tienen recorrido), no con los que salieron primeros.
     const orden = [...siguiente.entries()]
-      .sort((a, b) => b[1].visto - a[1].visto)
+      .sort((a, b) => b[1].cambio - a[1].cambio || b[1].puntos.length - a[1].puntos.length)
       .map(([id]) => id);
     for (const id of orden.slice(MAX_VEHICULOS)) siguiente.delete(id);
   }

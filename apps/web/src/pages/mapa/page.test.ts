@@ -19,7 +19,7 @@ function posicion(
   };
 }
 
-type Recorridos = Map<string, { puntos: PuntoTraza[]; visto: number }>;
+type Recorridos = Map<string, { puntos: PuntoTraza[]; visto: number; cambio: number }>;
 
 /** Coordenadas [lat, lng] de un vehículo en el recorrido, o []. */
 function latlngDe(recorridos: Recorridos, id: string): [number, number][] {
@@ -67,6 +67,7 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
             { en: new Date(hace7h).toISOString(), latitud: 40.4, longitud: -3.7, retrasoSeg: null },
           ],
           visto: hace7h,
+          cambio: hace7h,
         },
       ],
     ]);
@@ -74,6 +75,26 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
 
     expect(recorridos.has('A')).toBe(false);
     expect(recorridos.has('B')).toBe(true);
+  });
+
+  it('el tope se queda con los que se están moviendo, no con los de la primera carga', () => {
+    // 70 trenes parados superan el tope de 60: la primera carga se queda con
+    // una lista arbitraria. Los que se mueven tienen que colarse igualmente.
+    const parados = Array.from({ length: 70 }, (_, i) => posicion(`P${i}`, 40, -3));
+    const base = Date.now() - 5 * 60_000;
+    let recorridos = incorporarPuntos(new Map(), parados, base);
+    for (let paso = 1; paso <= 3; paso++) {
+      const movidos = Array.from({ length: 10 }, (_, i) =>
+        posicion(`M${i}`, 40 + (paso * (i + 1)) / 100, -3),
+      );
+      // Cada refresco, 30 s después que el anterior (como en producción)
+      recorridos = incorporarPuntos(recorridos, [...parados, ...movidos], base + paso * 30_000);
+    }
+
+    const claves = [...recorridos.keys()];
+    expect(claves.length).toBeLessThanOrEqual(60);
+    expect(claves.filter((clave) => clave.startsWith('M'))).toHaveLength(10);
+    expect([...recorridos.values()].some((r) => r.puntos.length > 1)).toBe(true);
   });
 
   it('tira los puntos del vehículo que pasan de 6 h (no solo el vehículo)', () => {
@@ -93,6 +114,7 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
             },
           ],
           visto: ahora,
+          cambio: ahora,
         },
       ],
     ]);
