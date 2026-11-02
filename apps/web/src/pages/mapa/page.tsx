@@ -21,6 +21,7 @@ import {
   type EstacionResponse,
   type PosicionTrenResponse,
   type PuntoTraza,
+  type RutaTripResponse,
 } from '@mantirenfe/shared-types';
 
 /** leaflet/react-leaflet entran por import dinámico (fuera del chunk raíz). */
@@ -70,6 +71,17 @@ const PATH_TREN: PathOptions = {
  * off-white #F5F5F4 (nunca blanco puro, que se funde con el gris) en oscuro.
  */
 const TRAZA_TEMA = { claro: '#0f766e', oscuro: '#f5f5f4' } as const;
+
+/**
+ * Ruta del tren (paradas del GTFS estático, `GET /trenes/ruta`): ámbar sólido
+ * para distinguirla de las trazas (verde azulado / off-white) y de los puntos
+ * morados. Se dibuja solo cuando el usuario lo pide desde el popup.
+ */
+const PATH_RUTA: PathOptions = {
+  color: '#f59e0b',
+  weight: 4,
+  opacity: 0.75,
+};
 /** Marcador de la estación elegida: ámbar y radio mayor para distinguirlo de los trenes. */
 const PATH_ESTACION: PathOptions = {
   color: '#f59e0b',
@@ -125,10 +137,11 @@ type Recorrido = { puntos: PuntoVisto[]; visto: number };
 type Recorridos = Map<string, Recorrido>;
 
 const CLAVE_RECORRIDO = 'mantirenfe:mapa:recorrido';
-/** 30 s por punto × 90 = 45 min de recorrido por vehículo. */
-const MAX_PUNTOS_POR_VEHICULO = 90;
-/** Nada de «movimientos» de milímetros: ~11 m de margen. */
-const EPSILON_GRADOS = 0.0001;
+/** 30 s por punto × 180 = 90 min de recorrido por vehículo. */
+const MAX_PUNTOS_POR_VEHICULO = 180;
+/** Nada de «movimientos» de milímetros: ~5 m de margen (el feed trae 7
+ *  decimales, así que ni el redondeo ni el GPS ruidoso generan puntos). */
+const EPSILON_GRADOS = 0.00005;
 const VIDA_RECORRIDO_MS = 6 * 60 * 60_000;
 const MAX_VEHICULOS = 60;
 /** Un refresh cada 30 s: si entre dos puntos hay más de 5 min, el hueco es
@@ -219,6 +232,10 @@ interface PopupProps {
   cargandoTraza: boolean;
   trazaVisible: boolean;
   onAlternar: (vehiculo: string, tripId?: string | null) => void;
+  ruta: RutaTripResponse | null;
+  cargandoRuta: boolean;
+  rutaVisible: boolean;
+  onAlternarRuta: (tripId?: string | null) => void;
 }
 
 /**
@@ -232,6 +249,10 @@ const PopupTren = memo(function PopupTren({
   cargandoTraza,
   trazaVisible,
   onAlternar,
+  ruta,
+  cargandoRuta,
+  rutaVisible,
+  onAlternarRuta,
 }: PopupProps) {
   const { t } = useTranslation();
   const indemnizacion = tren.retrasoSeg != null ? funcionIndemnizacion(tren.retrasoSeg) : null;
@@ -245,6 +266,9 @@ const PopupTren = memo(function PopupTren({
       (segmento) => segmento.length >= 2,
     );
   const visible = trazaEste !== null && trazaVisible;
+  const rutaEste = tren.tripId && ruta?.tripId === tren.tripId ? ruta : null;
+  const rutaDisponible = rutaEste !== null && rutaEste.puntos.length >= 2;
+  const rutaVisibleAhora = rutaEste !== null && rutaVisible;
 
   return (
     <div className="space-y-1 text-sm">
@@ -282,17 +306,37 @@ const PopupTren = memo(function PopupTren({
           hora: new Date(tren.actualizadaEn).toLocaleTimeString(locale()),
         })}
       </p>
-      {cargandoTraza && trazaEste === null ? (
-        <Button variant="outline" size="sm" disabled>
-          {t('mapa.cargando')}
-        </Button>
-      ) : trazaDisponible ? (
-        <Button variant="outline" size="sm" onClick={() => onAlternar(tren.id, tren.tripId)}>
-          {visible ? t('mapa.ocultarTraza') : t('mapa.verTraza')}
-        </Button>
-      ) : (
-        <p className="text-xs text-muted-foreground">{t('mapa.trazaNoDisponible')}</p>
-      )}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        {cargandoTraza && trazaEste === null ? (
+          <Button variant="outline" size="sm" disabled>
+            {t('mapa.cargando')}
+          </Button>
+        ) : trazaDisponible ? (
+          <Button variant="outline" size="sm" onClick={() => onAlternar(tren.id, tren.tripId)}>
+            {visible ? t('mapa.ocultarTraza') : t('mapa.verTraza')}
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">{t('mapa.trazaNoDisponible')}</span>
+        )}
+        {tren.tripId &&
+          (rutaEste === null ? (
+            cargandoRuta ? (
+              <Button variant="outline" size="sm" disabled>
+                {t('mapa.cargando')}
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => onAlternarRuta(tren.tripId)}>
+                {t('mapa.verRuta')}
+              </Button>
+            )
+          ) : rutaDisponible ? (
+            <Button variant="outline" size="sm" onClick={() => onAlternarRuta(tren.tripId)}>
+              {rutaVisibleAhora ? t('mapa.ocultarRuta') : t('mapa.verRuta')}
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t('mapa.rutaNoDisponible')}</span>
+          ))}
+      </div>
     </div>
   );
 });
@@ -395,6 +439,12 @@ export function PaginaMapa() {
     };
   }, [entrada]);
 
+  // Ruta del tren (paradas del GTFS estático con coordenadas): se pide al
+  // abrir el popup, igual que la traza, y solo se dibuja si lo pide el usuario.
+  const [ruta, setRuta] = useState<RutaTripResponse | null>(null);
+  const [cargandoRuta, setCargandoRuta] = useState(false);
+  const [rutaVisible, setRutaVisible] = useState(false);
+
   // Única petición de traza viva: si cambia el popup (u otra llega antes),
   // la anterior se aborta y su respuesta se descarta.
   const peticionTraza = useRef<{ vehiculo: string; control: AbortController } | null>(null);
@@ -454,6 +504,60 @@ export function PaginaMapa() {
       cargarTraza(vehiculo, tripId, true);
     },
     [cargarTraza, traza?.vehiculo, trazaVisible],
+  );
+
+  // Lo mismo para la ruta: se descarga una sola vez por trip y se cachea en
+  // el estado (no hace falta persistirla: se vuelve a pedir al reabrir).
+  const peticionRuta = useRef<{ tripId: string; control: AbortController } | null>(null);
+  useEffect(
+    () => () => {
+      peticionRuta.current?.control.abort();
+    },
+    [],
+  );
+
+  const cargarRuta = useCallback(
+    (tripId: string | null | undefined, mostrar: boolean) => {
+      if (!tripId) return;
+      if (ruta?.tripId === tripId) {
+        if (mostrar) setRutaVisible(true);
+        return;
+      }
+      if (peticionRuta.current?.tripId === tripId) return; // ya está en vuelo
+      peticionRuta.current?.control.abort();
+      const control = new AbortController();
+      peticionRuta.current = { tripId, control };
+      setCargandoRuta(true);
+      api<RutaTripResponse>(`/trenes/ruta?tripId=${encodeURIComponent(tripId)}`, {
+        signal: control.signal,
+      })
+        .then((datos) => {
+          if (peticionRuta.current?.control !== control) return;
+          setRuta(datos);
+          setRutaVisible(mostrar);
+        })
+        .catch(() => {
+          // popup efímero: no bloquear el mapa por un error de la ruta
+        })
+        .finally(() => {
+          if (peticionRuta.current?.control === control) {
+            peticionRuta.current = null;
+            setCargandoRuta(false);
+          }
+        });
+    },
+    [ruta?.tripId],
+  );
+
+  const alternarRuta = useCallback(
+    (tripId?: string | null) => {
+      if (ruta?.tripId === tripId && rutaVisible) {
+        setRutaVisible(false);
+        return;
+      }
+      cargarRuta(tripId, true);
+    },
+    [cargarRuta, ruta?.tripId, rutaVisible],
   );
 
   // La primera carga enseña el esqueleto; las siguientes son silenciosas.
@@ -619,8 +723,11 @@ export function PaginaMapa() {
                   radius={4}
                   pathOptions={PATH_TREN}
                   eventHandlers={{
-                    // Al abrir el popup se precarga su traza (una sola petición)
-                    popupopen: () => cargarTraza(tren.id, tren.tripId, false),
+                    // Al abrir el popup se precargan su traza y su ruta
+                    popupopen: () => {
+                      cargarTraza(tren.id, tren.tripId, false);
+                      cargarRuta(tren.tripId, false);
+                    },
                   }}
                 >
                   <leaflet.Popup>
@@ -630,6 +737,10 @@ export function PaginaMapa() {
                       cargandoTraza={cargandoTraza}
                       trazaVisible={trazaVisible}
                       onAlternar={alternarTraza}
+                      ruta={ruta}
+                      cargandoRuta={cargandoRuta}
+                      rutaVisible={rutaVisible}
+                      onAlternarRuta={alternarRuta}
                     />
                   </leaflet.Popup>
                 </leaflet.CircleMarker>
@@ -663,6 +774,17 @@ export function PaginaMapa() {
                     ) : null,
                   );
                 })}
+              {/* Ruta del tren (GTFS estático): se pide al abrir el popup y
+                  solo se pinta si el usuario lo pide. */}
+              {rutaVisible &&
+                ruta &&
+                ruta.puntos.length > 1 &&
+                visibles.some((v) => v.tripId === ruta.tripId) && (
+                  <leaflet.Polyline
+                    positions={ruta.puntos.map((p) => [p.latitud, p.longitud] as [number, number])}
+                    pathOptions={PATH_RUTA}
+                  />
+                )}
               {trazaVisible &&
                 traza &&
                 visibles.some((v) => v.id === traza.vehiculo) &&

@@ -107,6 +107,20 @@ export interface PuntoTraza {
   tripId?: string | null;
 }
 
+/** Parada de un trip con coordenadas: la ruta que recorre, para el mapa. */
+export interface PuntoRuta {
+  nombre: string;
+  latitud: number;
+  longitud: number;
+  llegadaMin: number | null;
+  salidaMin: number | null;
+}
+
+export interface RutaTripResponse {
+  tripId: string;
+  puntos: PuntoRuta[];
+}
+
 export const criterioDisponibilidadSchema = z.object({
   origenNombre: z.string().min(2),
   destinoNombre: z.string().min(2),

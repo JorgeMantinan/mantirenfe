@@ -13,6 +13,7 @@ import {
   prefijoTripId,
   PuntualidadTrenResponse,
   PuntoTraza,
+  RutaTripResponse,
   TrenDisponibilidadResponse,
 } from '@mantirenfe/shared-types';
 import { FuenteRenfeDwr } from '@mantirenfe/venta';
@@ -442,6 +443,40 @@ export class TrenesService {
         tripId: f.tripId,
       })),
     };
+  }
+
+  /**
+   * Paradas ordenadas de un trip con las coordenadas de cada estación: la
+   * ruta que recorre el tren, para dibujarla en el mapa.
+   *
+   * Es el complemento de la traza registrada (que ahora es escasa) y de las
+   * posiciones en vivo (que solo cubren lo que se ha visto mientras el mapa
+   * estaba abierto): la ruta existe aunque el tren aún no se haya movido.
+   * Consulta barata: PK [tripId, orden] + join con Estacion; se pide solo al
+   * abrir el popup de un tren, igual que la traza.
+   */
+  async rutaTrip(tripId: string): Promise<RutaTripResponse> {
+    const prisma = getPrisma();
+    const paradas = await prisma.paradaHorario.findMany({
+      where: { tripId },
+      orderBy: { orden: 'asc' },
+      select: {
+        llegadaMin: true,
+        salidaMin: true,
+        estacion: { select: { nombre: true, latitud: true, longitud: true } },
+      },
+      take: 100,
+    });
+    const puntos = paradas
+      .filter((p) => p.estacion.latitud != null && p.estacion.longitud != null)
+      .map((p) => ({
+        nombre: p.estacion.nombre,
+        latitud: p.estacion.latitud as number,
+        longitud: p.estacion.longitud as number,
+        llegadaMin: p.llegadaMin,
+        salidaMin: p.salidaMin,
+      }));
+    return { tripId, puntos };
   }
 
   /**

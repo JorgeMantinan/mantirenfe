@@ -54,6 +54,16 @@ export class TrenesController {
     return this.trenesService.salidasEstacion(estacion, fecha);
   }
 
+  @Get('ruta')
+  @EsPublico()
+  @Throttle({ default: { ttl: 10_000, limit: 30 } })
+  ruta(@Query('tripId') tripId?: string) {
+    if (!tripId) {
+      throw new BadRequestException('Falta el parámetro tripId');
+    }
+    return this.trenesService.rutaTrip(tripId);
+  }
+
   /**
    * Plazas y precio de una ruta+fecha (venta.renfe.com vía DWR). Cada consulta
    * puede costar varios segundos contra la venta, así que el límite es más

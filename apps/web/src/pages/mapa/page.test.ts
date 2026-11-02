@@ -47,14 +47,14 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
     expect(latlngDe(recorridos, 'A')).toHaveLength(1);
   });
 
-  it('recorta el recorrido a los últimos 90 puntos', () => {
+  it('recorta el recorrido a los últimos 180 puntos', () => {
     let recorridos = new Map();
     for (let i = 0; i < 200; i++) {
       recorridos = incorporarPuntos(recorridos, [posicion('A', 40 + i / 1000, -3.7)]);
     }
-    expect(latlngDe(recorridos, 'A')).toHaveLength(90);
-    // El primer punto guardado es el 111.º: se ha tirado lo más antiguo
-    expect(latlngDe(recorridos, 'A')[0]?.[0]).toBeCloseTo(40.11, 3);
+    expect(latlngDe(recorridos, 'A')).toHaveLength(180);
+    // El primer punto guardado es el 21.º: se ha tirado lo más antiguo
+    expect(latlngDe(recorridos, 'A')[0]?.[0]).toBeCloseTo(40.02, 3);
   });
 
   it('poda los vehículos que llevan más de 6 h sin verse', () => {
