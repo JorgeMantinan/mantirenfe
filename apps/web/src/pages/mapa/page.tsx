@@ -144,13 +144,14 @@ type Recorrido = { puntos: PuntoVisto[]; visto: number; cambio: number };
 type Recorridos = Map<string, Recorrido>;
 
 const CLAVE_RECORRIDO = 'mantirenfe:mapa:recorrido';
-/** 30 s por punto × 180 = 90 min de recorrido por vehículo. */
-const MAX_PUNTOS_POR_VEHICULO = 180;
+/** 30 s por punto × 120 = 60 min de recorrido por vehículo. Con 80 vehículos
+ *  esto ocupa ~1,4 MB de sessionStorage (límite típico: 5 MB por origen). */
+const MAX_PUNTOS_POR_VEHICULO = 120;
+const MAX_VEHICULOS = 80;
 /** Nada de «movimientos» de milímetros: ~5 m de margen (el feed trae 7
  *  decimales, así que ni el redondeo ni el GPS ruidoso generan puntos). */
 const EPSILON_GRADOS = 0.00005;
 const VIDA_RECORRIDO_MS = 6 * 60 * 60_000;
-const MAX_VEHICULOS = 60;
 /** Un refresh cada 30 s: si entre dos puntos hay más de 5 min, el hueco es
  *  real (tren fuera del feed) y se corta la línea. */
 const HUECO_RECORRIDO_MIN = 5;
@@ -234,10 +235,11 @@ export function incorporarPuntos(
     });
   }
   if (siguiente.size > MAX_VEHICULOS) {
-    // El tope se queda con los vehículos que hace menos que se movieron (los
-    // que de verdad tienen recorrido), no con los que salieron primeros.
+    // Primero el número de puntos: así un tren que acaba de aparecer (1 punto)
+    // no echa del mapa a otro que lleva media hora trazando. A igualdad de
+    // puntos, manda el que se movió hace menos.
     const orden = [...siguiente.entries()]
-      .sort((a, b) => b[1].cambio - a[1].cambio || b[1].puntos.length - a[1].puntos.length)
+      .sort((a, b) => b[1].puntos.length - a[1].puntos.length || b[1].cambio - a[1].cambio)
       .map(([id]) => id);
     for (const id of orden.slice(MAX_VEHICULOS)) siguiente.delete(id);
   }

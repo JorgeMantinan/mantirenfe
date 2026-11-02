@@ -247,9 +247,11 @@ export class TrenesService {
   }
 
   async posiciones(): Promise<{ fuente: string; trenes: PosicionTrenResponse[]; total: number }> {
-    // Cadencia recomendada: el feed de posiciones se actualiza cada 15-30 s;
-    // cachear 30 s evita martillear gtfsrt.renfe.com (≈86k peticiones/mes).
-    const ttl = Number(process.env.POSICIONES_CACHE_SEG ?? '30') * 1000;
+    // Cadencia: el feed se actualiza cada 15-30 s y el mapa refresca cada 30 s.
+    // Con caché de 30 s el cliente caía justo ANTES de la expiración y recibía
+    // el mismo snapshot dos veces seguidas: el recorrido del navegador no
+    // acumulaba puntos. Con 20 s siempre recibe datos nuevos.
+    const ttl = Number(process.env.POSICIONES_CACHE_SEG ?? '20') * 1000;
     if (this.cachePosiciones && this.cachePosiciones.caduca > Date.now()) {
       return {
         fuente: 'gtfs-rt',

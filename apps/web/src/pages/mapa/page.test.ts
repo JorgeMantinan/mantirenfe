@@ -47,14 +47,14 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
     expect(latlngDe(recorridos, 'A')).toHaveLength(1);
   });
 
-  it('recorta el recorrido a los últimos 180 puntos', () => {
+  it('recorta el recorrido a los últimos 120 puntos', () => {
     let recorridos = new Map();
     for (let i = 0; i < 200; i++) {
       recorridos = incorporarPuntos(recorridos, [posicion('A', 40 + i / 1000, -3.7)]);
     }
-    expect(latlngDe(recorridos, 'A')).toHaveLength(180);
-    // El primer punto guardado es el 21.º: se ha tirado lo más antiguo
-    expect(latlngDe(recorridos, 'A')[0]?.[0]).toBeCloseTo(40.02, 3);
+    expect(latlngDe(recorridos, 'A')).toHaveLength(120);
+    // El primer punto guardado es el 81.º: se ha tirado lo más antiguo
+    expect(latlngDe(recorridos, 'A')[0]?.[0]).toBeCloseTo(40.08, 3);
   });
 
   it('poda los vehículos que llevan más de 6 h sin verse', () => {
@@ -78,9 +78,9 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
   });
 
   it('el tope se queda con los que se están moviendo, no con los de la primera carga', () => {
-    // 70 trenes parados superan el tope de 60: la primera carga se queda con
+    // 100 trenes parados superan el tope de 80: la primera carga se queda con
     // una lista arbitraria. Los que se mueven tienen que colarse igualmente.
-    const parados = Array.from({ length: 70 }, (_, i) => posicion(`P${i}`, 40, -3));
+    const parados = Array.from({ length: 100 }, (_, i) => posicion(`P${i}`, 40, -3));
     const base = Date.now() - 5 * 60_000;
     let recorridos = incorporarPuntos(new Map(), parados, base);
     for (let paso = 1; paso <= 3; paso++) {
@@ -92,7 +92,8 @@ describe('incorporarPuntos (recorrido visto en el mapa)', () => {
     }
 
     const claves = [...recorridos.keys()];
-    expect(claves.length).toBeLessThanOrEqual(60);
+    expect(claves.length).toBeLessThanOrEqual(80);
+    // Ninguno de los movidos echa a otro con más puntos (el orden manda)
     expect(claves.filter((clave) => clave.startsWith('M'))).toHaveLength(10);
     expect([...recorridos.values()].some((r) => r.puntos.length > 1)).toBe(true);
   });
