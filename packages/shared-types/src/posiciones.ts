@@ -24,6 +24,12 @@ const URLS_POSICIONES_DEFECTO =
 const URLS_TRIP_UPDATES_DEFECTO =
   'https://gtfsrt.renfe.com/trip_updates.json,https://gtfsrt.renfe.com/trip_updates_LD.json';
 
+/** Último resultado bueno por feed de posiciones: si uno falla, se usan sus
+ *  últimas posiciones (y su edad real) en vez de perder media flota. */
+const ultimoBuenoPosiciones = new Map<string, { en: number; datos: PosicionCruda[] }>();
+/** Cuánto se tolera un feed caído usando sus últimas posiciones. */
+const VIDA_FEED_CAIDO_MS = 5 * 60_000;
+
 async function descargarJson(url: string): Promise<unknown> {
   const controlador = new AbortController();
   const timeout = setTimeout(() => controlador.abort(), 8_000);
@@ -130,20 +136,48 @@ export async function obtenerPosicionesRetrasadas(opciones?: {
     Promise.allSettled(urls.map((u) => descargarPosiciones(u))),
     combinarTripUpdates(urlRetrasos, opciones?.aviso),
   ]);
-  const crudas: PosicionCruda[] = [];
+
+  // Un feed caído no debe media flota: si su último éxito es reciente, se
+  // usan esas posiciones (medido: 1 de cada 4 llamadas traía 167 trenes en
+  // vez de 522, con la mitad del mapa parpadeando y el recorrido cortado).
+  // Cada feed conserva su propia edad, así que el aviso de «feed lento» del
+  // mapa sigue reflejando la antigüedad real de los datos.
+  const porVehiculo = new Map<string, PosicionTrenResponse>();
   for (const [i, resultado] of resultados.entries()) {
-    if (resultado.status === 'fulfilled') crudas.push(...resultado.value);
-    else
-      opciones?.aviso?.(
-        `No se pudo obtener el feed de posiciones (${urls[i]}): ${String(resultado.reason)}`,
-      );
+    const url = urls[i];
+    if (!url) continue;
+    let datos: PosicionCruda[] | null = null;
+    let edad = new Date().toISOString();
+    if (resultado.status === 'fulfilled') {
+      datos = resultado.value;
+      ultimoBuenoPosiciones.set(url, { en: Date.now(), datos });
+    } else {
+      const previo = ultimoBuenoPosiciones.get(url);
+      if (previo && Date.now() - previo.en < VIDA_FEED_CAIDO_MS) {
+        datos = previo.datos;
+        edad = new Date(previo.en).toISOString();
+        opciones?.aviso?.(
+          `Feed de posiciones caído (${url}): se usan las últimas posiciones conocidas (${Math.round(
+            (Date.now() - previo.en) / 1000,
+          )} s)`,
+        );
+      } else {
+        opciones?.aviso?.(
+          `No se pudo obtener el feed de posiciones (${url}): ${String(resultado.reason)}`,
+        );
+      }
+    }
+    if (!datos) continue;
+    for (const posicion of aplicarRetrasos(
+      datos,
+      tripUpdates.retrasos,
+      edad,
+      tripUpdates.cancelados,
+    )) {
+      porVehiculo.set(posicion.id, posicion);
+    }
   }
-  return aplicarRetrasos(
-    crudas,
-    tripUpdates.retrasos,
-    new Date().toISOString(),
-    tripUpdates.cancelados,
-  );
+  return [...porVehiculo.values()];
 }
 
 /** Techo de retraso admisible al registrar impuntualidad: 6 h (21.600 s).
