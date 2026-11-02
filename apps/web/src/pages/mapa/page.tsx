@@ -112,26 +112,49 @@ function segmentarPorHuecos(puntos: PuntoTraza[], maxMin = 30): PuntoTraza[][] {
 /* mantiene despierto a nadie.                                          */
 /* ------------------------------------------------------------------ */
 
-type PuntoVisto = [number, number];
+/**
+ * Un punto del recorrido es un `PuntoTraza` con su momento: así se reutiliza
+ * `segmentarPorHuecos` para cortar por huecos. Sin fecha no se puede cortar y
+ * saldrían rectas fantasma cuando el tren desaparece del feed (p. ej. al
+ * entrar en un túnel o al aparcar) y reaparece lejos.
+ */
+type PuntoVisto = PuntoTraza;
 type Recorrido = { puntos: PuntoVisto[]; visto: number };
 /** Map en vez de objeto: además de más rápido, no dispara el aviso de
  *  `security/detect-object-injection` (clave dinámica sobre objeto plano). */
 type Recorridos = Map<string, Recorrido>;
 
 const CLAVE_RECORRIDO = 'mantirenfe:mapa:recorrido';
-/** 30 s por punto × 120 = una hora de recorrido por vehículo. */
-const MAX_PUNTOS_POR_VEHICULO = 120;
+/** 30 s por punto × 90 = 45 min de recorrido por vehículo. */
+const MAX_PUNTOS_POR_VEHICULO = 90;
 /** Nada de «movimientos» de milímetros: ~11 m de margen. */
 const EPSILON_GRADOS = 0.0001;
 const VIDA_RECORRIDO_MS = 6 * 60 * 60_000;
-const MAX_VEHICULOS = 120;
+const MAX_VEHICULOS = 60;
+/** Un refresh cada 30 s: si entre dos puntos hay más de 5 min, el hueco es
+ *  real (tren fuera del feed) y se corta la línea. */
+const HUECO_RECORRIDO_MIN = 5;
+/**
+ * La BD escribe la traza cada ~30 min (`POSICIONES_HISTORIAL_SEG`), así que el
+ * corte tiene que ser holgado o todos los segmentos salen de un punto y no se
+ * dibuja nada.
+ */
+const HUECO_TRAZA_BD_MIN = 90;
 
 function leerRecorridos(): Recorridos {
   try {
     const bruto = sessionStorage.getItem(CLAVE_RECORRIDO);
     if (!bruto) return new Map();
     const datos = JSON.parse(bruto) as Record<string, Recorrido>;
-    return typeof datos === 'object' && datos !== null ? new Map(Object.entries(datos)) : new Map();
+    if (typeof datos !== 'object' || datos === null) return new Map();
+    // Formato antiguo (pares [lat, lng] sin fecha): se descarta entero, que
+    // sin fecha no se puede cortar por huecos.
+    const validos = Object.entries(datos).filter(
+      ([, recorrido]) =>
+        Array.isArray(recorrido?.puntos) &&
+        recorrido.puntos.every((punto) => typeof punto?.en === 'string'),
+    );
+    return new Map(validos);
   } catch {
     // sessionStorage bloqueado o dato corrupto: se empieza de cero
     return new Map();
@@ -149,26 +172,33 @@ function guardarRecorridos(recorridos: Recorridos): void {
 /** Añade la posición actual de cada tren y poda lo antiguo. (Exportado para el test.) */
 export function incorporarPuntos(prev: Recorridos, trenes: PosicionTrenResponse[]): Recorridos {
   const ahora = Date.now();
+  const corte = ahora - VIDA_RECORRIDO_MS;
   const siguiente: Recorridos = new Map();
   for (const [vehiculo, recorrido] of prev) {
     if (ahora - recorrido.visto <= VIDA_RECORRIDO_MS) siguiente.set(vehiculo, recorrido);
   }
   for (const tren of trenes) {
     const previo = siguiente.get(tren.id);
-    const puntos = previo?.puntos ?? [];
+    // Poda también punto a punto: con 6 h de vida y cortes por huecos, un
+    // punto viejo suelto solo ensuciaría la memoria de la pestaña
+    const puntos = (previo?.puntos ?? []).filter((p) => Date.parse(p.en) > corte);
     const ultimo = puntos[puntos.length - 1];
     if (
       ultimo &&
-      Math.abs(ultimo[0] - tren.latitud) < EPSILON_GRADOS &&
-      Math.abs(ultimo[1] - tren.longitud) < EPSILON_GRADOS
+      Math.abs(ultimo.latitud - tren.latitud) < EPSILON_GRADOS &&
+      Math.abs(ultimo.longitud - tren.longitud) < EPSILON_GRADOS
     ) {
       siguiente.set(tren.id, { puntos, visto: ahora });
       continue;
     }
+    puntos.push({
+      en: new Date(ahora).toISOString(),
+      latitud: tren.latitud,
+      longitud: tren.longitud,
+      retrasoSeg: tren.retrasoSeg ?? null,
+    });
     siguiente.set(tren.id, {
-      puntos: [...puntos, [tren.latitud, tren.longitud] as PuntoVisto].slice(
-        -MAX_PUNTOS_POR_VEHICULO,
-      ),
+      puntos: puntos.slice(-MAX_PUNTOS_POR_VEHICULO),
       visto: ahora,
     });
   }
@@ -206,7 +236,14 @@ const PopupTren = memo(function PopupTren({
   const { t } = useTranslation();
   const indemnizacion = tren.retrasoSeg != null ? funcionIndemnizacion(tren.retrasoSeg) : null;
   const trazaEste = traza?.vehiculo === tren.id ? traza : null;
-  const trazaDisponible = trazaEste !== null && trazaEste.puntos.length >= 2;
+  // Solo se ofrece si de verdad se puede dibujar: con los cortes por huecos,
+  // una traza de dos puntos separados más de HUECO_TRAZA_BD_MIN no tiene
+  // segmento utilizable y el botón no llevaría a nada.
+  const trazaDisponible =
+    trazaEste !== null &&
+    segmentarPorHuecos(trazaEste.puntos, HUECO_TRAZA_BD_MIN).some(
+      (segmento) => segmento.length >= 2,
+    );
   const visible = trazaEste !== null && trazaVisible;
 
   return (
@@ -613,19 +650,23 @@ export function PaginaMapa() {
               {mostrarRecorrido &&
                 visibles.map((tren) => {
                   const puntos = recorridos.get(tren.id)?.puntos;
-                  if (!puntos || puntos.length < 2) return null;
-                  return (
-                    <leaflet.Polyline
-                      key={`recorrido-${tren.id}`}
-                      positions={puntos}
-                      pathOptions={trazas.navegador}
-                    />
+                  if (!puntos) return null;
+                  // Cortado por huecos: si el tren estuvo fuera del feed más
+                  // de HUECO_RECORRIDO_MIN, no se engancha con una recta
+                  return segmentarPorHuecos(puntos, HUECO_RECORRIDO_MIN).map((segmento) =>
+                    segmento.length > 1 ? (
+                      <leaflet.Polyline
+                        key={`recorrido-${tren.id}-${segmento[0]?.en}`}
+                        positions={segmento.map((p) => [p.latitud, p.longitud] as [number, number])}
+                        pathOptions={trazas.navegador}
+                      />
+                    ) : null,
                   );
                 })}
               {trazaVisible &&
                 traza &&
                 visibles.some((v) => v.id === traza.vehiculo) &&
-                segmentarPorHuecos(traza.puntos).map((segmento, i) =>
+                segmentarPorHuecos(traza.puntos, HUECO_TRAZA_BD_MIN).map((segmento, i) =>
                   segmento.length > 1 ? (
                     <leaflet.Polyline
                       key={i}
