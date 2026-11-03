@@ -79,7 +79,7 @@ jobs:
       # (500 MB en planes free). Con backup semanal basta conservar 1 semana;
       # la copia histórica larga la aportan los backups diarios de Supabase.
       - name: Subir artefacto cifrado (retencion 7 dias)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.NOMBRE }}.gpg
           path: ${{ env.NOMBRE }}.gpg
