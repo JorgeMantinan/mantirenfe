@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # postgres:17 es Debian slim y NO trae gpg: sin este paso el cifrado revienta.
       - name: Instalar gnupg

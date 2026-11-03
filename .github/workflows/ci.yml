@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -63,7 +63,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://mantirenfe:mantirenfe@localhost:5432/mantirenfe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -120,6 +120,6 @@ jobs:
       matrix:
         servicio: [api, worker, web]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Docker build ${{ matrix.servicio }}
         run: docker build -f apps/${{ matrix.servicio }}/Dockerfile -t mantirenfe-${{ matrix.servicio }}:${{ github.sha }} .
