@@ -167,6 +167,17 @@ function fechaIsoDesdeGtfs(yyyymmdd: string): string | null {
   return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 }
 
+/** Días de la semana en el orden de `calendar.txt` (0 = domingo). */
+const DIAS_SEMANA = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+
 function diasActivos(
   calendar: Map<string, Record<string, string>>,
   calendarDates: Map<string, Array<{ fecha: string; tipo: string }>>,
@@ -182,15 +193,7 @@ function diasActivos(
     const start = regla.start_date ?? '';
     const end = regla.end_date ?? '';
     if (!/^\d{8}$/.test(start) || !/^\d{8}$/.test(end)) return activos;
-    const diasSemana = [
-      'sunday',
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-    ] as const;
+    const diasSemana = DIAS_SEMANA;
     const isoStart = fechaIsoDesdeGtfs(start);
     const isoEnd = fechaIsoDesdeGtfs(end);
     if (!isoStart || !isoEnd) return activos;
@@ -224,6 +227,54 @@ function diasActivos(
     if (ex.tipo === '2') activos.delete(ex.fecha);
   }
   return activos;
+}
+
+/**
+ * ¿El servicio circula ALGÚN día dentro de [desde, hasta]? Es `diasActivos` con
+ * salida temprana y recorrido acotado a la ventana: el sync la llama por cada
+ * servicio ANTES de streamear stop_times para decidir si merece la pena meter
+ * sus paradas en `ParadaHorario`.
+ *
+ * Por qué importa: una parada sin ninguna fila en `HorarioTren` es huérfana y
+ * la limpieza la borra; si además se vuelve a insertar en el siguiente run, se
+ * monta un bucle diario de escrituras (medido: 216.564 inserts y 164.058
+ * deletes de `ParadaHorario` EN UN SOLO SYNC).
+ */
+function algunaFechaEnVentana(
+  calendar: Map<string, Record<string, string>>,
+  calendarDates: Map<string, Array<{ fecha: string; tipo: string }>>,
+  serviceId: string,
+  desde: Date,
+  hasta: Date,
+): boolean {
+  const desdeIso = desde.toISOString().slice(0, 10);
+  const hastaIso = hasta.toISOString().slice(0, 10);
+  const regla = calendar.get(serviceId);
+
+  if (regla) {
+    const isoStart = fechaIsoDesdeGtfs(regla.start_date ?? '');
+    const isoEnd = fechaIsoDesdeGtfs(regla.end_date ?? '');
+    if (isoStart && isoEnd) {
+      // Recorrido acotado a la intersección de la regla con la ventana
+      const inicio = isoStart > desdeIso ? isoStart : desdeIso;
+      const fin = isoEnd < hastaIso ? isoEnd : hastaIso;
+      const cursor = new Date(`${inicio}T00:00:00Z`);
+      const limite = new Date(`${fin}T00:00:00Z`);
+      while (cursor <= limite) {
+        const dia = DIAS_SEMANA[cursor.getUTCDay()];
+        if (dia && regla[dia] === '1') return true;
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+    }
+  }
+
+  // Una fecha añadida por excepción ya vale: si se filtrara en falso, un
+  // servicio con solo excepciones quedaría sin paradas (y su limpieza sería
+  // un escritor más; preferimos el error contrario).
+  for (const ex of calendarDates.get(serviceId) ?? []) {
+    if (ex.fecha >= desdeIso && ex.fecha <= hastaIso) return true;
+  }
+  return false;
 }
 
 interface ManejadorStopTimes {
@@ -957,12 +1008,18 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
      * producción:851.198 filas (34% de ParadaHorario) eran de este tipo.
      */
     const tripsEnTripsTxt = new Set<string>();
+    /** tripId → service_id: permite mirar si el trip circula en la ventana. */
+    const servicePorTrip = new Map<string, string>();
+    /** Servicios con ALGÚN día activo dentro de la ventana [desde, hasta]. */
+    const servicesEnVentana = new Set<string>();
     let loteParadas: ParadaHorarioCruda[] = [];
     let errorParadas: unknown = null;
     let msParadas = 0;
     let filasParadas = 0;
     /** Paradas descartadas por no tener su trip en trips.txt (ver arriba). */
     let sinTripsTxt = 0;
+    /** Paradas descartadas por circular fuera de la ventana (huérfanas seguras). */
+    let sinVentana = 0;
     let iTrip = -1;
     let iStop = -1;
     let iSeq = -1;
@@ -1000,7 +1057,24 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
       preparar: (leidos) => {
         const tripsBuf = leidos.get('trips.txt');
         if (!tripsBuf) return;
-        for (const trip of tripsLigeros(tripsBuf)) tripsEnTripsTxt.add(trip.tripId);
+        for (const trip of tripsLigeros(tripsBuf)) {
+          tripsEnTripsTxt.add(trip.tripId);
+          servicePorTrip.set(trip.tripId, trip.serviceId);
+        }
+        // Servicios con alguna fecha en la ventana: SOLO sus paradas se meten
+        // (regla de alta de arriba). Sin este filtro, los trips cuyas fechas
+        // caen fuera de la ventana entraban en ParadaHorario y la limpieza de
+        // huérfanas los borraba en el mismo run (no tienen NINGUNA fila en
+        // HorarioTren): 216.564 inserts y 164.058 deletes al día en bucle.
+        const { calendar, calendarDates } = leerCalendarios(
+          leidos.get('calendar.txt'),
+          leidos.get('calendar_dates.txt'),
+        );
+        for (const serviceId of new Set(servicePorTrip.values())) {
+          if (algunaFechaEnVentana(calendar, calendarDates, serviceId, desde, hasta)) {
+            servicesEnVentana.add(serviceId);
+          }
+        }
       },
       cabecera: (cabecera) => {
         iTrip = cabecera.indexOf('trip_id');
@@ -1031,6 +1105,11 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         if (estacionId && !errorParadas) {
           if (!tripsEnTripsTxt.has(tripId)) {
             sinTripsTxt++;
+          } else if (!servicesEnVentana.has(servicePorTrip.get(tripId) ?? '')) {
+            // Trip cuyas fechas caen fuera de la ventana: su parada sería
+            // huérfana (sin fila en HorarioTren) y la limpieza la borraría en
+            // este mismo run, para volver a insertarla en el siguiente.
+            sinVentana++;
           } else {
             loteParadas.push({ tripId, orden, estacionId, llegadaMin: llegada, salidaMin: salida });
             filasParadas++;
@@ -1042,6 +1121,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
                   url,
                   leidas: filasParadas,
                   descartadas: sinTripsTxt,
+                  fueraVentana: sinVentana,
                   insertadas: insertadasParadas,
                   msParadas,
                   ms: Date.now() - inicioFeed,
@@ -1068,6 +1148,7 @@ export async function sincronizarHorarios(logger: Logger): Promise<number> {
         trips: extremos.size,
         filasParadas,
         sinTripsTxt,
+        sinVentana,
         insertadas: insertadasParadas,
         msParadas,
         msStream: msFeed - msParadas,

@@ -498,28 +498,41 @@ describe('sincronizarHorarios: filtro y limpieza de ParadaHorario', () => {
     await sincronizarHorarios(logger);
   }
 
-  it('solo inserta paradas de trips presentes en trips.txt', async () => {
+  it('solo inserta paradas de trips presentes en trips.txt Y con fechas en la ventana', async () => {
     await sincronizarFeedHuerfanos();
 
-    // T2 está en trips.txt (aunque su service no tenga días activos) y T3 solo
-    // aparece en stop_times: este NO puede tener HorarioTren, así que no se
-    // inserta ni una parada suya
+    // T2 está en trips.txt pero su service no circula en la ventana: meter sus
+    // paradas sería un bucle (la limpieza las borraría como huérfanas en este
+    // mismo run y el siguiente volvería a insertarlas: 216.564 inserts y
+    // 164.058 deletes al día en producción). T3 solo aparece en stop_times.
     const insertados = new Set(store.paradasCreateMany.flat());
-    expect(insertados).toEqual(new Set(['T1-2026-09-29', 'T2-VENCIDO']));
+    expect(insertados).toEqual(new Set(['T1-2026-09-29']));
+    expect(insertados.has('T2-VENCIDO')).toBe(false);
     expect(insertados.has('T3-SOLO-STOP-TIMES')).toBe(false);
   });
 
   it('retira como huérfanas las paradas de un trip sin ninguna fila en HorarioTren', async () => {
+    // Parada heredada de una publicación anterior (de cuando se metían sin
+    // comprobar la ventana): la limpieza sigue teniendo que llevársela.
+    store.paradas.push({
+      tripId: 'T2-VENCIDO',
+      orden: 1,
+      estacionId: '17000',
+      llegadaMin: 540,
+      salidaMin: 540,
+    });
     await sincronizarFeedHuerfanos();
 
     // T2 VENCIÓ: sigue en trips.txt (el barrido de obsoletas no lo tocaría),
-    // pero su service_id no está en calendar → no se le insertó ninguna fila de
+    // pero su service_id no está en calendar → no tiene ninguna fila de
     // HorarioTren → sus paradas no sirven para ningún cruce → deleteMany
     expect(store.paradasBorradas).toEqual([['T2-VENCIDO']]);
     expect(store.paradas.map((p) => p.tripId)).not.toContain('T2-VENCIDO');
     // T1 sí tiene horario: sus paradas se conservan
     expect(store.paradas.map((p) => p.tripId)).toContain('T1-2026-09-29');
     expect(store.paradasBorradas.flat()).not.toContain('T1-2026-09-29');
+    // Y no se vuelve a insertar T2 (eso sería el bucle diario)
+    expect(new Set(store.paradasCreateMany.flat())).toEqual(new Set(['T1-2026-09-29']));
   });
 
   it('retira también un tripId desaparecido del feed (barrido de obsoletas)', async () => {
