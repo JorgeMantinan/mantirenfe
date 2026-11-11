@@ -1025,6 +1025,8 @@ export const es = {
     notas: 'Notas: {{texto}}',
     retrasosHoy: 'Retrasos de hoy',
     plazasHoy: 'Plazas de hoy',
+    retrasosFecha: 'Retrasos del {{fecha}}',
+    plazasFecha: 'Plazas del {{fecha}}',
     sondeoSinDatos: 'Todavía no se ha sondeado esta alerta',
     sondeoHace: 'Último sondeo: {{hace}}',
     haceMomento: 'hace un momento',

@@ -1023,6 +1023,8 @@ export const en: MismoArbol<Claves> = {
     notas: 'Notes: {{texto}}',
     retrasosHoy: 'Today’s delays',
     plazasHoy: 'Today’s seats',
+    retrasosFecha: 'Delays on {{fecha}}',
+    plazasFecha: 'Seats on {{fecha}}',
     sondeoSinDatos: 'This alert has not been polled yet',
     sondeoHace: 'Last checked: {{hace}}',
     haceMomento: 'just now',

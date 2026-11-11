@@ -7,6 +7,7 @@ import { locale } from '@/i18n';
 import { formatearPrecio } from '@/lib/precios';
 import {
   duracionCorta,
+  fechaGtfs,
   horaGtfs,
   textoConexion,
   type AlertaResponse,
@@ -65,15 +66,32 @@ function mensajeEstadoVacio(alerta: AlertaResponse, t: TFunction): string {
 /** Tabla del último sondeo: tren, plazas, precio y botón de actualizar. */
 export function TarjetaEstado({ alerta, trenes, cargando, onRecargar }: Props) {
   const { t } = useTranslation();
+  // El sondeo consulta la fecha de la alerta (`fechaViaje`), no el día de hoy:
+  // el título debe seguir esa fecha o el usuario creerá que mira los datos de
+  // hoy (reportado con una alerta para el día 13 viéndola como «de hoy»).
+  // Los modos cotidiano y «cualquier fecha» anclan `fechaViaje` a hoy, así que
+  // para ellos sigue poniendo «hoy».
+  const esHoy = alerta.fechaViaje === fechaGtfs();
+  const fechaLarga = new Date(`${alerta.fechaViaje}T00:00:00`).toLocaleDateString(locale(), {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  const tituloEstado =
+    alerta.criterio === 'RETRASO'
+      ? esHoy
+        ? t('detalleAlerta.retrasosHoy')
+        : t('detalleAlerta.retrasosFecha', { fecha: fechaLarga })
+      : esHoy
+        ? t('detalleAlerta.plazasHoy')
+        : t('detalleAlerta.plazasFecha', { fecha: fechaLarga });
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Train className="h-5 w-5 text-primary" aria-hidden="true" />
-            {alerta.criterio === 'RETRASO'
-              ? t('detalleAlerta.retrasosHoy')
-              : t('detalleAlerta.plazasHoy')}
+            {tituloEstado}
           </CardTitle>
           <CardDescription>
             {alerta.ultimoSondeoEn
