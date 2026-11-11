@@ -20,6 +20,21 @@ dotenv.config({ path: '../../.env' });
  */
 async function main() {
   const prisma = new PrismaClient();
+
+  // Si la BD no responde, la auditoría no puede hacer nada y su salida en rojo
+  // solo dispara el correo de «Failed in N seconds» de madrugada (es lo que
+  // pasa cuando Supabase se queda sin presupuesto de Disk IO): se avisa y se
+  // sale en 0; la próxima tirada la repetirá.
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1 AS responde');
+  } catch (e) {
+    console.warn(
+      `::warning::Auditoría omitida: la base de datos no responde (${String(e).slice(0, 160)})`,
+    );
+    await prisma.$disconnect();
+    process.exit(0);
+  }
+
   const problemas: string[] = [];
 
   const revocaciones = [
